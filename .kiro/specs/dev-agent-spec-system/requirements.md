@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This project aims to create a software development agent that guides users through a structured three-phase development process: specification creation, detailed design, and implementation. The agent will be capable of understanding complex application requirements, creating comprehensive documentation, generating detailed task lists, and implementing solutions while maintaining quality through test-driven development practices. The system will provide iterative feedback loops allowing users to refine earlier phases and automatically update subsequent phases accordingly.
+This project aims to create a software development agent that guides users through a structured three-phase development process: specification creation, detailed design, and implementation. The agent will be capable of working with both new projects and existing codebases, understanding complex application requirements, creating comprehensive documentation, generating detailed task lists, and implementing solutions using user-preferred development methodologies. For existing applications, the system will analyze current code and documentation to generate appropriate specifications and designs. The system will provide iterative feedback loops allowing users to refine earlier phases and automatically update subsequent phases accordingly.
 
 ## Requirements
 
@@ -46,16 +46,17 @@ This project aims to create a software development agent that guides users throu
 
 ### Requirement 4
 
-**User Story:** As a software developer, I want the agent to implement each task following test-driven development practices, so that I get high-quality, well-tested code.
+**User Story:** As a software developer, I want the agent to implement each task using my preferred development approach, so that I get code that follows my chosen methodology and quality standards.
 
 #### Acceptance Criteria
 
 1. WHEN a user selects a task for implementation THEN the system SHALL execute only that specific task
-2. WHEN implementing a task THEN the system SHALL follow TDD principles by writing tests before implementation code
-3. WHEN implementing code THEN the system SHALL ensure it passes all tests and meets the task requirements
-4. WHEN a task encounters errors THEN the system SHALL analyze and resolve them autonomously
-5. WHEN a task is complete THEN the system SHALL mark it as completed and wait for user confirmation before proceeding
-6. WHEN implementing THEN the system SHALL use Python as the primary programming language
+2. WHEN beginning implementation THEN the system SHALL recommend TDD approach but allow user to specify their preferred development methodology
+3. WHEN user specifies a development approach THEN the system SHALL follow that methodology throughout implementation
+4. WHEN implementing code THEN the system SHALL ensure it meets the task requirements and follows the chosen approach
+5. WHEN a task encounters errors THEN the system SHALL analyze and resolve them autonomously
+6. WHEN a task is complete THEN the system SHALL mark it as completed and wait for user confirmation before proceeding
+7. WHEN implementing THEN the system SHALL use Python as the primary programming language unless user specifies otherwise
 
 ### Requirement 5
 
@@ -117,3 +118,39 @@ This project aims to create a software development agent that guides users throu
 4. WHEN design generation is incomplete THEN the system SHALL ask targeted followup questions to fill missing details
 5. WHEN existing system analysis is complete THEN the system SHALL present the generated design for user review and approval
 6. WHEN user confirms generated design THEN the system SHALL proceed with normal workflow phases
+
+### Requirement 10
+
+**User Story:** As a software developer, I want the system to support multiple programming languages and frameworks, so that I can work on diverse projects using my preferred technology stack.
+
+#### Acceptance Criteria
+
+1. WHEN user specifies a programming language THEN the system SHALL adapt its implementation approach to that language's best practices
+2. WHEN working with different frameworks THEN the system SHALL incorporate framework-specific patterns and conventions
+3. WHEN generating code THEN the system SHALL follow language-specific coding standards and idioms
+4. WHEN creating tests THEN the system SHALL use appropriate testing frameworks for the chosen technology stack
+5. WHEN language is not specified THEN the system SHALL recommend Python as default but allow user override
+
+### Requirement 11
+
+**User Story:** As a software developer, I want to track progress and resume work on specifications, so that I can manage long-running projects effectively.
+
+#### Acceptance Criteria
+
+1. WHEN working on a specification THEN the system SHALL save progress automatically at each phase completion
+2. WHEN resuming work THEN the system SHALL restore the exact state from the last session
+3. WHEN viewing progress THEN the system SHALL show completion status for requirements, design, and implementation phases
+4. WHEN tasks are partially complete THEN the system SHALL track which specific tasks have been implemented
+5. WHEN user wants to resume THEN the system SHALL suggest the next logical step based on current progress
+
+### Requirement 12
+
+**User Story:** As a software developer, I want the system to integrate with my existing development tools, so that it fits seamlessly into my workflow.
+
+#### Acceptance Criteria
+
+1. WHEN generating code THEN the system SHALL create files in standard project structures
+2. WHEN working with version control THEN the system SHALL respect existing Git workflows and branching strategies
+3. WHEN creating documentation THEN the system SHALL use standard formats like Markdown that integrate with common tools
+4. WHEN implementing tasks THEN the system SHALL generate code that works with existing build systems and dependency management
+5. WHEN user has IDE preferences THEN the system SHALL generate code compatible with common development environments
