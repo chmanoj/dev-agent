@@ -36,7 +36,7 @@
   - Write tests for embedding generation and similarity queries
   - _Requirements: FR-2.3_
 
-- [-] 6. Build high-performance indexing engine
+- [x] 6. Build high-performance indexing engine
   - Implement IndexingEngine class that orchestrates AST parsing and embeddings
   - Add memory-mapped file handling for large codebase processing
   - Create progressive indexing with progress indicators
@@ -45,7 +45,7 @@
   - Write performance tests with large sample codebases
   - _Requirements: FR-2.1, FR-2.4, FR-2.5, FR-2.6_
 
-- [ ] 7. Implement codebase analyzer for context extraction
+- [-] 7. Implement codebase analyzer for context extraction
   - Create CodebaseAnalyzer class that leverages the indexing engine
   - Add methods for extracting architecture patterns and code conventions
   - Implement context retrieval for specification and design generation

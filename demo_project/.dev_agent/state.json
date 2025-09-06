@@ -1,0 +1,24 @@
+{
+  "project_path": "demo_project",
+  "current_phase": "implementation",
+  "indexing_complete": false,
+  "specification": null,
+  "design": null,
+  "tasks": null,
+  "implementation_progress": {
+    "task-1": "completed",
+    "task-2": "completed",
+    "task-3": "in_progress",
+    "task-4": "not_started"
+  },
+  "index_metadata": null,
+  "session_data": {
+    "session_id": "demo-session-20250902-153321",
+    "started_at": "2025-09-02T15:33:21.390363",
+    "last_activity": "2025-09-02T15:33:21.390363",
+    "user_approvals": {},
+    "pending_approvals": []
+  },
+  "created_at": "2025-09-02T15:33:21.390363",
+  "updated_at": "2025-09-02T15:33:21.393303"
+}
