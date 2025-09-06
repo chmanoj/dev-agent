@@ -1,156 +1,122 @@
-# Requirements Document
+# Revised MVP Requirements for dev-agent (With Existing Codebase Support)
 
 ## Introduction
 
-This project aims to create a software development agent that guides users through a structured three-phase development process: specification creation, detailed design, and implementation. The agent will be capable of working with both new projects and existing codebases, understanding complex application requirements, creating comprehensive documentation, generating detailed task lists, and implementing solutions using user-preferred development methodologies. For existing applications, the system will analyze current code and documentation to generate appropriate specifications and designs. The system will provide iterative feedback loops allowing users to refine earlier phases and automatically update subsequent phases accordingly.
+This document outlines the requirements for a more advanced MVP of dev-agent. The primary goal is to build the core three-phase workflow on top of a high-performance indexing engine capable of handling large, existing repositories locally.
 
-## Requirements
+The system implements a Specify -> Design -> Implement loop with an initial indexing phase for existing projects. The agent will build a local, on-disk index to analyze repositories with millions of lines of code quickly, focusing on Python-first implementation while deferring advanced security, automated Git integration, and cross-platform installers.
 
-### Requirement 1
+## Key MVP Features
 
-**User Story:** As a software developer, I want to create detailed specifications for applications through an interactive process, so that I have a clear foundation for design and implementation.
+✅ **End-to-End Workflow**: The core Specify -> Design -> Implement loop remains central  
+⚡️ **High-Performance Indexing**: The agent will build a local, on-disk index to analyze repositories with millions of lines of code quickly  
+🔍 **Existing Project Analysis**: The agent's first step on an existing repo is to analyze it and generate the initial Specification and Design documents  
+🐍 **Python-First**: The agent will implement new code in Python  
+🚫 **Non-Core Features Deferred**: Advanced security, automated Git integration, and cross-platform installers are deferred to keep scope focused
 
-#### Acceptance Criteria
+## High-Level MVP Workflow
 
-1. WHEN a user initiates a new specification THEN the system SHALL guide them through requirement gathering using structured prompts
-2. WHEN a user provides a rough application idea THEN the system SHALL generate initial requirements in EARS format with user stories and acceptance criteria
-3. WHEN requirements are generated THEN the system SHALL present them to the user for review and approval
-4. IF the user requests changes to requirements THEN the system SHALL modify the requirements document and request approval again
-5. WHEN requirements are approved THEN the system SHALL save them as a structured document and proceed to the design phase
+The workflow includes an initial indexing phase for existing projects:
 
-### Requirement 2
+- **Phase 0: Indexing** (For Existing Repos): The agent performs a one-time, intensive analysis of the codebase to build its local index
+- **Phase 1: Specification**: The agent generates a SPECIFICATION.md file. For existing repos, this is based on its analysis. For new projects, it's guided by the user
+- **Phase 2: Design**: The agent uses the spec to generate a DESIGN.md file, reflecting the current or proposed architecture  
+- **Phase 3: Implementation**: The agent creates a TASKS.md list and writes Python code as directed by the user, using the full codebase index for context
 
-**User Story:** As a software developer, I want the agent to create comprehensive design documents based on my specifications, so that I have a detailed technical blueprint for implementation.
+## Functional Requirements (Revised MVP)
 
-#### Acceptance Criteria
+### FR-1: Core System & Interaction
 
-1. WHEN the specification phase is complete THEN the system SHALL automatically begin the design phase
-2. WHEN creating a design THEN the system SHALL conduct necessary research and incorporate findings into the design document
-3. WHEN generating a design THEN the system SHALL include architecture, components, interfaces, data models, error handling, and testing strategy sections
-4. WHEN a design is complete THEN the system SHALL present it to the user for review and approval
-5. IF the user requests design changes THEN the system SHALL modify the design document and request approval again
-6. WHEN design includes complex relationships THEN the system SHALL provide visual representations using diagrams where appropriate
-
-### Requirement 3
-
-**User Story:** As a software developer, I want the agent to generate detailed implementation task lists from the design, so that I have a clear roadmap for coding the application.
+**User Story:** As a software developer, I want an interactive CLI system that manages project state and requires my approval at key decision points.
 
 #### Acceptance Criteria
 
-1. WHEN the design phase is approved THEN the system SHALL create a detailed task list for implementation
-2. WHEN generating tasks THEN the system SHALL break down the design into discrete, manageable coding steps
-3. WHEN creating task items THEN the system SHALL reference specific requirements and include clear objectives
-4. WHEN tasks are generated THEN the system SHALL organize them in a logical sequence that builds incrementally
-5. WHEN task list is complete THEN the system SHALL present it to the user for review and approval
-6. IF the user requests task changes THEN the system SHALL modify the task list and request approval again
+1. WHEN I use the system THEN it SHALL provide a basic, interactive chat-based command-line interface
+2. WHEN the system generates documents (Specification, Design, Task List) THEN it SHALL require explicit user approval (y/n) before proceeding
+3. WHEN I run the init command THEN the system SHALL prepare the project folder and begin indexing if code exists
+4. WHEN I work across sessions THEN the system SHALL save its state (current phase, etc.) in a local file to allow resuming
+5. WHEN I need to resume work THEN the system SHALL restore the exact state from the last session
 
-### Requirement 4
+### FR-2: Phase 0: High-Performance Codebase Indexing
 
-**User Story:** As a software developer, I want the agent to implement each task using my preferred development approach, so that I get code that follows my chosen methodology and quality standards.
-
-#### Acceptance Criteria
-
-1. WHEN a user selects a task for implementation THEN the system SHALL execute only that specific task
-2. WHEN beginning implementation THEN the system SHALL recommend TDD approach but allow user to specify their preferred development methodology
-3. WHEN user specifies a development approach THEN the system SHALL follow that methodology throughout implementation
-4. WHEN implementing code THEN the system SHALL ensure it meets the task requirements and follows the chosen approach
-5. WHEN a task encounters errors THEN the system SHALL analyze and resolve them autonomously
-6. WHEN a task is complete THEN the system SHALL mark it as completed and wait for user confirmation before proceeding
-7. WHEN implementing THEN the system SHALL use Python as the primary programming language unless user specifies otherwise
-
-### Requirement 5
-
-**User Story:** As a software developer, I want to be able to go back and modify earlier phases, so that I can refine my project as understanding evolves.
+**User Story:** As a software developer working with large existing codebases, I want the system to quickly build a comprehensive index so it can understand my project without consuming excessive resources.
 
 #### Acceptance Criteria
 
-1. WHEN a user wants to modify requirements THEN the system SHALL allow editing and automatically update dependent design and task documents
-2. WHEN a user modifies the design THEN the system SHALL update the task list to reflect design changes
-3. WHEN changes are made to earlier phases THEN the system SHALL maintain consistency across all documentation
-4. WHEN updating dependent documents THEN the system SHALL preserve completed implementation work where possible
-5. WHEN phase modifications are complete THEN the system SHALL request user approval for all updated documents
+1. WHEN working with existing code THEN the system SHALL create a persistent, on-disk index within the project's .dev_agent directory
+2. WHEN indexing code THEN the system SHALL use Tree-sitter to parse the entire codebase into an Abstract Syntax Tree (AST), creating a searchable map of all functions, classes, and symbols
+3. WHEN performing semantic analysis THEN the system SHALL implement a Retrieval-Augmented Generation pipeline by chunking code, generating vector embeddings, and storing them in a local vector database (e.g., Qdrant, LanceDB)
+4. WHEN handling large repositories THEN the system SHALL be architected to handle at least one million lines of code on a standard developer machine without consuming excessive RAM
+5. WHEN optimizing performance THEN the system SHALL leverage memory-mapped files and on-disk data structures
+6. WHEN indexing is complete THEN the expensive analysis SHALL only be done once, with the index persisting across sessions
 
-### Requirement 6
+### FR-3: Phase 1: Specification Generation
 
-**User Story:** As a software developer, I want the agent to think through complex application architectures, so that I get sophisticated and scalable solutions.
-
-#### Acceptance Criteria
-
-1. WHEN analyzing complex requirements THEN the system SHALL demonstrate deep architectural thinking
-2. WHEN designing systems THEN the system SHALL consider scalability, maintainability, and best practices
-3. WHEN creating designs THEN the system SHALL address edge cases and error scenarios
-4. WHEN generating solutions THEN the system SHALL provide rationale for architectural decisions
-5. WHEN dealing with complexity THEN the system SHALL break down problems into manageable components
-
-### Requirement 7
-
-**User Story:** As a software developer, I want clear confirmation points at each phase, so that I maintain control over the development process.
+**User Story:** As a software developer, I want the system to generate comprehensive specifications either from existing code analysis or through guided prompts for new projects.
 
 #### Acceptance Criteria
 
-1. WHEN each phase is complete THEN the system SHALL explicitly request user approval before proceeding
-2. WHEN requesting approval THEN the system SHALL clearly present what is being approved
-3. WHEN user provides feedback THEN the system SHALL incorporate changes and request approval again
-4. WHEN user approves a phase THEN the system SHALL save the current state and proceed to the next phase
-5. WHEN user rejects changes THEN the system SHALL continue the revision cycle until approval is received
+1. WHEN working with existing repos THEN the system SHALL use its index to perform full-codebase analysis and generate a SPECIFICATION.md file documenting the application's likely requirements and features
+2. WHEN working with new (empty) projects THEN the system SHALL prompt the user with questions to create the specification
+3. WHEN a specification is generated THEN the system SHALL present it to the user for approval
+4. WHEN I request changes THEN the system SHALL allow for at least one round of feedback and regeneration
+5. WHEN specification is approved THEN the system SHALL save it as a structured document and proceed to design phase
 
-### Requirement 8
+### FR-4: Phase 2: Design Generation
 
-**User Story:** As a software developer, I want the system to handle errors gracefully during implementation, so that development progress is not blocked by technical issues.
-
-#### Acceptance Criteria
-
-1. WHEN implementation errors occur THEN the system SHALL analyze the error and attempt resolution
-2. WHEN errors cannot be resolved automatically THEN the system SHALL provide clear error descriptions and suggested solutions
-3. WHEN resolving errors THEN the system SHALL maintain code quality and test coverage
-4. WHEN errors are resolved THEN the system SHALL continue with the implementation task
-5. WHEN persistent errors occur THEN the system SHALL suggest alternative implementation approaches
-
-### Requirement 9
-
-**User Story:** As a software developer working on an existing application, I want the system to analyze my existing codebase and documentation to generate appropriate design documents, so that I can continue development with proper specifications.
+**User Story:** As a software developer, I want the system to create detailed design documents that reflect either my existing architecture or a proposed new architecture.
 
 #### Acceptance Criteria
 
-1. WHEN working with an existing application THEN the system SHALL analyze the existing codebase to understand current architecture
-2. WHEN analyzing existing code THEN the system SHALL examine documentation, code structure, and implementation patterns
-3. WHEN generating design from existing code THEN the system SHALL create a design document that reflects the current system state
-4. WHEN design generation is incomplete THEN the system SHALL ask targeted followup questions to fill missing details
-5. WHEN existing system analysis is complete THEN the system SHALL present the generated design for user review and approval
-6. WHEN user confirms generated design THEN the system SHALL proceed with normal workflow phases
+1. WHEN working with existing repos THEN the system SHALL generate a DESIGN.md file documenting the current architecture, data models, and key components based on its index
+2. WHEN working with new projects THEN the system SHALL generate a technical design based on the user-created specification
+3. WHEN design is complete THEN the system SHALL seek user approval for the design
+4. WHEN I provide feedback THEN the system SHALL allow for design revision and re-approval
+5. WHEN design is approved THEN the system SHALL proceed to implementation phase
 
-### Requirement 10
+### FR-5: Phase 3: Implementation
 
-**User Story:** As a software developer, I want the system to support multiple programming languages and frameworks, so that I can work on diverse projects using my preferred technology stack.
-
-#### Acceptance Criteria
-
-1. WHEN user specifies a programming language THEN the system SHALL adapt its implementation approach to that language's best practices
-2. WHEN working with different frameworks THEN the system SHALL incorporate framework-specific patterns and conventions
-3. WHEN generating code THEN the system SHALL follow language-specific coding standards and idioms
-4. WHEN creating tests THEN the system SHALL use appropriate testing frameworks for the chosen technology stack
-5. WHEN language is not specified THEN the system SHALL recommend Python as default but allow user override
-
-### Requirement 11
-
-**User Story:** As a software developer, I want to track progress and resume work on specifications, so that I can manage long-running projects effectively.
+**User Story:** As a software developer, I want the system to generate task lists and implement Python code using full codebase context to ensure consistency with existing patterns.
 
 #### Acceptance Criteria
 
-1. WHEN working on a specification THEN the system SHALL save progress automatically at each phase completion
-2. WHEN resuming work THEN the system SHALL restore the exact state from the last session
-3. WHEN viewing progress THEN the system SHALL show completion status for requirements, design, and implementation phases
-4. WHEN tasks are partially complete THEN the system SHALL track which specific tasks have been implemented
-5. WHEN user wants to resume THEN the system SHALL suggest the next logical step based on current progress
+1. WHEN design is approved THEN the system SHALL generate a TASKS.md checklist based on the design document
+2. WHEN implementing a task THEN the system SHALL use its entire codebase index to inform the new Python code, ensuring consistency with existing patterns, classes, and functions
+3. WHEN generating code THEN the system SHALL write the generated Python code and tests directly to files in the project directory
+4. WHEN code is generated THEN it SHALL be consistent with existing codebase patterns and architecture
+5. WHEN implementation is complete THEN the system SHALL present results for user review
 
-### Requirement 12
+## Deferred Features (Post-MVP Roadmap)
 
-**User Story:** As a software developer, I want the system to integrate with my existing development tools, so that it fits seamlessly into my workflow.
+The following features are intentionally deferred to keep the MVP scope focused and achievable:
 
-#### Acceptance Criteria
+### Security
+- Sandboxed command execution
+- Secure code analysis and validation
+- Protection against malicious code injection
 
-1. WHEN generating code THEN the system SHALL create files in standard project structures
-2. WHEN working with version control THEN the system SHALL respect existing Git workflows and branching strategies
-3. WHEN creating documentation THEN the system SHALL use standard formats like Markdown that integrate with common tools
-4. WHEN implementing tasks THEN the system SHALL generate code that works with existing build systems and dependency management
-5. WHEN user has IDE preferences THEN the system SHALL generate code compatible with common development environments
+### Advanced Git Integration  
+- Automated commits and branching
+- The /undo command for reverting changes
+- Advanced merge conflict resolution
+
+### Full Iteration Support
+- The ability to go back and modify previous phases with changes propagating forward
+- Complex dependency tracking between phases
+- Advanced rollback capabilities
+
+### Multi-Language Support
+- Expanding beyond Python to support multiple programming languages
+- Language-specific best practices and patterns
+- Framework-specific code generation
+
+### Distribution & Installers
+- Creating cross-platform binaries
+- Package management integration
+- Automated deployment and distribution
+
+### Advanced Features
+- Visual diagram generation for complex architectures
+- Integration with external development tools and IDEs
+- Advanced error handling and recovery mechanisms
+- Performance optimization and profiling capabilities
