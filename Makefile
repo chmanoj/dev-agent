@@ -76,6 +76,25 @@ run-init: ## Initialize a new project
 run-resume: ## Resume existing project
 	uv run dev-agent resume
 
+# Git workflow commands
+git-setup: ## Setup Git configuration and hooks
+	git config --local pull.rebase false
+	git config --local fetch.prune true
+	uv run pre-commit install
+	uv run pre-commit install --hook-type commit-msg
+
+git-cleanup: ## Clean up merged branches
+	git branch --merged | grep -v '\*\|main\|develop' | xargs -n 1 git branch -d || true
+	git remote prune origin
+
+git-status: ## Show detailed Git status
+	@echo "=== Git Status ==="
+	git status --short --branch
+	@echo "\n=== Recent Commits ==="
+	git log --oneline -10
+	@echo "\n=== Local Branches ==="
+	git branch -vv
+
 docs-serve: ## Serve documentation locally
 	uv run mkdocs serve
 

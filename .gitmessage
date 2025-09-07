@@ -1,0 +1,31 @@
+# <type>[optional scope]: <description>
+#
+# [optional body]
+#
+# [optional footer(s)]
+
+# Type must be one of:
+# feat:     A new feature
+# fix:      A bug fix
+# docs:     Documentation only changes
+# style:    Changes that do not affect the meaning of the code
+# refactor: A code change that neither fixes a bug nor adds a feature
+# perf:     A code change that improves performance
+# test:     Adding missing tests or correcting existing tests
+# chore:    Changes to the build process or auxiliary tools
+# ci:       Changes to CI configuration files and scripts
+# build:    Changes that affect the build system or external dependencies
+
+# Rules:
+# - Use imperative mood in the description (e.g., "add" not "added")
+# - Start description with lowercase letter
+# - No period at the end of the description
+# - Keep description under 50 characters
+# - Use body to explain what and why, not how
+# - Reference issues in footer: "Closes #123"
+
+# Examples:
+# feat(auth): add JWT token refresh mechanism
+# fix(indexing): resolve memory leak in file processing
+# docs: update installation guide for Windows users
+# test(cli): add integration tests for workflow phases
