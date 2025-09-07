@@ -95,6 +95,37 @@ git-status: ## Show detailed Git status
 	@echo "\n=== Local Branches ==="
 	git branch -vv
 
+# Release commands
+release-patch: ## Create patch release (1.0.0 -> 1.0.1)
+	@echo "Creating patch release..."
+	@current_version=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	new_version=$$(echo $$current_version | awk -F. '{$$3++; print $$1"."$$2"."$$3}'); \
+	sed -i "s/version = \"$$current_version\"/version = \"$$new_version\"/" pyproject.toml; \
+	git add pyproject.toml; \
+	git commit -m "chore: bump version to $$new_version"; \
+	git tag -a "v$$new_version" -m "Release version $$new_version"; \
+	echo "Created release v$$new_version"
+
+release-minor: ## Create minor release (1.0.0 -> 1.1.0)
+	@echo "Creating minor release..."
+	@current_version=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	new_version=$$(echo $$current_version | awk -F. '{$$2++; $$3=0; print $$1"."$$2"."$$3}'); \
+	sed -i "s/version = \"$$current_version\"/version = \"$$new_version\"/" pyproject.toml; \
+	git add pyproject.toml; \
+	git commit -m "chore: bump version to $$new_version"; \
+	git tag -a "v$$new_version" -m "Release version $$new_version"; \
+	echo "Created release v$$new_version"
+
+release-major: ## Create major release (1.0.0 -> 2.0.0)
+	@echo "Creating major release..."
+	@current_version=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	new_version=$$(echo $$current_version | awk -F. '{$$1++; $$2=0; $$3=0; print $$1"."$$2"."$$3}'); \
+	sed -i "s/version = \"$$current_version\"/version = \"$$new_version\"/" pyproject.toml; \
+	git add pyproject.toml; \
+	git commit -m "chore: bump version to $$new_version"; \
+	git tag -a "v$$new_version" -m "Release version $$new_version"; \
+	echo "Created release v$$new_version"
+
 docs-serve: ## Serve documentation locally
 	uv run mkdocs serve
 
