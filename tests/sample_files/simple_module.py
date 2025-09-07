@@ -10,20 +10,20 @@ def subtract(a, b):
 
 class Calculator:
     """A simple calculator."""
-    
+
     def __init__(self):
         self.history = []
-    
+
     def calculate(self, operation, a, b):
         """Perform calculation."""
-        if operation == 'add':
+        if operation == "add":
             result = add(a, b)
-        elif operation == 'subtract':
+        elif operation == "subtract":
             result = subtract(a, b)
         else:
             result = None
-        
+
         if result is not None:
             self.history.append(f"{a} {operation} {b} = {result}")
-        
+
         return result

@@ -214,3 +214,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Dev-agent specific
+.dev_agent/
+demo_project/
+MODERNIZATION_SUMMARY.md
+MANIFEST.in
+
+# Documentation build
+site/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db

@@ -155,9 +155,11 @@ class InteractiveCLI(ICLIInterface):
             raise ValueError(f"Project path does not exist: {project_path}")
         
         dev_agent_dir = os.path.join(project_path, '.dev_agent')
+        documents_dir = os.path.join(dev_agent_dir, 'documents')
+        index_dir = os.path.join(dev_agent_dir, 'index')
         
-        # Check if this is an existing project
-        if os.path.exists(dev_agent_dir):
+        # Check if this is an existing project by looking for actual project structure
+        if os.path.exists(documents_dir) and os.path.exists(index_dir):
             self.display_message("Found existing dev-agent project. Resuming...")
             if self.workflow_manager:
                 self.workflow_manager.resume_project(project_path)
@@ -165,8 +167,8 @@ class InteractiveCLI(ICLIInterface):
             self.display_message("Initializing new dev-agent project...")
             # Create .dev_agent directory structure
             os.makedirs(dev_agent_dir, exist_ok=True)
-            os.makedirs(os.path.join(dev_agent_dir, 'documents'), exist_ok=True)
-            os.makedirs(os.path.join(dev_agent_dir, 'index'), exist_ok=True)
+            os.makedirs(documents_dir, exist_ok=True)
+            os.makedirs(index_dir, exist_ok=True)
             
             if self.workflow_manager:
                 self.workflow_manager.start_new_project(project_path)

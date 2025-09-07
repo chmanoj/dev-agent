@@ -1,19 +1,24 @@
-# Core dependencies
-numpy>=1.21.0
-tree-sitter>=0.20.0
-sentence-transformers>=2.2.0
+# Legacy pip requirements for compatibility
+# Primary dependency management is via pyproject.toml and uv
+# Use: pip install -e . or pip install -e ".[dev]"
 
-# Vector database options (choose one)
-faiss-cpu>=1.7.0
-# qdrant-client>=1.0.0
+# Core dependencies (keep in sync with pyproject.toml)
+typer>=0.15.0
+rich>=13.9.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+httpx>=0.28.0
+numpy>=2.0.0
+faiss-cpu>=1.9.0
+sentence-transformers>=3.3.0
 
-# CLI and interaction
-click>=8.0.0
-rich>=12.0.0
-
-# Development dependencies
-pytest>=7.0.0
-pytest-cov>=4.0.0
-black>=22.0.0
-flake8>=5.0.0
-mypy>=0.991
+# Development dependencies (install with: pip install -e ".[dev]")
+# pytest>=8.3.0
+# pytest-cov>=6.0.0
+# pytest-mock>=3.14.0
+# pytest-asyncio>=0.24.0
+# ruff>=0.8.0
+# mypy>=1.13.0
+# pre-commit>=4.0.0
