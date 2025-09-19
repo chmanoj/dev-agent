@@ -64,7 +64,6 @@ class Calculator:
         
         self.history.append((operation, a, b, result))
         return result''',
-
             "string_utils.py": '''"""String utility functions."""
 
 def reverse_string(text: str) -> str:
@@ -93,7 +92,6 @@ class TextProcessor:
             return text.upper()
         else:
             return text''',
-
             "main.py": '''"""Main application entry point."""
 
 from math_utils import Calculator, add
@@ -110,7 +108,7 @@ def main():
     print(f"Processed text: {text}")
 
 if __name__ == "__main__":
-    main()'''
+    main()''',
         }
 
         # Write files to temp directory
@@ -133,7 +131,9 @@ if __name__ == "__main__":
         chunk_ids = self.db.store_embeddings(all_chunks)
 
         assert len(chunk_ids) == len(all_chunks), "Should store all chunks"
-        assert self.db.index.ntotal == len(all_chunks), "Index should contain all embeddings"
+        assert self.db.index.ntotal == len(all_chunks), (
+            "Index should contain all embeddings"
+        )
 
         # Step 3: Test semantic search
 
@@ -143,7 +143,9 @@ if __name__ == "__main__":
 
         # Check that math-related chunks are returned
         math_files = [r.chunk.file_path for r in math_results]
-        assert any("math_utils.py" in path for path in math_files), "Should find math utilities"
+        assert any("math_utils.py" in path for path in math_files), (
+            "Should find math utilities"
+        )
 
         # Search for string processing
         string_results = self.db.query_similar("text processing", k=5)
@@ -151,7 +153,9 @@ if __name__ == "__main__":
 
         # Check that string-related chunks are returned
         string_files = [r.chunk.file_path for r in string_results]
-        assert any("string_utils.py" in path for path in string_files), "Should find string utilities"
+        assert any("string_utils.py" in path for path in string_files), (
+            "Should find string utilities"
+        )
 
         # Search for class definitions
         class_results = self.db.query_similar("class definition", k=5)
@@ -166,7 +170,7 @@ if __name__ == "__main__":
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         similar_results = self.db.query_similar_by_chunk(query_chunk, k=3)
@@ -174,7 +178,9 @@ if __name__ == "__main__":
 
         # The add function should be among the most similar
         similar_contents = [r.chunk.file_path for r in similar_results]
-        assert any("math_utils.py" in path for path in similar_contents), "Should find the add function"
+        assert any("math_utils.py" in path for path in similar_contents), (
+            "Should find the add function"
+        )
 
     def test_chunk_type_distribution(self):
         """Test that different chunk types are properly generated and stored."""
@@ -231,7 +237,9 @@ def another_function():
         found_types = set(chunk_types.keys())
 
         # At least some expected types should be found
-        assert len(expected_types.intersection(found_types)) > 0, f"Should find some expected chunk types. Found: {found_types}"
+        assert len(expected_types.intersection(found_types)) > 0, (
+            f"Should find some expected chunk types. Found: {found_types}"
+        )
 
     def test_search_precision_and_recall(self):
         """Test search precision with known similar and dissimilar code."""
@@ -239,13 +247,13 @@ def another_function():
         similar_math_functions = [
             "def add_two(x, y): return x + y",
             "def sum_values(a, b): return a + b",
-            "def plus(num1, num2): return num1 + num2"
+            "def plus(num1, num2): return num1 + num2",
         ]
 
         different_functions = [
             "def read_file(path): return open(path).read()",
             "def send_email(to, subject): pass",
-            "def parse_json(data): return json.loads(data)"
+            "def parse_json(data): return json.loads(data)",
         ]
 
         # Create chunks
@@ -259,7 +267,7 @@ def another_function():
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             )
             all_chunks.append(chunk)
 
@@ -271,7 +279,7 @@ def another_function():
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             )
             all_chunks.append(chunk)
 
@@ -290,7 +298,9 @@ def another_function():
         other_in_top = sum(1 for r in top_results if "other" in r.chunk.file_path)
 
         # Math functions should dominate the top results
-        assert math_in_top >= other_in_top, "Math functions should be ranked higher for math query"
+        assert math_in_top >= other_in_top, (
+            "Math functions should be ranked higher for math query"
+        )
 
     def test_persistence_across_sessions(self):
         """Test that embeddings persist across database sessions."""
@@ -302,7 +312,7 @@ def another_function():
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             )
         ]
 
@@ -316,7 +326,9 @@ def another_function():
         new_db = VectorDatabase(self.index_path)
 
         # Check persistence
-        assert new_db.index.ntotal == original_count, "Should load the same number of embeddings"
+        assert new_db.index.ntotal == original_count, (
+            "Should load the same number of embeddings"
+        )
 
         # Check that we can still search
         results = new_db.query_similar("persistent function", k=1)
@@ -345,7 +357,7 @@ def another_function():
                 start_line=(i % 10) * 5 + 1,
                 end_line=(i % 10) * 5 + 4,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             )
             chunks.append(chunk)
 
@@ -359,7 +371,9 @@ def another_function():
         results = self.db.query_similar("function with parameter", k=10)
 
         assert len(results) == 10, "Should return requested number of results"
-        assert all(r.similarity_score >= 0 for r in results), "All similarity scores should be non-negative"
+        assert all(r.similarity_score >= 0 for r in results), (
+            "All similarity scores should be non-negative"
+        )
 
         # Test statistics
         stats = self.db.get_stats()
@@ -379,7 +393,7 @@ def another_function():
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="empty"
+            chunk_type="empty",
         )
 
         # Should handle empty content without crashing

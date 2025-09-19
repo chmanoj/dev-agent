@@ -26,6 +26,7 @@ class TestStateManagerIntegration(unittest.TestCase):
     def tearDown(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir)
 
     def test_complete_workflow(self):
@@ -33,7 +34,9 @@ class TestStateManagerIntegration(unittest.TestCase):
 
         # Step 1: Initialize new project
         session_id = "integration-test-session"
-        initial_state = self.state_manager.create_initial_state(str(self.project_path), session_id)
+        initial_state = self.state_manager.create_initial_state(
+            str(self.project_path), session_id
+        )
 
         # Verify initial state
         self.assertEqual(initial_state.current_phase, PhaseType.INDEXING)
@@ -45,7 +48,9 @@ class TestStateManagerIntegration(unittest.TestCase):
         self.assertTrue(success)
 
         # Step 3: Simulate indexing completion
-        success = self.state_manager.update_phase_status(PhaseType.SPECIFICATION, "indexing completed")
+        success = self.state_manager.update_phase_status(
+            PhaseType.SPECIFICATION, "indexing completed"
+        )
         self.assertTrue(success)
 
         # Verify phase update
@@ -63,11 +68,15 @@ This is a test project for demonstrating state management.
 - REQ-2: System shall load state
 - REQ-3: System shall track progress
 """
-        success = self.state_manager.save_document(spec_content, DocumentType.SPECIFICATION)
+        success = self.state_manager.save_document(
+            spec_content, DocumentType.SPECIFICATION
+        )
         self.assertTrue(success)
 
         # Step 5: Move to design phase
-        success = self.state_manager.update_phase_status(PhaseType.DESIGN, "specification approved")
+        success = self.state_manager.update_phase_status(
+            PhaseType.DESIGN, "specification approved"
+        )
         self.assertTrue(success)
 
         # Step 6: Save design document
@@ -85,7 +94,9 @@ The system will use JSON for state persistence and file-based storage for docume
         self.assertTrue(success)
 
         # Step 7: Move to implementation phase
-        success = self.state_manager.update_phase_status(PhaseType.IMPLEMENTATION, "design approved")
+        success = self.state_manager.update_phase_status(
+            PhaseType.IMPLEMENTATION, "design approved"
+        )
         self.assertTrue(success)
 
         # Step 8: Save tasks document
@@ -100,13 +111,17 @@ The system will use JSON for state persistence and file-based storage for docume
         self.assertTrue(success)
 
         # Step 9: Track task progress
-        success = self.state_manager.track_task_progress("task-1", TaskStatus.IN_PROGRESS)
+        success = self.state_manager.track_task_progress(
+            "task-1", TaskStatus.IN_PROGRESS
+        )
         self.assertTrue(success)
 
         success = self.state_manager.track_task_progress("task-2", TaskStatus.COMPLETED)
         self.assertTrue(success)
 
-        success = self.state_manager.track_task_progress("task-3", TaskStatus.NOT_STARTED)
+        success = self.state_manager.track_task_progress(
+            "task-3", TaskStatus.NOT_STARTED
+        )
         self.assertTrue(success)
 
         # Step 10: Verify final state
@@ -116,9 +131,15 @@ The system will use JSON for state persistence and file-based storage for docume
         self.assertEqual(final_state.current_phase, PhaseType.IMPLEMENTATION)
 
         # Verify task progress
-        self.assertEqual(final_state.implementation_progress["task-1"], TaskStatus.IN_PROGRESS)
-        self.assertEqual(final_state.implementation_progress["task-2"], TaskStatus.COMPLETED)
-        self.assertEqual(final_state.implementation_progress["task-3"], TaskStatus.NOT_STARTED)
+        self.assertEqual(
+            final_state.implementation_progress["task-1"], TaskStatus.IN_PROGRESS
+        )
+        self.assertEqual(
+            final_state.implementation_progress["task-2"], TaskStatus.COMPLETED
+        )
+        self.assertEqual(
+            final_state.implementation_progress["task-3"], TaskStatus.NOT_STARTED
+        )
 
         # Step 11: Verify all documents are saved and loadable
         loaded_spec = self.state_manager.load_document(DocumentType.SPECIFICATION)

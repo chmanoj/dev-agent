@@ -38,6 +38,7 @@ class TestErrorHandler:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_error_handler_initialization(self):
@@ -52,7 +53,7 @@ class TestErrorHandler:
         error = IndexingError(
             message="Some files failed to index",
             partial_success=True,
-            failed_files=["file1.py", "file2.py"]
+            failed_files=["file1.py", "file2.py"],
         )
 
         recovery_action = self.error_handler.handle_indexing_error(error)
@@ -67,7 +68,7 @@ class TestErrorHandler:
         error = IndexingError(
             message="Failed to index large files",
             partial_success=False,
-            failed_files=["large_file1.py", "large_file2.py"]
+            failed_files=["large_file1.py", "large_file2.py"],
         )
 
         recovery_action = self.error_handler.handle_indexing_error(error)
@@ -80,8 +81,7 @@ class TestErrorHandler:
     def test_handle_indexing_error_memory_optimization(self):
         """Test handling indexing error with memory optimization."""
         error = IndexingError(
-            message="Memory exhausted during indexing",
-            partial_success=False
+            message="Memory exhausted during indexing", partial_success=False
         )
 
         recovery_action = self.error_handler.handle_indexing_error(error)
@@ -96,7 +96,7 @@ class TestErrorHandler:
         error = UserInputError(
             message="Invalid response",
             expected_input="y|n|yes|no",
-            received_input="maybe"
+            received_input="maybe",
         )
 
         recovery_action = self.error_handler.handle_user_input_error(error)
@@ -110,7 +110,7 @@ class TestErrorHandler:
         """Test handling system error with permission issues."""
         error = SystemError(
             message="Permission denied accessing file",
-            context=ErrorContext(operation="file_write", file_path="/test/file.py")
+            context=ErrorContext(operation="file_write", file_path="/test/file.py"),
         )
 
         recovery_action = self.error_handler.handle_system_error(error)
@@ -123,7 +123,7 @@ class TestErrorHandler:
         """Test handling system error with directory issues."""
         error = SystemError(
             message="Directory does not exist",
-            context=ErrorContext(operation="directory_access")
+            context=ErrorContext(operation="directory_access"),
         )
 
         recovery_action = self.error_handler.handle_system_error(error)
@@ -136,7 +136,7 @@ class TestErrorHandler:
         """Test handling system error with disk space issues."""
         error = SystemError(
             message="No space left on device",
-            context=ErrorContext(operation="file_write")
+            context=ErrorContext(operation="file_write"),
         )
 
         recovery_action = self.error_handler.handle_system_error(error)
@@ -150,7 +150,7 @@ class TestErrorHandler:
         """Test handling implementation error with syntax issues."""
         error = ImplementationError(
             message="Syntax error in generated code",
-            syntax_errors=["Missing colon on line 5", "Indentation error on line 10"]
+            syntax_errors=["Missing colon on line 5", "Indentation error on line 10"],
         )
 
         recovery_action = self.error_handler.handle_implementation_error(error)
@@ -164,7 +164,7 @@ class TestErrorHandler:
         """Test handling implementation error with import issues."""
         error = ImplementationError(
             message="Import error in generated code",
-            import_errors=["Module 'nonexistent' not found"]
+            import_errors=["Module 'nonexistent' not found"],
         )
 
         recovery_action = self.error_handler.handle_implementation_error(error)
@@ -178,7 +178,7 @@ class TestErrorHandler:
         error = PerformanceError(
             message="High memory usage detected",
             memory_usage_mb=2048,  # Above threshold
-            execution_time_seconds=100
+            execution_time_seconds=100,
         )
 
         recovery_action = self.error_handler.handle_performance_error(error)
@@ -193,7 +193,7 @@ class TestErrorHandler:
         error = PerformanceError(
             message="Operation taking too long",
             execution_time_seconds=400,  # Above threshold
-            memory_usage_mb=500
+            memory_usage_mb=500,
         )
 
         recovery_action = self.error_handler.handle_performance_error(error)
@@ -207,7 +207,7 @@ class TestErrorHandler:
         error = StateCorruptionError(
             message="State file corrupted",
             corrupted_files=["state.json"],
-            backup_available=True
+            backup_available=True,
         )
 
         recovery_action = self.error_handler.handle_state_corruption_error(error)
@@ -222,7 +222,7 @@ class TestErrorHandler:
         error = StateCorruptionError(
             message="State file corrupted",
             corrupted_files=["state.json"],
-            backup_available=False
+            backup_available=False,
         )
 
         recovery_action = self.error_handler.handle_state_corruption_error(error)
@@ -236,7 +236,7 @@ class TestErrorHandler:
         error = TimeoutError(
             message="Operation timed out",
             timeout_seconds=300,
-            operation_type="indexing"
+            operation_type="indexing",
         )
 
         recovery_action = self.error_handler.handle_timeout_error(error)
@@ -280,7 +280,9 @@ class TestErrorHandler:
     def test_error_statistics(self):
         """Test error statistics generation."""
         error1 = DevAgentError("Test error 1", ErrorCategory.SYSTEM, ErrorSeverity.HIGH)
-        error2 = DevAgentError("Test error 2", ErrorCategory.INDEXING, ErrorSeverity.MEDIUM)
+        error2 = DevAgentError(
+            "Test error 2", ErrorCategory.INDEXING, ErrorSeverity.MEDIUM
+        )
         error3 = DevAgentError("Test error 3", ErrorCategory.SYSTEM, ErrorSeverity.LOW)
 
         self.error_handler.handle_error(error1)
@@ -340,7 +342,7 @@ class TestRecoveryActions:
         action = IndexingRecoveryAction(
             action_type=RecoveryActionType.FALLBACK,
             description="Use partial index",
-            use_partial_index=True
+            use_partial_index=True,
         )
 
         result = action.execute()
@@ -351,7 +353,7 @@ class TestRecoveryActions:
         action = IndexingRecoveryAction(
             action_type=RecoveryActionType.RETRY,
             description="Retry with failed files",
-            failed_files=["file1.py", "file2.py"]
+            failed_files=["file1.py", "file2.py"],
         )
 
         result = action.execute()
@@ -363,7 +365,7 @@ class TestRecoveryActions:
             action_type=RecoveryActionType.OPTIMIZE,
             description="Optimize memory usage",
             reduce_memory_usage=True,
-            skip_large_files=True
+            skip_large_files=True,
         )
 
         result = action.execute()
@@ -374,7 +376,7 @@ class TestRecoveryActions:
         feedback = UserFeedback(
             description="Get user approval",
             prompt_message="Do you want to continue?",
-            expected_responses=["y", "n", "yes", "no"]
+            expected_responses=["y", "n", "yes", "no"],
         )
 
         assert feedback.validate_response("y") is True
@@ -387,7 +389,7 @@ class TestRecoveryActions:
         feedback = UserFeedback(
             description="Get user approval",
             prompt_message="Do you want to continue?",
-            max_retries=3
+            max_retries=3,
         )
 
         assert feedback.should_retry() is True
@@ -403,7 +405,7 @@ class TestRecoveryActions:
             create_directories=True,
             check_permissions=True,
             cleanup_temp_files=True,
-            verify_disk_space=True
+            verify_disk_space=True,
         )
 
         result = action.execute()
@@ -416,7 +418,7 @@ class TestRecoveryActions:
             description="Fix code issues",
             fix_syntax_errors=True,
             fix_import_errors=True,
-            validate_generated_code=True
+            validate_generated_code=True,
         )
 
         result = fix.execute()
@@ -431,7 +433,7 @@ class TestRecoveryActions:
             increase_timeout=True,
             use_chunked_processing=True,
             enable_caching=True,
-            reduce_batch_size=True
+            reduce_batch_size=True,
         )
 
         result = optimization.execute()
@@ -444,9 +446,7 @@ class TestErrorExceptions:
     def test_dev_agent_error_creation(self):
         """Test DevAgentError creation and properties."""
         context = ErrorContext(
-            operation="test_operation",
-            file_path="/test/file.py",
-            phase="indexing"
+            operation="test_operation", file_path="/test/file.py", phase="indexing"
         )
 
         error = DevAgentError(
@@ -454,7 +454,7 @@ class TestErrorExceptions:
             category=ErrorCategory.SYSTEM,
             severity=ErrorSeverity.HIGH,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
 
         assert error.message == "Test error message"
@@ -471,7 +471,7 @@ class TestErrorExceptions:
             message="Test error",
             category=ErrorCategory.INDEXING,
             severity=ErrorSeverity.MEDIUM,
-            context=context
+            context=context,
         )
 
         error_dict = error.to_dict()
@@ -486,25 +486,19 @@ class TestErrorExceptions:
     def test_indexing_error_user_messages(self):
         """Test IndexingError user message generation."""
         # Test partial success message
-        error1 = IndexingError(
-            message="Some files failed",
-            partial_success=True
-        )
+        error1 = IndexingError(message="Some files failed", partial_success=True)
         assert "partial results" in error1.user_message.lower()
 
         # Test complete failure message
         error2 = IndexingError(
-            message="Indexing failed completely",
-            partial_success=False
+            message="Indexing failed completely", partial_success=False
         )
         assert "indexing failed" in error2.user_message.lower()
 
     def test_user_input_error_with_expected_input(self):
         """Test UserInputError with expected input."""
         error = UserInputError(
-            message="Invalid choice",
-            expected_input="y|n",
-            received_input="maybe"
+            message="Invalid choice", expected_input="y|n", received_input="maybe"
         )
 
         assert "Expected: y|n" in error.user_message
@@ -515,7 +509,7 @@ class TestErrorExceptions:
         error = PerformanceError(
             message="High resource usage",
             memory_usage_mb=2048,
-            execution_time_seconds=300
+            execution_time_seconds=300,
         )
 
         assert error.memory_usage_mb == 2048
@@ -527,7 +521,7 @@ class TestErrorExceptions:
         error = StateCorruptionError(
             message="State corrupted",
             corrupted_files=["state.json", "index.db"],
-            backup_available=True
+            backup_available=True,
         )
 
         assert error.corrupted_files == ["state.json", "index.db"]
@@ -539,7 +533,7 @@ class TestErrorExceptions:
         error = TimeoutError(
             message="Operation timed out",
             timeout_seconds=300,
-            operation_type="indexing"
+            operation_type="indexing",
         )
 
         assert error.timeout_seconds == 300

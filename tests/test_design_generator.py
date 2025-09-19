@@ -56,19 +56,19 @@ class TestDesignGenerator:
                 user_story="As a user, I want to manage data efficiently, so that I can store and retrieve information",
                 acceptance_criteria=[
                     "WHEN I create data THEN the system SHALL validate and store it",
-                    "WHEN I retrieve data THEN the system SHALL return accurate information"
+                    "WHEN I retrieve data THEN the system SHALL return accurate information",
                 ],
-                priority=Priority.HIGH
+                priority=Priority.HIGH,
             ),
             Requirement(
                 id="FR-2",
                 user_story="As a user, I want secure authentication, so that my data is protected",
                 acceptance_criteria=[
                     "WHEN I login THEN the system SHALL verify my credentials",
-                    "WHEN I access protected resources THEN the system SHALL check authorization"
+                    "WHEN I access protected resources THEN the system SHALL check authorization",
                 ],
-                priority=Priority.HIGH
-            )
+                priority=Priority.HIGH,
+            ),
         ]
 
         return SpecificationDocument(
@@ -77,7 +77,7 @@ class TestDesignGenerator:
             functional_requirements=requirements,
             source=SpecificationSource.EXISTING_CODE,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
     @pytest.fixture
@@ -89,7 +89,7 @@ class TestDesignGenerator:
             interfaces=["IUserService"],
             dependencies=["UserRepository", "AuthService"],
             internal_structure={"files": 3, "functions": 15, "classes": 2},
-            complexity_score=2.5
+            complexity_score=2.5,
         )
 
         return DesignAnalysis(
@@ -99,7 +99,7 @@ class TestDesignGenerator:
                 {
                     "name": "User",
                     "attributes": ["id", "username", "email", "created_at"],
-                    "relationships": ["One-to-many with Session"]
+                    "relationships": ["One-to-many with Session"],
                 }
             ],
             api_interfaces=[
@@ -107,18 +107,28 @@ class TestDesignGenerator:
                     "name": "user_login",
                     "parameters": ["username", "password"],
                     "return_type": "AuthToken",
-                    "docstring": "Authenticate user and return token"
+                    "docstring": "Authenticate user and return token",
                 }
             ],
             design_patterns=["Repository Pattern", "Service Layer Pattern"],
-            quality_metrics={"documentation_coverage": 0.8, "avg_methods_per_class": 7.5},
+            quality_metrics={
+                "documentation_coverage": 0.8,
+                "avg_methods_per_class": 7.5,
+            },
             technical_debt=["Some functions lack proper error handling"],
-            recommendations=["Consider adding more unit tests", "Improve error handling"]
+            recommendations=[
+                "Consider adding more unit tests",
+                "Improve error handling",
+            ],
         )
 
-    def test_generate_from_specification_with_analysis(self, generator, sample_specification, sample_design_analysis):
+    def test_generate_from_specification_with_analysis(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test generating design from specification with existing analysis."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         assert isinstance(design, DesignDocument)
         assert design.version == "1.0"
@@ -130,7 +140,9 @@ class TestDesignGenerator:
         assert design.error_handling is not None
         assert design.testing_strategy is not None
 
-    def test_generate_from_specification_without_analysis(self, generator, sample_specification):
+    def test_generate_from_specification_without_analysis(
+        self, generator, sample_specification
+    ):
         """Test generating design from specification without existing analysis."""
         empty_analysis = DesignAnalysis(
             architecture_overview="",
@@ -140,10 +152,12 @@ class TestDesignGenerator:
             design_patterns=[],
             quality_metrics={},
             technical_debt=[],
-            recommendations=[]
+            recommendations=[],
         )
 
-        design = generator.generate_from_specification(sample_specification, empty_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, empty_analysis
+        )
 
         assert isinstance(design, DesignDocument)
         assert design.overview is not None
@@ -151,9 +165,13 @@ class TestDesignGenerator:
         # Should generate components based on requirements even without analysis
         assert len(design.components) > 0
 
-    def test_architecture_description_generation(self, generator, sample_specification, sample_design_analysis):
+    def test_architecture_description_generation(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test architecture description generation."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         assert isinstance(design.architecture, ArchitectureDescription)
         assert design.architecture.overview is not None
@@ -162,18 +180,28 @@ class TestDesignGenerator:
         assert "Service Layer Pattern" in design.architecture.patterns
         assert len(design.architecture.components) > 0
 
-    def test_component_generation_from_analysis(self, generator, sample_specification, sample_design_analysis):
+    def test_component_generation_from_analysis(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test component generation from existing analysis."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         # Should use components from analysis
-        user_service_component = next((c for c in design.components if c.name == "UserService"), None)
+        user_service_component = next(
+            (c for c in design.components if c.name == "UserService"), None
+        )
         assert user_service_component is not None
-        assert user_service_component.description == "Handles user management operations"
+        assert (
+            user_service_component.description == "Handles user management operations"
+        )
         assert "IUserService" in user_service_component.interfaces
         assert "UserRepository" in user_service_component.dependencies
 
-    def test_component_generation_from_requirements(self, generator, sample_specification):
+    def test_component_generation_from_requirements(
+        self, generator, sample_specification
+    ):
         """Test component generation from requirements when no analysis available."""
         empty_analysis = DesignAnalysis(
             architecture_overview="",
@@ -183,19 +211,25 @@ class TestDesignGenerator:
             design_patterns=[],
             quality_metrics={},
             technical_debt=[],
-            recommendations=[]
+            recommendations=[],
         )
 
-        design = generator.generate_from_specification(sample_specification, empty_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, empty_analysis
+        )
 
         # Should generate components based on requirements
         component_names = [c.name for c in design.components]
         assert any("Data Management" in name for name in component_names)
         assert any("Authentication" in name for name in component_names)
 
-    def test_data_model_generation(self, generator, sample_specification, sample_design_analysis):
+    def test_data_model_generation(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test data model generation."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         assert len(design.data_models) > 0
         user_model = next((m for m in design.data_models if m.name == "User"), None)
@@ -205,18 +239,26 @@ class TestDesignGenerator:
         assert user_model.fields["id"] == "int"
         assert user_model.fields["username"] == "str"
 
-    def test_interface_generation_from_analysis(self, generator, sample_specification, sample_design_analysis):
+    def test_interface_generation_from_analysis(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test interface generation from analysis."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         assert len(design.interfaces) > 0
         # Should generate interfaces based on API data
         interface_names = [i.name for i in design.interfaces]
         assert len(interface_names) > 0
 
-    def test_error_handling_strategy_generation(self, generator, sample_specification, sample_design_analysis):
+    def test_error_handling_strategy_generation(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test error handling strategy generation."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         assert isinstance(design.error_handling, ErrorHandlingStrategy)
         assert len(design.error_handling.error_categories) > 0
@@ -225,12 +267,18 @@ class TestDesignGenerator:
 
         # Should include relevant error categories based on requirements
         categories = design.error_handling.error_categories
-        assert any("Data" in category or "Storage" in category for category in categories)
+        assert any(
+            "Data" in category or "Storage" in category for category in categories
+        )
         assert any("Auth" in category for category in categories)
 
-    def test_testing_strategy_generation(self, generator, sample_specification, sample_design_analysis):
+    def test_testing_strategy_generation(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test testing strategy generation."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         assert isinstance(design.testing_strategy, TestingStrategy)
         assert design.testing_strategy.unit_testing is not None
@@ -241,9 +289,13 @@ class TestDesignGenerator:
         # Should set high coverage target based on good documentation coverage
         assert design.testing_strategy.test_coverage_target >= 0.8
 
-    def test_refine_design(self, generator, sample_specification, sample_design_analysis):
+    def test_refine_design(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test refining design based on feedback."""
-        original_design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        original_design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         feedback = "Add more components for better modularity"
         refined_design = generator.refine_design(original_design, feedback)
@@ -253,9 +305,13 @@ class TestDesignGenerator:
         # Should add components based on feedback
         assert len(refined_design.components) > len(original_design.components)
 
-    def test_format_design_document(self, generator, sample_specification, sample_design_analysis):
+    def test_format_design_document(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test formatting design document as markdown."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
         formatted = generator.format_design_document(design)
 
         assert isinstance(formatted, str)
@@ -268,9 +324,13 @@ class TestDesignGenerator:
         assert "## Testing Strategy" in formatted
         assert "**Status:** Draft" in formatted
 
-    def test_format_design_document_with_components(self, generator, sample_specification, sample_design_analysis):
+    def test_format_design_document_with_components(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test formatting design document with components."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
         formatted = generator.format_design_document(design)
 
         # Should include component information
@@ -278,9 +338,13 @@ class TestDesignGenerator:
         assert "**Interfaces:**" in formatted
         assert "**Dependencies:**" in formatted
 
-    def test_format_design_document_with_data_models(self, generator, sample_specification, sample_design_analysis):
+    def test_format_design_document_with_data_models(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test formatting design document with data models."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
         formatted = generator.format_design_document(design)
 
         # Should include data model information
@@ -289,9 +353,13 @@ class TestDesignGenerator:
         assert "`id`: int" in formatted
         assert "`username`: str" in formatted
 
-    def test_request_user_approval_with_cli(self, generator, sample_specification, sample_design_analysis):
+    def test_request_user_approval_with_cli(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test requesting user approval with CLI interface."""
-        design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         result = generator.request_user_approval(design)
 
@@ -299,18 +367,26 @@ class TestDesignGenerator:
         assert design.approved is True
         generator.cli_interface.request_approval.assert_called_once()
 
-    def test_request_user_approval_without_cli(self, generator_no_cli, sample_specification, sample_design_analysis):
+    def test_request_user_approval_without_cli(
+        self, generator_no_cli, sample_specification, sample_design_analysis
+    ):
         """Test requesting user approval without CLI interface."""
-        design = generator_no_cli.generate_from_specification(sample_specification, sample_design_analysis)
+        design = generator_no_cli.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
 
         result = generator_no_cli.request_user_approval(design)
 
         assert result is True
         assert design.approved is True
 
-    def test_version_increment(self, generator, sample_specification, sample_design_analysis):
+    def test_version_increment(
+        self, generator, sample_specification, sample_design_analysis
+    ):
         """Test version increment functionality."""
-        original_design = generator.generate_from_specification(sample_specification, sample_design_analysis)
+        original_design = generator.generate_from_specification(
+            sample_specification, sample_design_analysis
+        )
         original_design.version = "1.0"
 
         refined_design = generator.refine_design(original_design, "Some feedback")
@@ -343,8 +419,12 @@ class TestDesignGenerator:
         """Test relationship generation between models."""
         all_models = {"User", "Session", "DataRecord"}
 
-        user_relationships = generator._generate_basic_relationships_for_model("User", all_models)
-        session_relationships = generator._generate_basic_relationships_for_model("Session", all_models)
+        user_relationships = generator._generate_basic_relationships_for_model(
+            "User", all_models
+        )
+        session_relationships = generator._generate_basic_relationships_for_model(
+            "Session", all_models
+        )
 
         assert any("Session" in rel for rel in user_relationships)
         assert any("User" in rel for rel in session_relationships)
@@ -372,21 +452,27 @@ class TestDesignGeneratorIntegration:
             Requirement(
                 id="FR-1",
                 user_story="As a developer, I want a CLI interface, so that I can interact with the system",
-                acceptance_criteria=["WHEN I run commands THEN the system SHALL respond appropriately"],
-                priority=Priority.HIGH
+                acceptance_criteria=[
+                    "WHEN I run commands THEN the system SHALL respond appropriately"
+                ],
+                priority=Priority.HIGH,
             ),
             Requirement(
                 id="FR-2",
                 user_story="As a user, I want data persistence, so that my information is saved",
-                acceptance_criteria=["WHEN I save data THEN it SHALL be stored permanently"],
-                priority=Priority.HIGH
+                acceptance_criteria=[
+                    "WHEN I save data THEN it SHALL be stored permanently"
+                ],
+                priority=Priority.HIGH,
             ),
             Requirement(
                 id="FR-3",
                 user_story="As a user, I want API access, so that I can integrate with other systems",
-                acceptance_criteria=["WHEN I make API calls THEN I SHALL receive proper responses"],
-                priority=Priority.MEDIUM
-            )
+                acceptance_criteria=[
+                    "WHEN I make API calls THEN I SHALL receive proper responses"
+                ],
+                priority=Priority.MEDIUM,
+            ),
         ]
 
         spec = SpecificationDocument(
@@ -395,7 +481,7 @@ class TestDesignGeneratorIntegration:
             functional_requirements=requirements,
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         # Create comprehensive analysis
@@ -407,7 +493,7 @@ class TestDesignGeneratorIntegration:
             design_patterns=["MVC", "Repository"],
             quality_metrics={"documentation_coverage": 0.75},
             technical_debt=["Some legacy code needs refactoring"],
-            recommendations=["Improve test coverage", "Add more documentation"]
+            recommendations=["Improve test coverage", "Add more documentation"],
         )
 
         # Generate design
@@ -417,7 +503,9 @@ class TestDesignGeneratorIntegration:
         assert isinstance(design, DesignDocument)
         assert design.overview is not None
         assert design.architecture is not None
-        assert len(design.components) >= 3  # Should generate components for CLI, Data, API
+        assert (
+            len(design.components) >= 3
+        )  # Should generate components for CLI, Data, API
         assert design.error_handling is not None
         assert design.testing_strategy is not None
 
@@ -436,7 +524,9 @@ class TestDesignGeneratorIntegration:
         assert "# Design Document" in formatted
 
         # Test refinement
-        refined = integration_generator.refine_design(design, "Add more security considerations")
+        refined = integration_generator.refine_design(
+            design, "Add more security considerations"
+        )
         assert refined.version != design.version
         assert not refined.approved
 
@@ -450,12 +540,12 @@ class TestDesignGeneratorIntegration:
                     id="FR-1",
                     user_story="As a user, I want feature A, so that I can do task A",
                     acceptance_criteria=["WHEN I use feature A THEN it SHALL work"],
-                    priority=Priority.HIGH
+                    priority=Priority.HIGH,
                 )
             ],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         analysis = DesignAnalysis(
@@ -466,7 +556,7 @@ class TestDesignGeneratorIntegration:
             design_patterns=[],
             quality_metrics={},
             technical_debt=[],
-            recommendations=[]
+            recommendations=[],
         )
 
         # Generate design multiple times

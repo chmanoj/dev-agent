@@ -15,38 +15,39 @@ from dev_agent.models.indexing import CodeChunk, ASTIndex
 
 class TestLargeCodebaseIntegration:
     """Integration tests for large codebase handling."""
-    
+
     def setup_method(self):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_path = Path(self.temp_dir) / "large_project"
         self.project_path.mkdir(parents=True)
-        
+
         # Track memory usage
         self.process = psutil.Process()
         self.initial_memory = self.process.memory_info().rss / 1024 / 1024  # MB
-    
+
     def teardown_method(self):
         """Clean up test environment."""
         if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)    d
-ef create_large_python_project(self, target_lines: int = 100000) -> dict:
+            shutil.rmtree(self.temp_dir)
+
+    def create_large_python_project(self, target_lines: int = 100000) -> dict:
         """Create a large Python project with target lines of code.
-        
+
         Args:
             target_lines: Target number of lines of code
-            
+
         Returns:
             Dictionary with project statistics
         """
         # Calculate files needed (average 1000 lines per file)
         lines_per_file = 1000
         num_files = max(100, target_lines // lines_per_file)
-        
+
         # Create directory structure
         directories = [
             "src/core",
-            "src/utils", 
+            "src/utils",
             "src/models",
             "src/services",
             "src/api",
@@ -54,12 +55,12 @@ ef create_large_python_project(self, target_lines: int = 100000) -> dict:
             "tests/integration",
             "tests/performance",
             "scripts",
-            "tools"
+            "tools",
         ]
-        
+
         for dir_path in directories:
             (self.project_path / dir_path).mkdir(parents=True, exist_ok=True)
-        
+
         # Template for generating realistic Python code
         class_template = '''"""Module {module_name} - Generated for large codebase testing."""
 
@@ -482,10 +483,10 @@ if __name__ == "__main__":
         status = processor.get_status()
         print(f"Final status: {{status}}")
 '''
-        
+
         total_lines = 0
         files_created = 0
-        
+
         # Generate files across different directories
         for i in range(num_files):
             # Determine directory and file name
@@ -509,40 +510,41 @@ if __name__ == "__main__":
                     dir_name = "tests/performance"
             else:  # 30% in scripts/ and tools/
                 dir_name = "scripts" if i % 2 == 0 else "tools"
-            
+
             module_name = f"module_{i:04d}"
             class_name = f"Component{i:04d}"
-            
+
             file_path = self.project_path / dir_name / f"{module_name}.py"
-            
+
             # Generate content
             content = class_template.format(
-                module_name=module_name,
-                class_name=class_name
+                module_name=module_name, class_name=class_name
             )
-            
+
             # Write file
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 f.write(content)
-            
+
             # Count lines
-            file_lines = len(content.split('\n'))
+            file_lines = len(content.split("\n"))
             total_lines += file_lines
             files_created += 1
-            
+
             # Progress update
             if i % 50 == 0:
                 print(f"Generated {i}/{num_files} files ({total_lines:,} lines so far)")
-        
-        print(f"Created large Python project: {files_created} files, {total_lines:,} lines of code")
-        
+
+        print(
+            f"Created large Python project: {files_created} files, {total_lines:,} lines of code"
+        )
+
         return {
             "files_created": files_created,
             "total_lines": total_lines,
             "directories": len(directories),
-            "project_size_mb": self._calculate_project_size()
+            "project_size_mb": self._calculate_project_size(),
         }
-    
+
     def _calculate_project_size(self) -> float:
         """Calculate project size in MB."""
         total_size = 0
@@ -550,59 +552,61 @@ if __name__ == "__main__":
             for file in files:
                 file_path = os.path.join(root, file)
                 total_size += os.path.getsize(file_path)
-        return total_size / (1024 * 1024)    @py
-test.mark.slow
+        return total_size / (1024 * 1024)
+
+    @pytest.mark.slow
     def test_100k_lines_indexing_performance(self):
         """Test indexing performance on 100k+ lines of code."""
         print("\n=== Testing 100k+ Lines Indexing Performance ===")
-        
+
         # Create large project
         project_stats = self.create_large_python_project(target_lines=100000)
         print(f"Created project: {project_stats}")
-        
+
         # Initialize indexing engine
         engine = IndexingEngine(str(self.project_path))
-        
+
         # Track memory usage
         initial_memory = self.process.memory_info().rss / 1024 / 1024
-        
+
         # Track progress
         progress_updates = []
+
         def progress_callback(current, total, message):
             progress_updates.append((current, total, message, time.time()))
             if current % 20 == 0 or current == total:
                 print(f"Progress: {current}/{total} - {message}")
-        
+
         engine.set_progress_callback(progress_callback)
-        
+
         # Perform indexing
         start_time = time.time()
         result = engine.build_index()
         end_time = time.time()
-        
+
         # Calculate metrics
         indexing_time = end_time - start_time
         peak_memory = self.process.memory_info().rss / 1024 / 1024
         memory_increase = peak_memory - initial_memory
-        
+
         # Assertions
         assert result.success, f"Indexing failed: {result.errors}"
         assert result.ast_index is not None
         assert result.embeddings_count > 0
-        
+
         # Performance assertions
         assert indexing_time < 600, f"Indexing took too long: {indexing_time:.2f}s"
         assert memory_increase < 2000, f"Memory usage too high: {memory_increase:.2f}MB"
-        
+
         # Verify comprehensive indexing
         assert len(result.ast_index.functions) > 1000, "Should find many functions"
         assert len(result.ast_index.classes) > 100, "Should find many classes"
         assert result.embeddings_count > 500, "Should generate many embeddings"
-        
+
         # Performance metrics
         lines_per_second = project_stats["total_lines"] / indexing_time
         files_per_second = project_stats["files_created"] / indexing_time
-        
+
         print(f"\n=== Performance Results ===")
         print(f"Total indexing time: {indexing_time:.2f} seconds")
         print(f"Memory increase: {memory_increase:.2f} MB")
@@ -614,61 +618,64 @@ test.mark.slow
         print(f"Processing speed: {lines_per_second:.0f} lines/second")
         print(f"File processing speed: {files_per_second:.1f} files/second")
         print(f"Progress updates: {len(progress_updates)}")
-        
+
         # Verify index persistence
         metadata = engine.get_index_metadata()
         assert metadata is not None
         assert metadata.total_files == project_stats["files_created"]
-        assert metadata.total_lines >= project_stats["total_lines"] * 0.9  # Allow some variance
-        
+        assert (
+            metadata.total_lines >= project_stats["total_lines"] * 0.9
+        )  # Allow some variance
+
         print("✓ Large codebase indexing test passed!")
-    
+
     @pytest.mark.slow
     def test_memory_usage_profiling(self):
         """Test memory usage during indexing with profiling."""
         print("\n=== Testing Memory Usage Profiling ===")
-        
+
         # Create medium-sized project for detailed memory tracking
         project_stats = self.create_large_python_project(target_lines=50000)
-        
+
         engine = IndexingEngine(str(self.project_path))
-        
+
         # Memory tracking
         memory_samples = []
-        
+
         def track_memory():
             """Track memory usage over time."""
-            while hasattr(track_memory, 'running'):
+            while hasattr(track_memory, "running"):
                 memory_mb = self.process.memory_info().rss / 1024 / 1024
                 memory_samples.append((time.time(), memory_mb))
                 time.sleep(0.5)  # Sample every 500ms
-        
+
         # Start memory tracking in background
         import threading
+
         track_memory.running = True
         memory_thread = threading.Thread(target=track_memory)
         memory_thread.start()
-        
+
         try:
             # Perform indexing
             start_time = time.time()
             result = engine.build_index()
             end_time = time.time()
-            
+
         finally:
             # Stop memory tracking
             track_memory.running = False
             memory_thread.join()
-        
+
         # Analyze memory usage
         if memory_samples:
             initial_memory = memory_samples[0][1]
             peak_memory = max(sample[1] for sample in memory_samples)
             final_memory = memory_samples[-1][1]
-            
+
             memory_increase = peak_memory - initial_memory
             memory_retained = final_memory - initial_memory
-            
+
             print(f"\n=== Memory Usage Analysis ===")
             print(f"Initial memory: {initial_memory:.2f} MB")
             print(f"Peak memory: {peak_memory:.2f} MB")
@@ -676,45 +683,51 @@ test.mark.slow
             print(f"Peak increase: {memory_increase:.2f} MB")
             print(f"Memory retained: {memory_retained:.2f} MB")
             print(f"Memory samples collected: {len(memory_samples)}")
-            
+
             # Assertions
             assert result.success
-            assert memory_increase < 1500, f"Peak memory usage too high: {memory_increase:.2f}MB"
-            assert memory_retained < 500, f"Too much memory retained: {memory_retained:.2f}MB"
-            
+            assert memory_increase < 1500, (
+                f"Peak memory usage too high: {memory_increase:.2f}MB"
+            )
+            assert memory_retained < 500, (
+                f"Too much memory retained: {memory_retained:.2f}MB"
+            )
+
             # Memory efficiency check
             mb_per_1k_lines = memory_increase / (project_stats["total_lines"] / 1000)
             print(f"Memory efficiency: {mb_per_1k_lines:.2f} MB per 1k lines")
-            assert mb_per_1k_lines < 50, f"Memory efficiency too low: {mb_per_1k_lines:.2f} MB/1k lines"
-        
+            assert mb_per_1k_lines < 50, (
+                f"Memory efficiency too low: {mb_per_1k_lines:.2f} MB/1k lines"
+            )
+
         print("✓ Memory usage profiling test passed!")
-    
+
     def test_incremental_indexing_performance(self):
         """Test performance of incremental indexing updates."""
         print("\n=== Testing Incremental Indexing Performance ===")
-        
+
         # Create initial project
         project_stats = self.create_large_python_project(target_lines=30000)
-        
+
         engine = IndexingEngine(str(self.project_path))
-        
+
         # Initial indexing
         print("Performing initial indexing...")
         start_time = time.time()
         result1 = engine.build_index()
         initial_time = time.time() - start_time
-        
+
         assert result1.success
         initial_functions = len(result1.ast_index.functions)
         initial_classes = len(result1.ast_index.classes)
-        
+
         # Modify some files
         print("Modifying files...")
         src_dir = self.project_path / "src" / "core"
         modified_files = list(src_dir.glob("*.py"))[:5]  # Modify first 5 files
-        
+
         for i, file_path in enumerate(modified_files):
-            with open(file_path, 'a') as f:
+            with open(file_path, "a") as f:
                 f.write(f'''
 
 # Added during incremental test
@@ -732,50 +745,56 @@ def incremental_function_{i}(x: int) -> int:
     """Function added during incremental test."""
     return x + {i * 10}
 ''')
-        
+
         # Re-index
         print("Performing incremental indexing...")
         start_time = time.time()
         result2 = engine.build_index()
         reindex_time = time.time() - start_time
-        
+
         assert result2.success
-        
+
         # Verify changes were detected
         new_functions = len(result2.ast_index.functions) - initial_functions
         new_classes = len(result2.ast_index.classes) - initial_classes
-        
+
         print(f"\n=== Incremental Indexing Results ===")
         print(f"Initial indexing time: {initial_time:.2f} seconds")
         print(f"Re-indexing time: {reindex_time:.2f} seconds")
         print(f"Speedup ratio: {initial_time / reindex_time:.2f}x")
         print(f"New functions found: {new_functions}")
         print(f"New classes found: {new_classes}")
-        
+
         # Assertions
-        assert new_functions >= 5, f"Should find at least 5 new functions, found {new_functions}"
-        assert new_classes >= 5, f"Should find at least 5 new classes, found {new_classes}"
-        
+        assert new_functions >= 5, (
+            f"Should find at least 5 new functions, found {new_functions}"
+        )
+        assert new_classes >= 5, (
+            f"Should find at least 5 new classes, found {new_classes}"
+        )
+
         # Performance assertion - re-indexing should be reasonably fast
         # (not necessarily faster due to the overhead of change detection)
-        assert reindex_time < initial_time * 2, "Re-indexing took too long compared to initial"
-        
+        assert reindex_time < initial_time * 2, (
+            "Re-indexing took too long compared to initial"
+        )
+
         print("✓ Incremental indexing performance test passed!")
-    
+
     def test_query_performance_at_scale(self):
         """Test vector similarity query performance on large index."""
         print("\n=== Testing Query Performance at Scale ===")
-        
+
         # Create large project
         project_stats = self.create_large_python_project(target_lines=75000)
-        
+
         engine = IndexingEngine(str(self.project_path))
-        
+
         # Build index
         print("Building index for query testing...")
         result = engine.build_index()
         assert result.success
-        
+
         # Test various query types and measure performance
         queries = [
             "class definition with methods",
@@ -787,31 +806,33 @@ def incremental_function_{i}(x: int) -> int:
             "configuration management",
             "database connection handling",
             "logging and monitoring",
-            "batch processing algorithm"
+            "batch processing algorithm",
         ]
-        
+
         query_times = []
         total_matches = 0
-        
+
         print("Running query performance tests...")
         for i, query in enumerate(queries):
             start_time = time.time()
             matches = engine.query_similar_code(query, limit=20)
             query_time = time.time() - start_time
-            
+
             query_times.append(query_time)
             total_matches += len(matches)
-            
-            print(f"Query {i+1}: '{query[:30]}...' - {len(matches)} matches in {query_time:.3f}s")
-            
+
+            print(
+                f"Query {i + 1}: '{query[:30]}...' - {len(matches)} matches in {query_time:.3f}s"
+            )
+
             # Each query should complete quickly
             assert query_time < 2.0, f"Query took too long: {query_time:.3f}s"
-        
+
         # Calculate statistics
         avg_query_time = sum(query_times) / len(query_times)
         max_query_time = max(query_times)
         min_query_time = min(query_times)
-        
+
         print(f"\n=== Query Performance Results ===")
         print(f"Total queries: {len(queries)}")
         print(f"Average query time: {avg_query_time:.3f} seconds")
@@ -819,21 +840,23 @@ def incremental_function_{i}(x: int) -> int:
         print(f"Max query time: {max_query_time:.3f} seconds")
         print(f"Total matches found: {total_matches}")
         print(f"Average matches per query: {total_matches / len(queries):.1f}")
-        
+
         # Performance assertions
-        assert avg_query_time < 1.0, f"Average query time too slow: {avg_query_time:.3f}s"
+        assert avg_query_time < 1.0, (
+            f"Average query time too slow: {avg_query_time:.3f}s"
+        )
         assert max_query_time < 2.0, f"Slowest query too slow: {max_query_time:.3f}s"
         assert total_matches > 0, "Should find some matches"
-        
+
         print("✓ Query performance at scale test passed!")
 
 
 if __name__ == "__main__":
     # Run the tests manually for debugging
     test_instance = TestLargeCodebaseIntegration()
-    
+
     print("Running large codebase integration tests...")
-    
+
     test_instance.setup_method()
     try:
         # Run individual tests
@@ -841,9 +864,9 @@ if __name__ == "__main__":
         test_instance.test_memory_usage_profiling()
         test_instance.test_incremental_indexing_performance()
         test_instance.test_query_performance_at_scale()
-        
+
         print("\n✅ All large codebase integration tests passed!")
-        
+
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         raise

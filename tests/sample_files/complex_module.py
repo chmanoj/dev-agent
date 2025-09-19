@@ -8,15 +8,13 @@ from functools import lru_cache, wraps
 from typing import Any
 
 # Module-level constants
-DEFAULT_CONFIG = {
-    "debug": False,
-    "max_retries": 3,
-    "timeout": 30
-}
+DEFAULT_CONFIG = {"debug": False, "max_retries": 3, "timeout": 30}
+
 
 @dataclass
 class Config:
     """Configuration data class."""
+
     debug: bool = False
     max_retries: int = 3
     timeout: int = 30
@@ -26,8 +24,10 @@ class Config:
         """Create config from dictionary."""
         return cls(**data)
 
+
 def retry(max_attempts: int = 3):
     """Decorator for retrying failed operations."""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -39,8 +39,11 @@ def retry(max_attempts: int = 3):
                         raise e
                     continue
             return None
+
         return wrapper
+
     return decorator
+
 
 class ProcessorError(Exception):
     """Custom exception for processor errors."""
@@ -48,6 +51,7 @@ class ProcessorError(Exception):
     def __init__(self, message: str, error_code: int = 500):
         super().__init__(message)
         self.error_code = error_code
+
 
 class BaseProcessor(ABC):
     """Abstract base class for processors."""
@@ -76,10 +80,13 @@ class BaseProcessor(ABC):
         """Validate input data."""
         return data is not None
 
+
 class TextProcessor(BaseProcessor):
     """Processor for text data."""
 
-    def __init__(self, name: str, encoding: str = "utf-8", config: Config | None = None):
+    def __init__(
+        self, name: str, encoding: str = "utf-8", config: Config | None = None
+    ):
         super().__init__(name, config)
         self.encoding = encoding
         self._cache = {}
@@ -117,6 +124,7 @@ class TextProcessor(BaseProcessor):
         """Clear internal cache."""
         self._cache.clear()
 
+
 class JSONProcessor(BaseProcessor):
     """Processor for JSON data."""
 
@@ -141,16 +149,16 @@ class JSONProcessor(BaseProcessor):
             normalized[key.lower()] = value
         return normalized
 
+
 class ProcessorFactory:
     """Factory for creating processors."""
 
-    _processors = {
-        "text": TextProcessor,
-        "json": JSONProcessor
-    }
+    _processors = {"text": TextProcessor, "json": JSONProcessor}
 
     @classmethod
-    def create_processor(cls, processor_type: str, name: str, **kwargs) -> BaseProcessor:
+    def create_processor(
+        cls, processor_type: str, name: str, **kwargs
+    ) -> BaseProcessor:
         """Create a processor of the specified type."""
         if processor_type not in cls._processors:
             raise ValueError(f"Unknown processor type: {processor_type}")
@@ -168,6 +176,7 @@ class ProcessorFactory:
         """List available processor types."""
         return list(cls._processors.keys())
 
+
 def process_file(file_path: str, processor_type: str = "text") -> Any | None:
     """Process a file using the specified processor."""
     if not os.path.exists(file_path):
@@ -178,8 +187,7 @@ def process_file(file_path: str, processor_type: str = "text") -> Any | None:
             content = f.read()
 
         processor = ProcessorFactory.create_processor(
-            processor_type,
-            f"file_processor_{os.path.basename(file_path)}"
+            processor_type, f"file_processor_{os.path.basename(file_path)}"
         )
 
         return processor.process(content)
@@ -187,6 +195,7 @@ def process_file(file_path: str, processor_type: str = "text") -> Any | None:
     except Exception as e:
         print(f"Error processing file {file_path}: {e}")
         return None
+
 
 def main():
     """Main function demonstrating the processors."""
@@ -205,6 +214,7 @@ def main():
     # Show processor stats
     print(f"Text processor processed: {text_proc.processed_count} items")
     print(f"JSON processor processed: {json_proc.processed_count} items")
+
 
 if __name__ == "__main__":
     main()

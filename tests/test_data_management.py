@@ -10,6 +10,7 @@ from typing import Any
 
 class ProjectSize(Enum):
     """Enumeration for project sizes."""
+
     TINY = "tiny"
     SMALL = "small"
     MEDIUM = "medium"
@@ -19,6 +20,7 @@ class ProjectSize(Enum):
 
 class ProjectType(Enum):
     """Enumeration for project types."""
+
     WEB_API = "web_api"
     DATA_PROCESSING = "data_processing"
     CLI_TOOL = "cli_tool"
@@ -29,6 +31,7 @@ class ProjectType(Enum):
 @dataclass
 class TestProjectSpec:
     """Specification for a test project."""
+
     name: str
     project_type: ProjectType
     size: ProjectSize
@@ -44,7 +47,7 @@ class TestDataManager:
 
     def __init__(self, base_dir: Path | None = None):
         """Initialize test data manager.
-        
+
         Args:
             base_dir: Base directory for test data (uses temp if None)
         """
@@ -68,7 +71,7 @@ class TestDataManager:
                 lines_per_file=100,
                 features=["FastAPI", "Basic CRUD"],
                 dependencies=["fastapi", "uvicorn"],
-                complexity_level=1
+                complexity_level=1,
             ),
             "small_web_api": TestProjectSpec(
                 name="small_web_api",
@@ -78,7 +81,7 @@ class TestDataManager:
                 lines_per_file=200,
                 features=["FastAPI", "SQLAlchemy", "Authentication"],
                 dependencies=["fastapi", "sqlalchemy", "python-jose"],
-                complexity_level=2
+                complexity_level=2,
             ),
             "medium_web_api": TestProjectSpec(
                 name="medium_web_api",
@@ -86,9 +89,15 @@ class TestDataManager:
                 size=ProjectSize.MEDIUM,
                 num_files=35,
                 lines_per_file=400,
-                features=["FastAPI", "SQLAlchemy", "Authentication", "Testing", "Docker"],
+                features=[
+                    "FastAPI",
+                    "SQLAlchemy",
+                    "Authentication",
+                    "Testing",
+                    "Docker",
+                ],
                 dependencies=["fastapi", "sqlalchemy", "pytest", "docker"],
-                complexity_level=3
+                complexity_level=3,
             ),
             "large_web_api": TestProjectSpec(
                 name="large_web_api",
@@ -96,9 +105,16 @@ class TestDataManager:
                 size=ProjectSize.LARGE,
                 num_files=75,
                 lines_per_file=600,
-                features=["FastAPI", "SQLAlchemy", "Authentication", "Testing", "Docker", "Monitoring"],
+                features=[
+                    "FastAPI",
+                    "SQLAlchemy",
+                    "Authentication",
+                    "Testing",
+                    "Docker",
+                    "Monitoring",
+                ],
                 dependencies=["fastapi", "sqlalchemy", "pytest", "prometheus-client"],
-                complexity_level=4
+                complexity_level=4,
             ),
             "small_data_processing": TestProjectSpec(
                 name="small_data_processing",
@@ -108,7 +124,7 @@ class TestDataManager:
                 lines_per_file=300,
                 features=["Pandas", "NumPy", "Data cleaning"],
                 dependencies=["pandas", "numpy", "scikit-learn"],
-                complexity_level=2
+                complexity_level=2,
             ),
             "medium_data_processing": TestProjectSpec(
                 name="medium_data_processing",
@@ -118,7 +134,7 @@ class TestDataManager:
                 lines_per_file=500,
                 features=["Pandas", "NumPy", "Machine Learning", "Visualization"],
                 dependencies=["pandas", "numpy", "scikit-learn", "matplotlib"],
-                complexity_level=3
+                complexity_level=3,
             ),
             "small_cli_tool": TestProjectSpec(
                 name="small_cli_tool",
@@ -128,7 +144,7 @@ class TestDataManager:
                 lines_per_file=250,
                 features=["Click", "File operations", "Configuration"],
                 dependencies=["click", "pyyaml"],
-                complexity_level=2
+                complexity_level=2,
             ),
             "medium_library": TestProjectSpec(
                 name="medium_library",
@@ -138,7 +154,7 @@ class TestDataManager:
                 lines_per_file=350,
                 features=["Public API", "Documentation", "Testing"],
                 dependencies=["pytest", "sphinx"],
-                complexity_level=3
+                complexity_level=3,
             ),
             "huge_project": TestProjectSpec(
                 name="huge_project",
@@ -146,18 +162,24 @@ class TestDataManager:
                 size=ProjectSize.HUGE,
                 num_files=150,
                 lines_per_file=800,
-                features=["Microservices", "Database", "Caching", "Monitoring", "Testing"],
+                features=[
+                    "Microservices",
+                    "Database",
+                    "Caching",
+                    "Monitoring",
+                    "Testing",
+                ],
                 dependencies=["fastapi", "sqlalchemy", "redis", "pytest"],
-                complexity_level=5
-            )
+                complexity_level=5,
+            ),
         }
 
     def create_sample_python_project(self, spec_name: str) -> Path:
         """Create a sample Python project based on specification.
-        
+
         Args:
             spec_name: Name of the project specification
-            
+
         Returns:
             Path to the created project
         """
@@ -187,7 +209,9 @@ class TestDataManager:
         else:
             raise ValueError(f"Unsupported project type: {spec.project_type}")
 
-    def _create_web_api_project(self, project_path: Path, spec: TestProjectSpec) -> Path:
+    def _create_web_api_project(
+        self, project_path: Path, spec: TestProjectSpec
+    ) -> Path:
         """Create a web API project."""
         # Create directory structure
         directories = [
@@ -199,7 +223,7 @@ class TestDataManager:
             "tests/unit",
             "tests/integration",
             "config",
-            "migrations"
+            "migrations",
         ]
 
         for dir_path in directories:
@@ -212,30 +236,40 @@ class TestDataManager:
         # Create model files
         for i in range(min(5, spec.num_files // 3)):
             model_content = self._get_model_template(f"Model{i:02d}", spec)
-            (project_path / "src" / "models" / f"model_{i:02d}.py").write_text(model_content)
+            (project_path / "src" / "models" / f"model_{i:02d}.py").write_text(
+                model_content
+            )
 
         # Create service files
         for i in range(min(5, spec.num_files // 3)):
             service_content = self._get_service_template(f"Service{i:02d}", spec)
-            (project_path / "src" / "services" / f"service_{i:02d}.py").write_text(service_content)
+            (project_path / "src" / "services" / f"service_{i:02d}.py").write_text(
+                service_content
+            )
 
         # Create API route files
         for i in range(min(5, spec.num_files // 3)):
             route_content = self._get_route_template(f"Route{i:02d}", spec)
-            (project_path / "src" / "api" / "routes" / f"routes_{i:02d}.py").write_text(route_content)
+            (project_path / "src" / "api" / "routes" / f"routes_{i:02d}.py").write_text(
+                route_content
+            )
 
         # Create test files
         for i in range(min(10, spec.num_files - 15)):
             test_content = self._get_test_template(f"Test{i:02d}", spec)
             test_dir = "unit" if i % 2 == 0 else "integration"
-            (project_path / "tests" / test_dir / f"test_{i:02d}.py").write_text(test_content)
+            (project_path / "tests" / test_dir / f"test_{i:02d}.py").write_text(
+                test_content
+            )
 
         # Create configuration files
         self._create_config_files(project_path, spec)
 
         return project_path
 
-    def _create_data_processing_project(self, project_path: Path, spec: TestProjectSpec) -> Path:
+    def _create_data_processing_project(
+        self, project_path: Path, spec: TestProjectSpec
+    ) -> Path:
         """Create a data processing project."""
         # Create directory structure
         directories = [
@@ -248,7 +282,7 @@ class TestDataManager:
             "data/raw",
             "data/processed",
             "config",
-            "notebooks"
+            "notebooks",
         ]
 
         for dir_path in directories:
@@ -260,32 +294,46 @@ class TestDataManager:
 
         # Create processor files
         for i in range(min(8, spec.num_files // 2)):
-            processor_content = self._get_data_processor_template(f"Processor{i:02d}", spec)
-            (project_path / "src" / "processors" / f"processor_{i:02d}.py").write_text(processor_content)
+            processor_content = self._get_data_processor_template(
+                f"Processor{i:02d}", spec
+            )
+            (project_path / "src" / "processors" / f"processor_{i:02d}.py").write_text(
+                processor_content
+            )
 
         # Create analyzer files
         for i in range(min(5, spec.num_files // 3)):
-            analyzer_content = self._get_data_analyzer_template(f"Analyzer{i:02d}", spec)
-            (project_path / "src" / "analyzers" / f"analyzer_{i:02d}.py").write_text(analyzer_content)
+            analyzer_content = self._get_data_analyzer_template(
+                f"Analyzer{i:02d}", spec
+            )
+            (project_path / "src" / "analyzers" / f"analyzer_{i:02d}.py").write_text(
+                analyzer_content
+            )
 
         # Create utility files
         for i in range(min(5, spec.num_files // 4)):
             util_content = self._get_utility_template(f"Util{i:02d}", spec)
-            (project_path / "src" / "utils" / f"util_{i:02d}.py").write_text(util_content)
+            (project_path / "src" / "utils" / f"util_{i:02d}.py").write_text(
+                util_content
+            )
 
         # Create test files
         remaining_files = spec.num_files - 18  # Subtract already created files
         for i in range(max(0, remaining_files)):
             test_content = self._get_test_template(f"DataTest{i:02d}", spec)
             test_dir = "unit" if i % 2 == 0 else "integration"
-            (project_path / "tests" / test_dir / f"test_data_{i:02d}.py").write_text(test_content)
+            (project_path / "tests" / test_dir / f"test_data_{i:02d}.py").write_text(
+                test_content
+            )
 
         # Create configuration files
         self._create_config_files(project_path, spec)
 
         return project_path
 
-    def _create_cli_tool_project(self, project_path: Path, spec: TestProjectSpec) -> Path:
+    def _create_cli_tool_project(
+        self, project_path: Path, spec: TestProjectSpec
+    ) -> Path:
         """Create a CLI tool project."""
         # Create directory structure
         directories = [
@@ -294,7 +342,7 @@ class TestDataManager:
             "src/config",
             "tests/unit",
             "tests/integration",
-            "docs"
+            "docs",
         ]
 
         for dir_path in directories:
@@ -307,26 +355,34 @@ class TestDataManager:
         # Create command files
         for i in range(min(6, spec.num_files // 2)):
             command_content = self._get_cli_command_template(f"Command{i:02d}", spec)
-            (project_path / "src" / "commands" / f"command_{i:02d}.py").write_text(command_content)
+            (project_path / "src" / "commands" / f"command_{i:02d}.py").write_text(
+                command_content
+            )
 
         # Create utility files
         for i in range(min(4, spec.num_files // 3)):
             util_content = self._get_utility_template(f"CliUtil{i:02d}", spec)
-            (project_path / "src" / "utils" / f"util_{i:02d}.py").write_text(util_content)
+            (project_path / "src" / "utils" / f"util_{i:02d}.py").write_text(
+                util_content
+            )
 
         # Create test files
         remaining_files = spec.num_files - 10
         for i in range(max(0, remaining_files)):
             test_content = self._get_test_template(f"CliTest{i:02d}", spec)
             test_dir = "unit" if i % 2 == 0 else "integration"
-            (project_path / "tests" / test_dir / f"test_cli_{i:02d}.py").write_text(test_content)
+            (project_path / "tests" / test_dir / f"test_cli_{i:02d}.py").write_text(
+                test_content
+            )
 
         # Create configuration files
         self._create_config_files(project_path, spec)
 
         return project_path
 
-    def _create_library_project(self, project_path: Path, spec: TestProjectSpec) -> Path:
+    def _create_library_project(
+        self, project_path: Path, spec: TestProjectSpec
+    ) -> Path:
         """Create a library project."""
         # Create directory structure
         directories = [
@@ -336,7 +392,7 @@ class TestDataManager:
             "tests/unit",
             "tests/integration",
             "docs",
-            "examples"
+            "examples",
         ]
 
         for dir_path in directories:
@@ -345,26 +401,34 @@ class TestDataManager:
         # Create main library files
         for i in range(min(10, spec.num_files // 2)):
             core_content = self._get_library_core_template(f"Core{i:02d}", spec)
-            (project_path / "src" / "core" / f"core_{i:02d}.py").write_text(core_content)
+            (project_path / "src" / "core" / f"core_{i:02d}.py").write_text(
+                core_content
+            )
 
         # Create utility files
         for i in range(min(5, spec.num_files // 4)):
             util_content = self._get_utility_template(f"LibUtil{i:02d}", spec)
-            (project_path / "src" / "utils" / f"util_{i:02d}.py").write_text(util_content)
+            (project_path / "src" / "utils" / f"util_{i:02d}.py").write_text(
+                util_content
+            )
 
         # Create test files
         remaining_files = spec.num_files - 15
         for i in range(max(0, remaining_files)):
             test_content = self._get_test_template(f"LibTest{i:02d}", spec)
             test_dir = "unit" if i % 2 == 0 else "integration"
-            (project_path / "tests" / test_dir / f"test_lib_{i:02d}.py").write_text(test_content)
+            (project_path / "tests" / test_dir / f"test_lib_{i:02d}.py").write_text(
+                test_content
+            )
 
         # Create configuration files
         self._create_config_files(project_path, spec)
 
         return project_path
 
-    def _create_microservice_project(self, project_path: Path, spec: TestProjectSpec) -> Path:
+    def _create_microservice_project(
+        self, project_path: Path, spec: TestProjectSpec
+    ) -> Path:
         """Create a microservice project."""
         # Similar to web API but with additional microservice patterns
         return self._create_web_api_project(project_path, spec)
@@ -387,7 +451,9 @@ app.add_middleware(
 """
 
         if spec.complexity_level >= 3:
-            complexity_imports += "from prometheus_fastapi_instrumentator import Instrumentator\n"
+            complexity_imports += (
+                "from prometheus_fastapi_instrumentator import Instrumentator\n"
+            )
             complexity_middleware += "Instrumentator().instrument(app).expose(app)\n"
 
         return f'''"""Main FastAPI application for {spec.name}."""
@@ -397,7 +463,7 @@ import uvicorn
 {complexity_imports}
 
 app = FastAPI(
-    title="{spec.name.replace('_', ' ').title()}",
+    title="{spec.name.replace("_", " ").title()}",
     description="Generated test API",
     version="1.0.0"
 )
@@ -674,7 +740,9 @@ class DataPipeline:
         logger.info(f"Results exported to {{output_path}}")
 '''
 
-    def _get_data_processor_template(self, class_name: str, spec: TestProjectSpec) -> str:
+    def _get_data_processor_template(
+        self, class_name: str, spec: TestProjectSpec
+    ) -> str:
         """Get template for data processor files."""
         return f'''"""Data processor {class_name} for {spec.name}."""
 
@@ -730,7 +798,9 @@ class {class_name}:
         }}
 '''
 
-    def _get_data_analyzer_template(self, class_name: str, spec: TestProjectSpec) -> str:
+    def _get_data_analyzer_template(
+        self, class_name: str, spec: TestProjectSpec
+    ) -> str:
         """Get template for data analyzer files."""
         return f'''"""Data analyzer {class_name} for {spec.name}."""
 
@@ -838,7 +908,7 @@ from typing import Optional
 @click.option('--config', '-c', type=click.Path(exists=True), help='Config file path')
 @click.pass_context
 def cli(ctx, verbose: bool, config: Optional[str]):
-    """CLI tool for {spec.name.replace('_', ' ')}."""
+    """CLI tool for {spec.name.replace("_", " ")}."""
     ctx.ensure_object(dict)
     ctx.obj['verbose'] = verbose
     ctx.obj['config'] = config
@@ -1087,7 +1157,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "{spec.name.replace('_', '-')}"
+name = "{spec.name.replace("_", "-")}"
 version = "1.0.0"
 description = "Generated test project"
 authors = [{{name = "Test Author", email = "test@example.com"}}]
@@ -1102,7 +1172,7 @@ test = ["pytest>=7.0.0", "pytest-cov>=3.0.0"]
         (project_path / "pyproject.toml").write_text(pyproject_content)
 
         # README.md
-        readme_content = f"""# {spec.name.replace('_', ' ').title()}
+        readme_content = f"""# {spec.name.replace("_", " ").title()}
 
 Generated test project for {spec.project_type.value}.
 
@@ -1130,10 +1200,10 @@ pytest
 
     def get_project_stats(self, project_path: Path) -> dict[str, Any]:
         """Get statistics for a created project.
-        
+
         Args:
             project_path: Path to the project
-            
+
         Returns:
             Dictionary with project statistics
         """
@@ -1157,8 +1227,10 @@ pytest
             "python_files": len(python_files),
             "total_lines": total_lines,
             "directories": len(directories),
-            "avg_lines_per_file": total_lines / len(python_files) if python_files else 0,
-            "file_list": [str(f.relative_to(project_path)) for f in python_files]
+            "avg_lines_per_file": total_lines / len(python_files)
+            if python_files
+            else 0,
+            "file_list": [str(f.relative_to(project_path)) for f in python_files],
         }
 
     def cleanup(self) -> None:
@@ -1204,7 +1276,9 @@ class TestDataManagerTests:
         manager = TestDataManager()
 
         try:
-            project_path = manager.create_sample_python_project("medium_data_processing")
+            project_path = manager.create_sample_python_project(
+                "medium_data_processing"
+            )
             assert project_path.exists()
 
             stats = manager.get_project_stats(project_path)

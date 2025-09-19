@@ -31,7 +31,9 @@ class TestConfigManagerIntegration:
         assert isinstance(config, DevAgentConfig)
         assert config.version == "0.1.0"
         assert config.logging.level == "INFO"
-        assert config.indexing.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
+        assert (
+            config.indexing.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
+        )
         assert config.cli.auto_approve is False
 
     def test_save_and_load_config(self):
@@ -65,7 +67,7 @@ class TestConfigManagerIntegration:
         # Update config
         self.config_manager.update_config(
             logging={"level": "WARNING", "file_enabled": False},
-            cli={"auto_approve": True}
+            cli={"auto_approve": True},
         )
 
         # Verify updates
@@ -78,8 +80,7 @@ class TestConfigManagerIntegration:
         """Test resetting configuration to defaults."""
         # Modify config
         self.config_manager.update_config(
-            logging={"level": "DEBUG"},
-            cli={"auto_approve": True}
+            logging={"level": "DEBUG"}, cli={"auto_approve": True}
         )
 
         # Reset to default
@@ -180,11 +181,7 @@ class TestLoggingIntegration:
         """Test setting up logging with configuration."""
         from dev_agent.config.config_manager import LoggingConfig
 
-        config = LoggingConfig(
-            level="DEBUG",
-            file_enabled=True,
-            console_enabled=True
-        )
+        config = LoggingConfig(level="DEBUG", file_enabled=True, console_enabled=True)
 
         # Setup logging
         setup_logging(config, project_path=self.project_path, verbose=True)
@@ -199,7 +196,9 @@ class TestLoggingIntegration:
         logger.warning("Test warning message")
 
         # Check that log file was created
-        log_file = os.path.join(self.project_path, ".dev_agent", "logs", "dev_agent.log")
+        log_file = os.path.join(
+            self.project_path, ".dev_agent", "logs", "dev_agent.log"
+        )
         assert os.path.exists(log_file)
 
     def test_logging_file_rotation(self):
@@ -210,7 +209,7 @@ class TestLoggingIntegration:
             level="INFO",
             file_enabled=True,
             max_file_size_mb=1,  # Small size to trigger rotation
-            backup_count=2
+            backup_count=2,
         )
 
         setup_logging(config, project_path=self.project_path)
@@ -231,11 +230,7 @@ class TestLoggingIntegration:
         """Test console-only logging configuration."""
         from dev_agent.config.config_manager import LoggingConfig
 
-        config = LoggingConfig(
-            level="INFO",
-            file_enabled=False,
-            console_enabled=True
-        )
+        config = LoggingConfig(level="INFO", file_enabled=False, console_enabled=True)
 
         setup_logging(config, project_path=self.project_path)
         logger = get_logger(__name__)
@@ -244,18 +239,16 @@ class TestLoggingIntegration:
         logger.info("Test console message")
 
         # Check that no log file was created
-        log_file = os.path.join(self.project_path, ".dev_agent", "logs", "dev_agent.log")
+        log_file = os.path.join(
+            self.project_path, ".dev_agent", "logs", "dev_agent.log"
+        )
         assert not os.path.exists(log_file)
 
     def test_file_only_logging(self):
         """Test file-only logging configuration."""
         from dev_agent.config.config_manager import LoggingConfig
 
-        config = LoggingConfig(
-            level="INFO",
-            file_enabled=True,
-            console_enabled=False
-        )
+        config = LoggingConfig(level="INFO", file_enabled=True, console_enabled=False)
 
         setup_logging(config, project_path=self.project_path)
         logger = get_logger(__name__)
@@ -264,7 +257,9 @@ class TestLoggingIntegration:
         logger.info("Test file message")
 
         # Check that log file was created
-        log_file = os.path.join(self.project_path, ".dev_agent", "logs", "dev_agent.log")
+        log_file = os.path.join(
+            self.project_path, ".dev_agent", "logs", "dev_agent.log"
+        )
         assert os.path.exists(log_file)
 
         # Verify content
@@ -294,18 +289,9 @@ class TestConfigSerialization:
         """Test creating configuration from dictionary."""
         config_dict = {
             "version": "0.2.0",
-            "logging": {
-                "level": "WARNING",
-                "file_enabled": False
-            },
-            "cli": {
-                "auto_approve": True,
-                "color_output": False
-            },
-            "indexing": {
-                "max_file_size_mb": 25,
-                "embedding_model": "custom-model"
-            }
+            "logging": {"level": "WARNING", "file_enabled": False},
+            "cli": {"auto_approve": True, "color_output": False},
+            "indexing": {"max_file_size_mb": 25, "embedding_model": "custom-model"},
         }
 
         config = DevAgentConfig.from_dict(config_dict)
@@ -320,11 +306,7 @@ class TestConfigSerialization:
 
     def test_partial_config_from_dict(self):
         """Test creating configuration from partial dictionary."""
-        config_dict = {
-            "logging": {
-                "level": "ERROR"
-            }
-        }
+        config_dict = {"logging": {"level": "ERROR"}}
 
         config = DevAgentConfig.from_dict(config_dict)
 

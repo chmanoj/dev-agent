@@ -228,6 +228,7 @@ class TestMainClass(unittest.TestCase):
 
         # Mock progress callback
         progress_calls = []
+
         def progress_callback(current, total, message):
             progress_calls.append((current, total, message))
 
@@ -243,7 +244,9 @@ class TestMainClass(unittest.TestCase):
 
         # Check progress was tracked
         assert len(progress_calls) > 0
-        assert progress_calls[-1][0] == progress_calls[-1][1]  # Final call should be complete
+        assert (
+            progress_calls[-1][0] == progress_calls[-1][1]
+        )  # Final call should be complete
 
     def test_build_index_no_files(self):
         """Test index building with no source files."""
@@ -402,6 +405,7 @@ class TestMainClass(unittest.TestCase):
         engine = IndexingEngine(str(self.project_path))
 
         progress_updates = []
+
         def callback(current, total, message):
             progress_updates.append((current, total, message))
 
@@ -420,28 +424,26 @@ class TestMainClass(unittest.TestCase):
 
         # Create main AST index
         main_ast = ASTIndex(
-            functions={},
-            classes={},
-            imports=[],
-            symbols={},
-            file_metadata={}
+            functions={}, classes={}, imports=[], symbols={}, file_metadata={}
         )
 
         # Create file AST data
         file_ast_data = {
-            "functions": {"func1": FunctionDef(
-                name="func1",
-                parameters=[],
-                return_type=None,
-                docstring=None,
-                file_path="test.py",
-                start_line=1,
-                end_line=5
-            )},
+            "functions": {
+                "func1": FunctionDef(
+                    name="func1",
+                    parameters=[],
+                    return_type=None,
+                    docstring=None,
+                    file_path="test.py",
+                    start_line=1,
+                    end_line=5,
+                )
+            },
             "classes": {},
             "imports": [],
             "symbols": {},
-            "file_metadata": {"test.py": {"language": "python"}}
+            "file_metadata": {"test.py": {"language": "python"}},
         }
 
         # Merge data
@@ -483,20 +485,22 @@ class TestMainClass(unittest.TestCase):
 
     def test_file_size_limits(self):
         """Test file size limits during discovery."""
-        # Create a very large file (simulated by mocking stat)
+        # Create a file and write enough content to make it large
         large_file = self.project_path / "huge_file.py"
-        large_file.touch()
+        
+        # Write a large amount of content (more than 10MB)
+        large_content = "# This is a large file\n" * 500000  # About 12MB
+        large_file.write_text(large_content)
+        
+        engine = IndexingEngine(str(self.project_path))
+        source_files = engine._discover_source_files()
 
-        with patch.object(Path, "stat") as mock_stat:
-            # Mock file size to be very large
-            mock_stat.return_value.st_size = 20 * 1024 * 1024  # 20MB
-
-            engine = IndexingEngine(str(self.project_path))
-            source_files = engine._discover_source_files()
-
-            # Should exclude the huge file
-            file_names = [f.name for f in source_files]
-            assert "huge_file.py" not in file_names
+        # Should exclude the huge file (>10MB)
+        file_names = [f.name for f in source_files]
+        assert "huge_file.py" not in file_names
+        
+        # Clean up the large file
+        large_file.unlink()
 
 
 if __name__ == "__main__":

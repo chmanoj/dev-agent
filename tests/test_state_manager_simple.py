@@ -32,7 +32,7 @@ class TestStateManagerSimple(unittest.TestCase):
             started_at=datetime(2024, 1, 1, 10, 0, 0),
             last_activity=datetime(2024, 1, 1, 11, 0, 0),
             user_approvals={"specification": True},
-            pending_approvals=["design"]
+            pending_approvals=["design"],
         )
 
         self.sample_index_metadata = IndexMetadata(
@@ -41,7 +41,7 @@ class TestStateManagerSimple(unittest.TestCase):
             languages_detected=["python", "javascript"],
             index_size_mb=2.5,
             last_indexed=datetime(2024, 1, 1, 9, 0, 0),
-            index_version="1.0.0"
+            index_version="1.0.0",
         )
 
         self.sample_project_state = ProjectState(
@@ -51,16 +51,20 @@ class TestStateManagerSimple(unittest.TestCase):
             specification=None,
             design=None,
             tasks=None,
-            implementation_progress={"task1": TaskStatus.COMPLETED, "task2": TaskStatus.IN_PROGRESS},
+            implementation_progress={
+                "task1": TaskStatus.COMPLETED,
+                "task2": TaskStatus.IN_PROGRESS,
+            },
             index_metadata=self.sample_index_metadata,
             session_data=self.sample_session_data,
             created_at=datetime(2024, 1, 1, 9, 0, 0),
-            updated_at=datetime(2024, 1, 1, 11, 0, 0)
+            updated_at=datetime(2024, 1, 1, 11, 0, 0),
         )
 
     def tearDown(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir)
 
     def test_init_creates_directories(self):
@@ -80,18 +84,38 @@ class TestStateManagerSimple(unittest.TestCase):
         self.assertIsNotNone(loaded_state)
 
         # Verify the loaded state matches (excluding updated_at which gets modified)
-        self.assertEqual(loaded_state.project_path, self.sample_project_state.project_path)
-        self.assertEqual(loaded_state.current_phase, self.sample_project_state.current_phase)
-        self.assertEqual(loaded_state.indexing_complete, self.sample_project_state.indexing_complete)
-        self.assertEqual(loaded_state.implementation_progress, self.sample_project_state.implementation_progress)
+        self.assertEqual(
+            loaded_state.project_path, self.sample_project_state.project_path
+        )
+        self.assertEqual(
+            loaded_state.current_phase, self.sample_project_state.current_phase
+        )
+        self.assertEqual(
+            loaded_state.indexing_complete, self.sample_project_state.indexing_complete
+        )
+        self.assertEqual(
+            loaded_state.implementation_progress,
+            self.sample_project_state.implementation_progress,
+        )
 
         # Verify session data
-        self.assertEqual(loaded_state.session_data.session_id, self.sample_session_data.session_id)
-        self.assertEqual(loaded_state.session_data.user_approvals, self.sample_session_data.user_approvals)
+        self.assertEqual(
+            loaded_state.session_data.session_id, self.sample_session_data.session_id
+        )
+        self.assertEqual(
+            loaded_state.session_data.user_approvals,
+            self.sample_session_data.user_approvals,
+        )
 
         # Verify index metadata
-        self.assertEqual(loaded_state.index_metadata.total_files, self.sample_index_metadata.total_files)
-        self.assertEqual(loaded_state.index_metadata.languages_detected, self.sample_index_metadata.languages_detected)
+        self.assertEqual(
+            loaded_state.index_metadata.total_files,
+            self.sample_index_metadata.total_files,
+        )
+        self.assertEqual(
+            loaded_state.index_metadata.languages_detected,
+            self.sample_index_metadata.languages_detected,
+        )
 
     def test_load_nonexistent_state(self):
         """Test loading state when no state file exists."""
@@ -105,7 +129,9 @@ class TestStateManagerSimple(unittest.TestCase):
         self.state_manager.save_project_state(self.sample_project_state)
 
         # Update phase
-        success = self.state_manager.update_phase_status(PhaseType.DESIGN, "moving to design")
+        success = self.state_manager.update_phase_status(
+            PhaseType.DESIGN, "moving to design"
+        )
         self.assertTrue(success)
 
         # Verify update
@@ -116,7 +142,9 @@ class TestStateManagerSimple(unittest.TestCase):
         """Test saving and loading markdown documents."""
         # Test specification document
         spec_content = "# Specification\n\nThis is a test specification."
-        success = self.state_manager.save_document(spec_content, DocumentType.SPECIFICATION)
+        success = self.state_manager.save_document(
+            spec_content, DocumentType.SPECIFICATION
+        )
         self.assertTrue(success)
 
         loaded_spec = self.state_manager.load_document(DocumentType.SPECIFICATION)
@@ -154,16 +182,24 @@ class TestStateManagerSimple(unittest.TestCase):
 
         # Verify update
         loaded_state = self.state_manager.load_project_state()
-        self.assertEqual(loaded_state.implementation_progress["task3"], TaskStatus.COMPLETED)
+        self.assertEqual(
+            loaded_state.implementation_progress["task3"], TaskStatus.COMPLETED
+        )
 
         # Original tasks should still be there
-        self.assertEqual(loaded_state.implementation_progress["task1"], TaskStatus.COMPLETED)
-        self.assertEqual(loaded_state.implementation_progress["task2"], TaskStatus.IN_PROGRESS)
+        self.assertEqual(
+            loaded_state.implementation_progress["task1"], TaskStatus.COMPLETED
+        )
+        self.assertEqual(
+            loaded_state.implementation_progress["task2"], TaskStatus.IN_PROGRESS
+        )
 
     def test_create_initial_state(self):
         """Test creating initial project state."""
         session_id = "new-session-456"
-        initial_state = self.state_manager.create_initial_state(str(self.project_path), session_id)
+        initial_state = self.state_manager.create_initial_state(
+            str(self.project_path), session_id
+        )
 
         self.assertEqual(initial_state.project_path, str(self.project_path))
         self.assertEqual(initial_state.current_phase, PhaseType.INDEXING)
@@ -217,7 +253,9 @@ class TestStateManagerSimple(unittest.TestCase):
 
         # Verify the actual datetime values (excluding updated_at which gets modified)
         self.assertEqual(loaded_state.created_at, self.sample_project_state.created_at)
-        self.assertEqual(loaded_state.session_data.started_at, self.sample_session_data.started_at)
+        self.assertEqual(
+            loaded_state.session_data.started_at, self.sample_session_data.started_at
+        )
 
     def test_json_file_structure(self):
         """Test that the saved JSON file has the expected structure."""
@@ -230,9 +268,17 @@ class TestStateManagerSimple(unittest.TestCase):
 
         # Verify top-level structure
         expected_keys = [
-            "project_path", "current_phase", "indexing_complete",
-            "specification", "design", "tasks", "implementation_progress",
-            "index_metadata", "session_data", "created_at", "updated_at"
+            "project_path",
+            "current_phase",
+            "indexing_complete",
+            "specification",
+            "design",
+            "tasks",
+            "implementation_progress",
+            "index_metadata",
+            "session_data",
+            "created_at",
+            "updated_at",
         ]
 
         for key in expected_keys:

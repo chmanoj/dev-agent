@@ -46,7 +46,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         chunk_id = self.db.store_embedding(chunk)
@@ -64,7 +64,7 @@ class TestVectorDatabase:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="def subtract(a, b): return a - b",
@@ -72,7 +72,7 @@ class TestVectorDatabase:
                 start_line=3,
                 end_line=3,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="class Calculator: pass",
@@ -80,8 +80,8 @@ class TestVectorDatabase:
                 start_line=5,
                 end_line=5,
                 language="python",
-                chunk_type="class"
-            )
+                chunk_type="class",
+            ),
         ]
 
         chunk_ids = self.db.store_embeddings(chunks)
@@ -100,7 +100,7 @@ class TestVectorDatabase:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="def multiply_values(a, b): return a * b",
@@ -108,7 +108,7 @@ class TestVectorDatabase:
                 start_line=3,
                 end_line=3,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="class FileHandler: def read_file(self): pass",
@@ -116,8 +116,8 @@ class TestVectorDatabase:
                 start_line=1,
                 end_line=2,
                 language="python",
-                chunk_type="class"
-            )
+                chunk_type="class",
+            ),
         ]
 
         self.db.store_embeddings(chunks)
@@ -130,8 +130,10 @@ class TestVectorDatabase:
 
         if results:
             # Results should be sorted by similarity (highest first)
-            assert all(results[i].similarity_score >= results[i+1].similarity_score
-                      for i in range(len(results)-1))
+            assert all(
+                results[i].similarity_score >= results[i + 1].similarity_score
+                for i in range(len(results) - 1)
+            )
 
     def test_query_similar_by_chunk(self):
         """Test similarity search using a chunk as query."""
@@ -143,7 +145,7 @@ class TestVectorDatabase:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="def compute_average(values): return sum(values) / len(values)",
@@ -151,8 +153,8 @@ class TestVectorDatabase:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
-            )
+                chunk_type="function",
+            ),
         ]
 
         self.db.store_embeddings(chunks)
@@ -164,7 +166,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         results = self.db.query_similar_by_chunk(query_chunk, k=2)
@@ -180,7 +182,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         chunk_id = self.db.store_embedding(chunk)
@@ -201,7 +203,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         chunk_id = self.db.store_embedding(original_chunk)
@@ -213,7 +215,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         success = self.db.update_embedding(chunk_id, new_chunk)
@@ -233,7 +235,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         chunk_id = self.db.store_embedding(chunk)
@@ -260,7 +262,7 @@ class TestVectorDatabase:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="def func2(): pass",
@@ -268,8 +270,8 @@ class TestVectorDatabase:
                 start_line=3,
                 end_line=3,
                 language="python",
-                chunk_type="function"
-            )
+                chunk_type="function",
+            ),
         ]
 
         chunk_ids = self.db.store_embeddings(chunks)
@@ -292,7 +294,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         chunk_id = self.db.store_embedding(chunk)
@@ -322,13 +324,15 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         self.db.store_embedding(chunk)
 
         # Search with high similarity threshold
-        results = self.db.query_similar("completely different content", k=5, min_similarity=0.9)
+        results = self.db.query_similar(
+            "completely different content", k=5, min_similarity=0.9
+        )
 
         # Should return no results due to high threshold
         assert len(results) == 0 or all(r.similarity_score >= 0.9 for r in results)
@@ -341,7 +345,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         chunk2 = CodeChunk(
@@ -350,7 +354,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         chunk3 = CodeChunk(
@@ -359,7 +363,7 @@ class TestVectorDatabase:
             start_line=1,
             end_line=1,
             language="python",
-            chunk_type="function"
+            chunk_type="function",
         )
 
         id1 = self.db._generate_chunk_id(chunk1)
@@ -382,7 +386,7 @@ class TestVectorDatabase:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="def delete_me(): pass",
@@ -390,8 +394,8 @@ class TestVectorDatabase:
                 start_line=3,
                 end_line=3,
                 language="python",
-                chunk_type="function"
-            )
+                chunk_type="function",
+            ),
         ]
 
         chunk_ids = self.db.store_embeddings(chunks)

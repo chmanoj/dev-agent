@@ -18,29 +18,31 @@ from dev_agent.indexing.tree_sitter_parser import TreeSitterParser
 
 class TestPerformanceBenchmarks:
     """Performance benchmarks for core components."""
-    
+
     def setup_method(self):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_path = Path(self.temp_dir) / "benchmark_project"
         self.project_path.mkdir(parents=True)
-        
+
         # Track system resources
         self.process = psutil.Process()
         self.initial_memory = self.process.memory_info().rss / 1024 / 1024  # MB
-    
+
     def teardown_method(self):
         """Clean up test environment."""
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
-    
-    def create_benchmark_project(self, num_files: int = 50, lines_per_file: int = 500) -> Dict[str, Any]:
+
+    def create_benchmark_project(
+        self, num_files: int = 50, lines_per_file: int = 500
+    ) -> Dict[str, Any]:
         """Create a project for benchmarking.
-        
+
         Args:
             num_files: Number of Python files to create
             lines_per_file: Average lines per file
-            
+
         Returns:
             Dictionary with project statistics
         """
@@ -48,36 +50,34 @@ class TestPerformanceBenchmarks:
         directories = ["src", "tests", "utils", "models", "services"]
         for dir_name in directories:
             (self.project_path / dir_name).mkdir(exist_ok=True)
-        
+
         # Template for Python files with various complexity patterns
         templates = [
             self._get_class_template(),
             self._get_function_template(),
             self._get_async_template(),
             self._get_decorator_template(),
-            self._get_dataclass_template()
+            self._get_dataclass_template(),
         ]
-        
+
         total_lines = 0
         files_created = 0
-        
+
         for i in range(num_files):
             # Choose template and directory
             template = templates[i % len(templates)]
             directory = directories[i % len(directories)]
-            
+
             # Generate file content
             module_name = f"module_{i:03d}"
             class_name = f"BenchmarkClass{i:03d}"
-            
+
             content = template.format(
-                module_name=module_name,
-                class_name=class_name,
-                file_index=i
+                module_name=module_name, class_name=class_name, file_index=i
             )
-            
+
             # Adjust content length to target lines per file
-            current_lines = len(content.split('\n'))
+            current_lines = len(content.split("\n"))
             if current_lines < lines_per_file:
                 # Add extra methods to reach target
                 extra_methods = []
@@ -90,23 +90,25 @@ class TestPerformanceBenchmarks:
             result = str(result) + f"_{{k}}"
         return result
 ''')
-                content += '\n'.join(extra_methods)
-            
+                content += "\n".join(extra_methods)
+
             # Write file
             file_path = self.project_path / directory / f"{module_name}.py"
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 f.write(content)
-            
-            total_lines += len(content.split('\n'))
+
+            total_lines += len(content.split("\n"))
             files_created += 1
-        
+
         return {
             "files_created": files_created,
             "total_lines": total_lines,
             "directories": len(directories),
-            "avg_lines_per_file": total_lines / files_created if files_created > 0 else 0
+            "avg_lines_per_file": total_lines / files_created
+            if files_created > 0
+            else 0,
         }
-    
+
     def _get_class_template(self) -> str:
         """Get template for class-based modules."""
         return '''"""Module {module_name} - Class-based implementation."""
@@ -185,7 +187,7 @@ class Concrete{class_name}({class_name}):
         """Process generic data."""
         return f"processed_{{str(data)}}"
 '''
-    
+
     def _get_function_template(self) -> str:
         """Get template for function-based modules."""
         return '''"""Module {module_name} - Function-based implementation."""
@@ -288,7 +290,7 @@ def generate_test_data(size: int = 1000) -> List[Any]:
     
     return data
 '''
-    
+
     def _get_async_template(self) -> str:
         """Get template for async-based modules."""
         return '''"""Module {module_name} - Async implementation."""
@@ -391,7 +393,7 @@ async def benchmark_async_operations(data_size: int = 100) -> Dict[str, float]:
         "items_per_second": len(results) / (end_time - start_time)
     }}
 '''
-    
+
     def _get_decorator_template(self) -> str:
         """Get template for decorator-heavy modules."""
         return '''"""Module {module_name} - Decorator-heavy implementation."""
@@ -518,7 +520,7 @@ class {class_name}:
         time.sleep(0.001)
         return f"processed_{{self.name}}_{{item}}"
 '''
-    
+
     def _get_dataclass_template(self) -> str:
         """Get template for dataclass-heavy modules."""
         return '''"""Module {module_name} - Dataclass-heavy implementation."""
@@ -635,187 +637,198 @@ class {class_name}Processor:
         }}
         
         return json.dumps(data, indent=2, default=str)
-''' 
-   def test_indexing_performance_scaling(self):
+'''
+
+    def test_indexing_performance_scaling(self):
         """Test how indexing performance scales with project size."""
         print("\n=== Testing Indexing Performance Scaling ===")
-        
+
         # Test different project sizes
         test_sizes = [
-            (10, 200),   # Small: 10 files, 200 lines each
-            (25, 400),   # Medium: 25 files, 400 lines each  
-            (50, 600),   # Large: 50 files, 600 lines each
+            (10, 200),  # Small: 10 files, 200 lines each
+            (25, 400),  # Medium: 25 files, 400 lines each
+            (50, 600),  # Large: 50 files, 600 lines each
         ]
-        
+
         scaling_results = []
-        
+
         for num_files, lines_per_file in test_sizes:
             print(f"\nTesting {num_files} files with {lines_per_file} lines each...")
-            
+
             # Create project
             project_stats = self.create_benchmark_project(num_files, lines_per_file)
             total_lines = project_stats["total_lines"]
-            
+
             # Initialize indexing engine
             engine = IndexingEngine(str(self.project_path))
-            
+
             # Measure indexing performance
             start_time = time.time()
             initial_memory = self.process.memory_info().rss / 1024 / 1024
-            
+
             result = engine.build_index()
-            
+
             end_time = time.time()
             peak_memory = self.process.memory_info().rss / 1024 / 1024
-            
+
             # Calculate metrics
             indexing_time = end_time - start_time
             memory_increase = peak_memory - initial_memory
             lines_per_second = total_lines / indexing_time
-            
-            scaling_results.append({
-                "files": num_files,
-                "lines": total_lines,
-                "time": indexing_time,
-                "memory_mb": memory_increase,
-                "lines_per_second": lines_per_second,
-                "functions_found": len(result.ast_index.functions),
-                "classes_found": len(result.ast_index.classes),
-                "embeddings": result.embeddings_count
-            })
-            
+
+            scaling_results.append(
+                {
+                    "files": num_files,
+                    "lines": total_lines,
+                    "time": indexing_time,
+                    "memory_mb": memory_increase,
+                    "lines_per_second": lines_per_second,
+                    "functions_found": len(result.ast_index.functions),
+                    "classes_found": len(result.ast_index.classes),
+                    "embeddings": result.embeddings_count,
+                }
+            )
+
             # Assertions
             assert result.success, f"Indexing should succeed for {num_files} files"
             assert indexing_time < 120, f"Indexing too slow: {indexing_time:.2f}s"
-            assert memory_increase < 1000, f"Memory usage too high: {memory_increase:.2f}MB"
-            
+            assert memory_increase < 1000, (
+                f"Memory usage too high: {memory_increase:.2f}MB"
+            )
+
             print(f"  Time: {indexing_time:.2f}s")
             print(f"  Speed: {lines_per_second:.0f} lines/second")
             print(f"  Memory: {memory_increase:.2f}MB")
             print(f"  Functions: {len(result.ast_index.functions)}")
             print(f"  Classes: {len(result.ast_index.classes)}")
-            
+
             # Clean up for next iteration
             self.teardown_method()
             self.setup_method()
-        
+
         # Analyze scaling characteristics
         print(f"\n=== Scaling Analysis ===")
         for i, result in enumerate(scaling_results):
-            print(f"Size {i+1}: {result['files']} files, {result['lines']:,} lines")
+            print(f"Size {i + 1}: {result['files']} files, {result['lines']:,} lines")
             print(f"  Performance: {result['lines_per_second']:.0f} lines/s")
-            print(f"  Memory efficiency: {result['memory_mb']/result['lines']*1000:.2f} MB/1k lines")
-        
+            print(
+                f"  Memory efficiency: {result['memory_mb'] / result['lines'] * 1000:.2f} MB/1k lines"
+            )
+
         # Check that performance doesn't degrade significantly
-        speeds = [r['lines_per_second'] for r in scaling_results]
+        speeds = [r["lines_per_second"] for r in scaling_results]
         if len(speeds) > 1:
             speed_ratio = min(speeds) / max(speeds)
-            assert speed_ratio > 0.3, f"Performance degrades too much: {speed_ratio:.2f}"
+            assert speed_ratio > 0.3, (
+                f"Performance degrades too much: {speed_ratio:.2f}"
+            )
             print(f"Performance consistency ratio: {speed_ratio:.2f}")
-        
+
         print("✓ Indexing performance scaling test passed!")
-    
+
     def test_query_performance_benchmarks(self):
         """Benchmark vector similarity query performance."""
         print("\n=== Testing Query Performance Benchmarks ===")
-        
+
         # Create medium-sized project for query testing
         project_stats = self.create_benchmark_project(40, 500)
-        
+
         engine = IndexingEngine(str(self.project_path))
         result = engine.build_index()
         assert result.success
-        
+
         # Define different types of queries
         query_categories = {
-            "simple": [
-                "function definition",
-                "class method",
-                "import statement"
-            ],
+            "simple": ["function definition", "class method", "import statement"],
             "complex": [
                 "async function with error handling",
                 "decorator pattern implementation",
-                "dataclass with validation methods"
+                "dataclass with validation methods",
             ],
             "specific": [
                 "fibonacci calculation with caching",
                 "batch processing with thread pool",
-                "configuration management system"
-            ]
+                "configuration management system",
+            ],
         }
-        
+
         benchmark_results = {}
-        
+
         for category, queries in query_categories.items():
             print(f"\nBenchmarking {category} queries...")
-            
+
             query_times = []
             total_matches = 0
-            
+
             for query in queries:
                 # Warm up query (not counted)
                 engine.query_similar_code(query, limit=5)
-                
+
                 # Benchmark query
                 start_time = time.time()
                 matches = engine.query_similar_code(query, limit=20)
                 end_time = time.time()
-                
+
                 query_time = end_time - start_time
                 query_times.append(query_time)
                 total_matches += len(matches)
-                
-                print(f"  '{query[:40]}...' - {len(matches)} matches in {query_time:.3f}s")
-            
+
+                print(
+                    f"  '{query[:40]}...' - {len(matches)} matches in {query_time:.3f}s"
+                )
+
             # Calculate statistics
             avg_time = statistics.mean(query_times)
             median_time = statistics.median(query_times)
             max_time = max(query_times)
             min_time = min(query_times)
-            
+
             benchmark_results[category] = {
                 "avg_time": avg_time,
                 "median_time": median_time,
                 "max_time": max_time,
                 "min_time": min_time,
                 "total_matches": total_matches,
-                "queries_count": len(queries)
+                "queries_count": len(queries),
             }
-            
+
             print(f"  Average: {avg_time:.3f}s, Median: {median_time:.3f}s")
             print(f"  Range: {min_time:.3f}s - {max_time:.3f}s")
             print(f"  Total matches: {total_matches}")
-            
+
             # Performance assertions
-            assert avg_time < 1.0, f"{category} queries too slow: {avg_time:.3f}s average"
+            assert avg_time < 1.0, (
+                f"{category} queries too slow: {avg_time:.3f}s average"
+            )
             assert max_time < 2.0, f"{category} slowest query too slow: {max_time:.3f}s"
-        
+
         # Overall performance summary
         print(f"\n=== Query Performance Summary ===")
         all_times = []
         for category, results in benchmark_results.items():
-            all_times.extend([results['avg_time']] * results['queries_count'])
+            all_times.extend([results["avg_time"]] * results["queries_count"])
             print(f"{category.capitalize()}: {results['avg_time']:.3f}s average")
-        
+
         overall_avg = statistics.mean(all_times)
         print(f"Overall average: {overall_avg:.3f}s")
-        
-        assert overall_avg < 0.8, f"Overall query performance too slow: {overall_avg:.3f}s"
-        
+
+        assert overall_avg < 0.8, (
+            f"Overall query performance too slow: {overall_avg:.3f}s"
+        )
+
         print("✓ Query performance benchmarks test passed!")
-    
+
     def test_concurrent_operations_performance(self):
         """Test performance of concurrent indexing and query operations."""
         print("\n=== Testing Concurrent Operations Performance ===")
-        
+
         # Create project for concurrent testing
         project_stats = self.create_benchmark_project(30, 400)
-        
+
         engine = IndexingEngine(str(self.project_path))
         result = engine.build_index()
         assert result.success
-        
+
         # Test concurrent queries
         queries = [
             "function with parameters",
@@ -827,9 +840,9 @@ class {class_name}Processor:
             "configuration setup",
             "utility function",
             "test case implementation",
-            "import and export"
+            "import and export",
         ]
-        
+
         # Sequential benchmark
         print("Running sequential queries...")
         start_time = time.time()
@@ -838,173 +851,188 @@ class {class_name}Processor:
             matches = engine.query_similar_code(query, limit=10)
             sequential_results.append(len(matches))
         sequential_time = time.time() - start_time
-        
+
         # Concurrent benchmark
         print("Running concurrent queries...")
         start_time = time.time()
-        
+
         def run_query(query):
             return engine.query_similar_code(query, limit=10)
-        
+
         concurrent_results = []
         with ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_query = {executor.submit(run_query, query): query for query in queries}
-            
+            future_to_query = {
+                executor.submit(run_query, query): query for query in queries
+            }
+
             for future in as_completed(future_to_query):
                 matches = future.result()
                 concurrent_results.append(len(matches))
-        
+
         concurrent_time = time.time() - start_time
-        
+
         # Analyze results
         print(f"\n=== Concurrent Performance Results ===")
         print(f"Sequential time: {sequential_time:.3f}s")
         print(f"Concurrent time: {concurrent_time:.3f}s")
-        
+
         if concurrent_time < sequential_time:
             speedup = sequential_time / concurrent_time
             print(f"Speedup achieved: {speedup:.2f}x")
         else:
             slowdown = concurrent_time / sequential_time
             print(f"Slowdown: {slowdown:.2f}x")
-        
+
         # Verify results consistency
         assert len(sequential_results) == len(concurrent_results)
-        
+
         # Results should be similar (allowing for some variance due to concurrency)
         total_sequential = sum(sequential_results)
         total_concurrent = sum(concurrent_results)
         variance = abs(total_sequential - total_concurrent) / total_sequential
-        
+
         print(f"Results variance: {variance:.2%}")
         assert variance < 0.1, f"Concurrent results too different: {variance:.2%}"
-        
+
         # Performance should not degrade significantly
         assert concurrent_time < sequential_time * 1.5, "Concurrent operations too slow"
-        
+
         print("✓ Concurrent operations performance test passed!")
-    
+
     def test_memory_usage_optimization(self):
         """Test memory usage optimization during indexing."""
         print("\n=== Testing Memory Usage Optimization ===")
-        
+
         # Create larger project to test memory optimization
         project_stats = self.create_benchmark_project(60, 800)
-        
+
         engine = IndexingEngine(str(self.project_path))
-        
+
         # Track memory usage throughout indexing
         memory_samples = []
-        
+
         def memory_tracker():
             """Track memory usage in background."""
-            while hasattr(memory_tracker, 'running'):
+            while hasattr(memory_tracker, "running"):
                 memory_mb = self.process.memory_info().rss / 1024 / 1024
                 memory_samples.append((time.time(), memory_mb))
                 time.sleep(0.2)  # Sample every 200ms
-        
+
         # Start memory tracking
         import threading
+
         memory_tracker.running = True
         memory_thread = threading.Thread(target=memory_tracker)
         memory_thread.start()
-        
+
         try:
             # Perform indexing
             start_time = time.time()
             result = engine.build_index()
             end_time = time.time()
-            
+
         finally:
             # Stop memory tracking
             memory_tracker.running = False
             memory_thread.join()
-        
+
         # Analyze memory usage
         if memory_samples:
             initial_memory = memory_samples[0][1]
             peak_memory = max(sample[1] for sample in memory_samples)
             final_memory = memory_samples[-1][1]
-            
+
             memory_increase = peak_memory - initial_memory
             memory_retained = final_memory - initial_memory
-            
+
             print(f"\n=== Memory Usage Analysis ===")
             print(f"Initial memory: {initial_memory:.2f} MB")
             print(f"Peak memory: {peak_memory:.2f} MB")
             print(f"Final memory: {final_memory:.2f} MB")
             print(f"Peak increase: {memory_increase:.2f} MB")
             print(f"Memory retained: {memory_retained:.2f} MB")
-            print(f"Memory efficiency: {memory_increase / project_stats['total_lines'] * 1000:.2f} MB per 1k lines")
-            
+            print(
+                f"Memory efficiency: {memory_increase / project_stats['total_lines'] * 1000:.2f} MB per 1k lines"
+            )
+
             # Memory optimization assertions
             assert result.success, "Indexing should succeed"
-            assert memory_increase < 1500, f"Peak memory too high: {memory_increase:.2f}MB"
-            assert memory_retained < 800, f"Too much memory retained: {memory_retained:.2f}MB"
-            
+            assert memory_increase < 1500, (
+                f"Peak memory too high: {memory_increase:.2f}MB"
+            )
+            assert memory_retained < 800, (
+                f"Too much memory retained: {memory_retained:.2f}MB"
+            )
+
             # Memory should be released after indexing
-            retention_ratio = memory_retained / memory_increase if memory_increase > 0 else 0
+            retention_ratio = (
+                memory_retained / memory_increase if memory_increase > 0 else 0
+            )
             print(f"Memory retention ratio: {retention_ratio:.2%}")
-            assert retention_ratio < 0.7, f"Too much memory retained: {retention_ratio:.2%}"
-            
+            assert retention_ratio < 0.7, (
+                f"Too much memory retained: {retention_ratio:.2%}"
+            )
+
             # Memory efficiency check
             mb_per_1k_lines = memory_increase / (project_stats["total_lines"] / 1000)
-            assert mb_per_1k_lines < 60, f"Memory efficiency too low: {mb_per_1k_lines:.2f} MB/1k lines"
-        
+            assert mb_per_1k_lines < 60, (
+                f"Memory efficiency too low: {mb_per_1k_lines:.2f} MB/1k lines"
+            )
+
         print("✓ Memory usage optimization test passed!")
-    
+
     def test_tree_sitter_parsing_performance(self):
         """Benchmark Tree-sitter parsing performance."""
         print("\n=== Testing Tree-sitter Parsing Performance ===")
-        
+
         # Create project with various Python language features
         project_stats = self.create_benchmark_project(35, 600)
-        
+
         parser = TreeSitterParser()
-        
+
         # Get all Python files
         python_files = list(self.project_path.rglob("*.py"))
-        
+
         # Benchmark parsing performance
         parsing_times = []
         total_functions = 0
         total_classes = 0
         total_symbols = 0
-        
+
         print(f"Parsing {len(python_files)} Python files...")
-        
+
         for i, file_path in enumerate(python_files):
             start_time = time.time()
-            
+
             # Parse file
             ast = parser.parse_file(str(file_path), "python")
-            
+
             if ast:
                 # Extract information
                 functions = parser.get_function_definitions(ast, str(file_path))
                 classes = parser.get_class_definitions(ast, str(file_path))
                 symbols = parser.extract_symbols(ast, str(file_path))
-                
+
                 total_functions += len(functions)
                 total_classes += len(classes)
                 total_symbols += len(symbols)
-            
+
             end_time = time.time()
             parsing_time = end_time - start_time
             parsing_times.append(parsing_time)
-            
+
             if i % 10 == 0:
-                print(f"  Parsed {i+1}/{len(python_files)} files")
-        
+                print(f"  Parsed {i + 1}/{len(python_files)} files")
+
         # Calculate statistics
         total_parsing_time = sum(parsing_times)
         avg_parsing_time = statistics.mean(parsing_times)
         median_parsing_time = statistics.median(parsing_times)
         max_parsing_time = max(parsing_times)
-        
+
         files_per_second = len(python_files) / total_parsing_time
         lines_per_second = project_stats["total_lines"] / total_parsing_time
-        
+
         print(f"\n=== Tree-sitter Performance Results ===")
         print(f"Total parsing time: {total_parsing_time:.3f}s")
         print(f"Average time per file: {avg_parsing_time:.3f}s")
@@ -1015,118 +1043,132 @@ class {class_name}Processor:
         print(f"Functions found: {total_functions}")
         print(f"Classes found: {total_classes}")
         print(f"Symbols found: {total_symbols}")
-        
+
         # Performance assertions
-        assert avg_parsing_time < 0.1, f"Average parsing too slow: {avg_parsing_time:.3f}s"
-        assert max_parsing_time < 0.5, f"Slowest parsing too slow: {max_parsing_time:.3f}s"
-        assert files_per_second > 20, f"File processing too slow: {files_per_second:.1f} files/s"
-        assert lines_per_second > 5000, f"Line processing too slow: {lines_per_second:.0f} lines/s"
-        
+        assert avg_parsing_time < 0.1, (
+            f"Average parsing too slow: {avg_parsing_time:.3f}s"
+        )
+        assert max_parsing_time < 0.5, (
+            f"Slowest parsing too slow: {max_parsing_time:.3f}s"
+        )
+        assert files_per_second > 20, (
+            f"File processing too slow: {files_per_second:.1f} files/s"
+        )
+        assert lines_per_second > 5000, (
+            f"Line processing too slow: {lines_per_second:.0f} lines/s"
+        )
+
         # Verify extraction quality
-        assert total_functions > 50, f"Should find many functions, found {total_functions}"
+        assert total_functions > 50, (
+            f"Should find many functions, found {total_functions}"
+        )
         assert total_classes > 20, f"Should find many classes, found {total_classes}"
         assert total_symbols > 100, f"Should find many symbols, found {total_symbols}"
-        
+
         print("✓ Tree-sitter parsing performance test passed!")
-    
+
     def test_vector_database_performance(self):
         """Benchmark vector database operations."""
         print("\n=== Testing Vector Database Performance ===")
-        
+
         # Create project and generate embeddings
         project_stats = self.create_benchmark_project(25, 400)
-        
+
         engine = IndexingEngine(str(self.project_path))
         result = engine.build_index()
         assert result.success
-        
+
         vector_db = engine.vector_db
-        
+
         # Test embedding storage performance
         print("Testing embedding storage performance...")
-        
+
         # Generate test chunks for storage benchmark
         test_chunks = []
         for i in range(100):
             test_chunks.append(f"def test_function_{i}():\n    return {i} * 2")
-        
+
         start_time = time.time()
         chunk_ids = vector_db.store_embeddings(test_chunks)
         storage_time = time.time() - start_time
-        
+
         embeddings_per_second = len(test_chunks) / storage_time
-        
+
         print(f"Storage performance: {embeddings_per_second:.1f} embeddings/second")
-        assert embeddings_per_second > 10, f"Storage too slow: {embeddings_per_second:.1f} emb/s"
-        
+        assert embeddings_per_second > 10, (
+            f"Storage too slow: {embeddings_per_second:.1f} emb/s"
+        )
+
         # Test query performance with different result sizes
         query_sizes = [5, 10, 20, 50]
         query_performance = {}
-        
+
         test_queries = [
             "function definition with parameters",
             "class method implementation",
             "error handling code",
-            "data processing logic"
+            "data processing logic",
         ]
-        
+
         for size in query_sizes:
             print(f"Testing queries with {size} results...")
-            
+
             query_times = []
             for query in test_queries:
                 start_time = time.time()
                 matches = vector_db.query_similar(query, k=size)
                 end_time = time.time()
-                
+
                 query_times.append(end_time - start_time)
-            
+
             avg_time = statistics.mean(query_times)
             query_performance[size] = avg_time
-            
+
             print(f"  Average query time: {avg_time:.3f}s")
             assert avg_time < 1.0, f"Query too slow for size {size}: {avg_time:.3f}s"
-        
+
         # Test batch query performance
         print("Testing batch query performance...")
-        
+
         start_time = time.time()
         batch_results = []
         for query in test_queries:
             matches = vector_db.query_similar(query, k=10)
             batch_results.append(len(matches))
         batch_time = time.time() - start_time
-        
+
         queries_per_second = len(test_queries) / batch_time
-        
+
         print(f"Batch query performance: {queries_per_second:.1f} queries/second")
-        assert queries_per_second > 5, f"Batch queries too slow: {queries_per_second:.1f} q/s"
-        
+        assert queries_per_second > 5, (
+            f"Batch queries too slow: {queries_per_second:.1f} q/s"
+        )
+
         # Verify query scaling
         print(f"\n=== Vector DB Performance Summary ===")
         print(f"Storage: {embeddings_per_second:.1f} embeddings/second")
         print(f"Batch queries: {queries_per_second:.1f} queries/second")
-        
+
         for size, time_taken in query_performance.items():
             print(f"Query size {size}: {time_taken:.3f}s average")
-        
+
         # Check that query time doesn't scale linearly with result size
         small_time = query_performance[5]
         large_time = query_performance[50]
         scaling_factor = large_time / small_time
-        
+
         print(f"Query scaling factor (50x vs 5x): {scaling_factor:.2f}")
         assert scaling_factor < 5, f"Query scaling too poor: {scaling_factor:.2f}x"
-        
+
         print("✓ Vector database performance test passed!")
 
 
 if __name__ == "__main__":
     # Run the benchmarks manually for debugging
     test_instance = TestPerformanceBenchmarks()
-    
+
     print("Running performance benchmarks...")
-    
+
     test_instance.setup_method()
     try:
         # Run individual benchmarks
@@ -1136,9 +1178,9 @@ if __name__ == "__main__":
         test_instance.test_memory_usage_optimization()
         test_instance.test_tree_sitter_parsing_performance()
         test_instance.test_vector_database_performance()
-        
+
         print("\n✅ All performance benchmarks passed!")
-        
+
     except Exception as e:
         print(f"\n❌ Benchmark failed: {e}")
         raise

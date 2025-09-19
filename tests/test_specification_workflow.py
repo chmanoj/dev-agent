@@ -40,7 +40,7 @@ class TestSpecificationWorkflow:
             supporting_files=["models/user.py"],
             supporting_functions=["create_user", "update_user"],
             confidence=0.8,
-            code_examples=[]
+            code_examples=[],
         )
 
         analysis = SpecificationAnalysis(
@@ -51,7 +51,7 @@ class TestSpecificationWorkflow:
             requirement_evidence=[evidence],
             technology_constraints=["Python 3.x"],
             external_dependencies=["flask"],
-            confidence_score=0.8
+            confidence_score=0.8,
         )
 
         analyzer.analyze_for_specification.return_value = analysis
@@ -70,7 +70,7 @@ class TestSpecificationWorkflow:
         return SpecificationWorkflow(
             cli_interface=mock_cli,
             codebase_analyzer=mock_analyzer,
-            state_manager=mock_state_manager
+            state_manager=mock_state_manager,
         )
 
     @pytest.fixture
@@ -79,10 +79,12 @@ class TestSpecificationWorkflow:
         return SpecificationWorkflow(
             cli_interface=mock_cli,
             codebase_analyzer=None,
-            state_manager=mock_state_manager
+            state_manager=mock_state_manager,
         )
 
-    def test_execute_specification_phase_existing_code(self, workflow, mock_cli, mock_analyzer):
+    def test_execute_specification_phase_existing_code(
+        self, workflow, mock_cli, mock_analyzer
+    ):
         """Test executing specification phase with existing code."""
         project_path = "/test/project"
 
@@ -93,16 +95,22 @@ class TestSpecificationWorkflow:
         mock_analyzer.analyze_for_specification.assert_called_once()
 
         # Verify CLI messages
-        mock_cli.display_message.assert_any_call("Starting specification generation phase...")
+        mock_cli.display_message.assert_any_call(
+            "Starting specification generation phase..."
+        )
         mock_cli.display_message.assert_any_call("Analyzing existing codebase...")
-        mock_cli.display_message.assert_any_call("Specification phase completed successfully!")
+        mock_cli.display_message.assert_any_call(
+            "Specification phase completed successfully!"
+        )
 
         # Verify specification properties
         assert isinstance(spec, SpecificationDocument)
         assert spec.source == SpecificationSource.EXISTING_CODE
         assert spec.approved is True
 
-    def test_execute_specification_phase_new_project(self, workflow_no_analyzer, mock_cli):
+    def test_execute_specification_phase_new_project(
+        self, workflow_no_analyzer, mock_cli
+    ):
         """Test executing specification phase for new project."""
         project_path = "/test/project"
 
@@ -110,18 +118,24 @@ class TestSpecificationWorkflow:
         mock_cli.get_user_input.side_effect = [
             "Create user accounts",
             "Manage user profiles",
-            ""  # Empty to stop
+            "",  # Empty to stop
         ]
 
-        with patch.object(workflow_no_analyzer, "_has_existing_code", return_value=False):
+        with patch.object(
+            workflow_no_analyzer, "_has_existing_code", return_value=False
+        ):
             spec = workflow_no_analyzer.execute_specification_phase(project_path)
 
         # Verify CLI messages
-        mock_cli.display_message.assert_any_call("Starting specification generation phase...")
+        mock_cli.display_message.assert_any_call(
+            "Starting specification generation phase..."
+        )
         mock_cli.display_message.assert_any_call(
             "No existing codebase detected. Let's create a specification from your requirements."
         )
-        mock_cli.display_message.assert_any_call("Specification phase completed successfully!")
+        mock_cli.display_message.assert_any_call(
+            "Specification phase completed successfully!"
+        )
 
         # Verify specification properties
         assert isinstance(spec, SpecificationDocument)
@@ -137,7 +151,7 @@ class TestSpecificationWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=False
+            approved=False,
         )
 
         # Mock immediate approval with side effect to update spec
@@ -161,7 +175,7 @@ class TestSpecificationWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=False
+            approved=False,
         )
 
         # Mock approval sequence: reject first, approve second
@@ -176,7 +190,9 @@ class TestSpecificationWorkflow:
                 spec_doc.approved = True  # Second call approves
                 return True
 
-        workflow.generator.request_user_approval = Mock(side_effect=mock_approval_sequence)
+        workflow.generator.request_user_approval = Mock(
+            side_effect=mock_approval_sequence
+        )
         mock_cli.get_user_input.return_value = "Add more security features"
 
         result_spec = workflow._approval_workflow(spec)
@@ -185,7 +201,9 @@ class TestSpecificationWorkflow:
         mock_cli.get_user_input.assert_called_once_with(
             "Please provide feedback for improving the specification: "
         )
-        mock_cli.display_message.assert_any_call("Refining specification based on your feedback...")
+        mock_cli.display_message.assert_any_call(
+            "Refining specification based on your feedback..."
+        )
         mock_cli.display_message.assert_any_call("Specification approved!")
 
         assert result_spec.approved is True
@@ -200,7 +218,7 @@ class TestSpecificationWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=False
+            approved=False,
         )
 
         # Mock always rejecting approval
@@ -225,7 +243,7 @@ class TestSpecificationWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=False
+            approved=False,
         )
 
         # Mock rejection then empty feedback
@@ -234,7 +252,9 @@ class TestSpecificationWorkflow:
 
         result_spec = workflow._approval_workflow(spec)
 
-        mock_cli.display_message.assert_any_call("No feedback provided. Using current specification.")
+        mock_cli.display_message.assert_any_call(
+            "No feedback provided. Using current specification."
+        )
         assert result_spec.approved is True
 
     def test_has_existing_code_with_python_files(self, workflow):
@@ -281,14 +301,16 @@ class TestSpecificationWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         workflow._save_specification(spec)
 
         # Verify state manager was called
         mock_state_manager.save_document.assert_called_once()
-        mock_cli.display_message.assert_any_call("Specification saved to SPECIFICATION.md")
+        mock_cli.display_message.assert_any_call(
+            "Specification saved to SPECIFICATION.md"
+        )
 
     def test_save_specification_error(self, workflow, mock_state_manager, mock_cli):
         """Test specification saving with error."""
@@ -298,7 +320,7 @@ class TestSpecificationWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         # Mock save error
@@ -306,7 +328,9 @@ class TestSpecificationWorkflow:
 
         workflow._save_specification(spec)
 
-        mock_cli.display_message.assert_any_call("Warning: Could not save specification: Save failed")
+        mock_cli.display_message.assert_any_call(
+            "Warning: Could not save specification: Save failed"
+        )
 
     def test_generate_from_existing_code(self, workflow, mock_cli, mock_analyzer):
         """Test generating specification from existing code."""
@@ -330,7 +354,7 @@ class TestSpecificationWorkflow:
         # Mock user input
         mock_cli.get_user_input.side_effect = [
             "Create user system",
-            ""  # Empty to stop
+            "",  # Empty to stop
         ]
 
         spec = workflow._generate_from_user_input()
@@ -356,13 +380,11 @@ class TestSpecificationWorkflowResult:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         result = SpecificationWorkflowResult(
-            specification=spec,
-            success=True,
-            message="Completed successfully"
+            specification=spec, success=True, message="Completed successfully"
         )
 
         assert result.specification == spec
@@ -390,7 +412,7 @@ class TestSpecificationWorkflowIntegration:
             "Users can create accounts",
             "Users can login securely",
             "Users can manage profiles",
-            ""  # Empty to stop
+            "",  # Empty to stop
         ]
 
         with patch.object(real_workflow, "_has_existing_code", return_value=False):
@@ -429,7 +451,9 @@ class TestSpecificationWorkflowIntegration:
                 spec_doc.approved = True  # Second call approves
                 return True
 
-        real_workflow.generator.request_user_approval = Mock(side_effect=mock_approval_sequence)
+        real_workflow.generator.request_user_approval = Mock(
+            side_effect=mock_approval_sequence
+        )
 
         with patch.object(real_workflow, "_has_existing_code", return_value=False):
             spec = real_workflow.execute_specification_phase("/test/project")

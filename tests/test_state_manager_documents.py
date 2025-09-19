@@ -50,7 +50,7 @@ class TestStateManagerDocuments(unittest.TestCase):
             started_at=datetime(2024, 1, 1, 10, 0, 0),
             last_activity=datetime(2024, 1, 1, 11, 0, 0),
             user_approvals={"specification": True},
-            pending_approvals=["design"]
+            pending_approvals=["design"],
         )
 
         # Create sample index metadata
@@ -60,12 +60,13 @@ class TestStateManagerDocuments(unittest.TestCase):
             languages_detected=["python", "javascript"],
             index_size_mb=2.5,
             last_indexed=datetime(2024, 1, 1, 9, 0, 0),
-            index_version="1.0.0"
+            index_version="1.0.0",
         )
 
     def tearDown(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir)
 
     def test_specification_document_persistence(self):
@@ -74,7 +75,7 @@ class TestStateManagerDocuments(unittest.TestCase):
         code_analysis = CodeAnalysisRef(
             file_paths=["src/main.py", "src/utils.py"],
             functions=["main", "process_data", "validate_input"],
-            confidence_score=0.85
+            confidence_score=0.85,
         )
 
         requirement1 = Requirement(
@@ -83,10 +84,10 @@ class TestStateManagerDocuments(unittest.TestCase):
             acceptance_criteria=[
                 "WHEN I save state THEN it SHALL persist to disk",
                 "WHEN I load state THEN it SHALL restore all data",
-                "IF state file is corrupted THEN system SHALL handle gracefully"
+                "IF state file is corrupted THEN system SHALL handle gracefully",
             ],
             priority=Priority.HIGH,
-            source_analysis=code_analysis
+            source_analysis=code_analysis,
         )
 
         requirement2 = Requirement(
@@ -94,10 +95,10 @@ class TestStateManagerDocuments(unittest.TestCase):
             user_story="As a user, I want to track task progress so that I know what's completed",
             acceptance_criteria=[
                 "WHEN task status changes THEN it SHALL be persisted",
-                "WHEN I query progress THEN it SHALL return current status"
+                "WHEN I query progress THEN it SHALL return current status",
             ],
             priority=Priority.MEDIUM,
-            source_analysis=None
+            source_analysis=None,
         )
 
         spec = SpecificationDocument(
@@ -106,13 +107,13 @@ class TestStateManagerDocuments(unittest.TestCase):
                 "JSON-based persistence",
                 "Document storage",
                 "Task progress tracking",
-                "Session management"
+                "Session management",
             ],
             functional_requirements=[requirement1, requirement2],
             source=SpecificationSource.USER_INPUT,
             version="1.0.0",
             approved=True,
-            approval_timestamp=datetime(2024, 1, 1, 12, 0, 0)
+            approval_timestamp=datetime(2024, 1, 1, 12, 0, 0),
         )
 
         # Create project state with specification
@@ -127,7 +128,7 @@ class TestStateManagerDocuments(unittest.TestCase):
             index_metadata=self.sample_index_metadata,
             session_data=self.sample_session_data,
             created_at=datetime(2024, 1, 1, 9, 0, 0),
-            updated_at=datetime(2024, 1, 1, 11, 0, 0)
+            updated_at=datetime(2024, 1, 1, 11, 0, 0),
         )
 
         # Save and load
@@ -166,21 +167,26 @@ class TestStateManagerDocuments(unittest.TestCase):
         architecture = ArchitectureDescription(
             overview="Layered architecture with clear separation of concerns",
             patterns=["Repository Pattern", "Factory Pattern", "Observer Pattern"],
-            components=["StateManager", "DocumentStore", "TaskTracker", "SessionManager"]
+            components=[
+                "StateManager",
+                "DocumentStore",
+                "TaskTracker",
+                "SessionManager",
+            ],
         )
 
         component1 = ComponentSpec(
             name="StateManager",
             description="Core component for managing project state persistence",
             interfaces=["IStateManager", "IDocumentStore"],
-            dependencies=["FileSystem", "JSONSerializer"]
+            dependencies=["FileSystem", "JSONSerializer"],
         )
 
         component2 = ComponentSpec(
             name="TaskTracker",
             description="Tracks implementation task progress and status",
             interfaces=["ITaskTracker"],
-            dependencies=["StateManager"]
+            dependencies=["StateManager"],
         )
 
         data_model1 = DataModel(
@@ -189,9 +195,9 @@ class TestStateManagerDocuments(unittest.TestCase):
                 "project_path": "str",
                 "current_phase": "PhaseType",
                 "indexing_complete": "bool",
-                "created_at": "datetime"
+                "created_at": "datetime",
             },
-            relationships=["has_one_specification", "has_one_design", "has_many_tasks"]
+            relationships=["has_one_specification", "has_one_design", "has_many_tasks"],
         )
 
         data_model2 = DataModel(
@@ -200,9 +206,9 @@ class TestStateManagerDocuments(unittest.TestCase):
                 "id": "str",
                 "title": "str",
                 "status": "TaskStatus",
-                "requirements_refs": "List[str]"
+                "requirements_refs": "List[str]",
             },
-            relationships=["belongs_to_project_state"]
+            relationships=["belongs_to_project_state"],
         )
 
         interface1 = InterfaceSpec(
@@ -210,36 +216,41 @@ class TestStateManagerDocuments(unittest.TestCase):
             methods=[
                 "save_project_state(state: ProjectState) -> bool",
                 "load_project_state() -> Optional[ProjectState]",
-                "update_phase_status(phase: PhaseType, status: str) -> bool"
+                "update_phase_status(phase: PhaseType, status: str) -> bool",
             ],
-            description="Interface for project state management operations"
+            description="Interface for project state management operations",
         )
 
         interface2 = InterfaceSpec(
             name="IDocumentStore",
             methods=[
                 "save_document(content: str, doc_type: DocumentType) -> bool",
-                "load_document(doc_type: DocumentType) -> Optional[str]"
+                "load_document(doc_type: DocumentType) -> Optional[str]",
             ],
-            description="Interface for document storage operations"
+            description="Interface for document storage operations",
         )
 
         error_handling = ErrorHandlingStrategy(
-            error_categories=["IOError", "JSONDecodeError", "ValidationError", "PermissionError"],
+            error_categories=[
+                "IOError",
+                "JSONDecodeError",
+                "ValidationError",
+                "PermissionError",
+            ],
             recovery_mechanisms=[
                 "Graceful degradation with partial state",
                 "Automatic backup and restore",
                 "User notification with recovery options",
-                "Fallback to read-only mode"
+                "Fallback to read-only mode",
             ],
-            logging_strategy="Structured logging with error categorization and context"
+            logging_strategy="Structured logging with error categorization and context",
         )
 
         testing_strategy = TestingStrategy(
             unit_testing="pytest with comprehensive test coverage for all components",
             integration_testing="End-to-end testing with temporary file systems",
             performance_testing="Load testing with large state files and many documents",
-            test_coverage_target=95.0
+            test_coverage_target=95.0,
         )
 
         design = DesignDocument(
@@ -251,7 +262,7 @@ class TestStateManagerDocuments(unittest.TestCase):
             error_handling=error_handling,
             testing_strategy=testing_strategy,
             version="1.0.0",
-            approved=True
+            approved=True,
         )
 
         # Create project state with design
@@ -266,7 +277,7 @@ class TestStateManagerDocuments(unittest.TestCase):
             index_metadata=self.sample_index_metadata,
             session_data=self.sample_session_data,
             created_at=datetime(2024, 1, 1, 9, 0, 0),
-            updated_at=datetime(2024, 1, 1, 11, 0, 0)
+            updated_at=datetime(2024, 1, 1, 11, 0, 0),
         )
 
         # Save and load
@@ -331,7 +342,10 @@ class TestStateManagerDocuments(unittest.TestCase):
             target_language="python",
             context_requirements=["existing_file_patterns", "json_serialization"],
             implementation_notes="Use dataclasses for type safety and pathlib for file operations",
-            generated_files=["dev_agent/state/state_manager.py", "tests/test_state_manager.py"]
+            generated_files=[
+                "dev_agent/state/state_manager.py",
+                "tests/test_state_manager.py",
+            ],
         )
 
         task2 = Task(
@@ -344,7 +358,7 @@ class TestStateManagerDocuments(unittest.TestCase):
             target_language="python",
             context_requirements=["markdown_handling"],
             implementation_notes="Store documents in .dev_agent/documents/ directory",
-            generated_files=[]
+            generated_files=[],
         )
 
         task3 = Task(
@@ -357,22 +371,18 @@ class TestStateManagerDocuments(unittest.TestCase):
             target_language="python",
             context_requirements=["testing_patterns", "mock_objects"],
             implementation_notes="Use pytest and temporary directories for testing",
-            generated_files=[]
+            generated_files=[],
         )
 
         task_list = TaskList(
             tasks=[task1, task2, task3],
             dependencies={
                 "TASK-002": ["TASK-001"],
-                "TASK-003": ["TASK-001", "TASK-002"]
+                "TASK-003": ["TASK-001", "TASK-002"],
             },
-            estimated_effort={
-                "TASK-001": 8,
-                "TASK-002": 4,
-                "TASK-003": 6
-            },
+            estimated_effort={"TASK-001": 8, "TASK-002": 4, "TASK-003": 6},
             version="1.0.0",
-            approved=True
+            approved=True,
         )
 
         # Create project state with tasks
@@ -386,12 +396,12 @@ class TestStateManagerDocuments(unittest.TestCase):
             implementation_progress={
                 "TASK-001": TaskStatus.COMPLETED,
                 "TASK-002": TaskStatus.IN_PROGRESS,
-                "TASK-003": TaskStatus.NOT_STARTED
+                "TASK-003": TaskStatus.NOT_STARTED,
             },
             index_metadata=self.sample_index_metadata,
             session_data=self.sample_session_data,
             created_at=datetime(2024, 1, 1, 9, 0, 0),
-            updated_at=datetime(2024, 1, 1, 11, 0, 0)
+            updated_at=datetime(2024, 1, 1, 11, 0, 0),
         )
 
         # Save and load
@@ -437,9 +447,15 @@ class TestStateManagerDocuments(unittest.TestCase):
 
         # Verify implementation progress
         self.assertEqual(len(loaded_state.implementation_progress), 3)
-        self.assertEqual(loaded_state.implementation_progress["TASK-001"], TaskStatus.COMPLETED)
-        self.assertEqual(loaded_state.implementation_progress["TASK-002"], TaskStatus.IN_PROGRESS)
-        self.assertEqual(loaded_state.implementation_progress["TASK-003"], TaskStatus.NOT_STARTED)
+        self.assertEqual(
+            loaded_state.implementation_progress["TASK-001"], TaskStatus.COMPLETED
+        )
+        self.assertEqual(
+            loaded_state.implementation_progress["TASK-002"], TaskStatus.IN_PROGRESS
+        )
+        self.assertEqual(
+            loaded_state.implementation_progress["TASK-003"], TaskStatus.NOT_STARTED
+        )
 
 
 if __name__ == "__main__":

@@ -76,7 +76,9 @@ class TestInteractiveCLI(unittest.TestCase):
 
     def test_handle_user_input_status_command(self):
         """Test handling status command."""
-        self.mock_workflow_manager.get_current_phase.return_value = PhaseType.SPECIFICATION
+        self.mock_workflow_manager.get_current_phase.return_value = (
+            PhaseType.SPECIFICATION
+        )
 
         result = self.cli.handle_user_input("status")
         self.assertIn("specification", result)
@@ -149,7 +151,9 @@ class TestInteractiveCLI(unittest.TestCase):
                 self.cli.init_command(temp_dir)
 
                 # Should call resume_project on workflow manager
-                self.mock_workflow_manager.resume_project.assert_called_once_with(temp_dir)
+                self.mock_workflow_manager.resume_project.assert_called_once_with(
+                    temp_dir
+                )
                 mock_display.assert_called()
 
     def test_init_command_new_project(self):
@@ -160,11 +164,17 @@ class TestInteractiveCLI(unittest.TestCase):
 
                 # Should create directory structure
                 self.assertTrue(os.path.exists(os.path.join(temp_dir, ".dev_agent")))
-                self.assertTrue(os.path.exists(os.path.join(temp_dir, ".dev_agent", "documents")))
-                self.assertTrue(os.path.exists(os.path.join(temp_dir, ".dev_agent", "index")))
+                self.assertTrue(
+                    os.path.exists(os.path.join(temp_dir, ".dev_agent", "documents"))
+                )
+                self.assertTrue(
+                    os.path.exists(os.path.join(temp_dir, ".dev_agent", "index"))
+                )
 
                 # Should call start_new_project on workflow manager
-                self.mock_workflow_manager.start_new_project.assert_called_once_with(temp_dir)
+                self.mock_workflow_manager.start_new_project.assert_called_once_with(
+                    temp_dir
+                )
                 mock_display.assert_called()
 
     @patch("builtins.print")

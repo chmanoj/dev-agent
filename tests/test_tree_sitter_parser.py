@@ -22,6 +22,7 @@ class TestTreeSitterParser(unittest.TestCase):
         """Clean up test fixtures."""
         # Clean up temporary files
         import shutil
+
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 

@@ -18,6 +18,7 @@ class TestCodeChunker:
     def teardown_method(self):
         """Clean up test environment."""
         import shutil
+
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
@@ -165,7 +166,7 @@ if __name__ == "__main__":
                 docstring="Add two numbers",
                 file_path="test.py",
                 start_line=1,
-                end_line=3
+                end_line=3,
             ),
             "test.py:multiply": FunctionDef(
                 name="multiply",
@@ -174,8 +175,8 @@ if __name__ == "__main__":
                 docstring="Multiply two numbers",
                 file_path="test.py",
                 start_line=5,
-                end_line=7
-            )
+                end_line=7,
+            ),
         }
 
         classes = {
@@ -187,7 +188,7 @@ if __name__ == "__main__":
                 docstring="A calculator class",
                 file_path="test.py",
                 start_line=9,
-                end_line=15
+                end_line=15,
             )
         }
 
@@ -196,7 +197,7 @@ if __name__ == "__main__":
             classes=classes,
             imports=[],
             symbols={},
-            file_metadata={}
+            file_metadata={},
         )
 
         # Create test file
@@ -235,15 +236,17 @@ class Calculator:
         # Create content larger than max_chunk_size
         large_content = "# This is a large file\n" + "print('line')\n" * 100
 
-        chunks = self.chunker._chunk_by_sliding_window(large_content, "large.py", "python")
+        chunks = self.chunker._chunk_by_sliding_window(
+            large_content, "large.py", "python"
+        )
 
         assert len(chunks) > 1  # Should be split into multiple chunks
 
         # Check overlap between consecutive chunks
         if len(chunks) > 1:
             # There should be some overlap in content
-            first_chunk_end = chunks[0].content[-self.chunker.overlap_size:]
-            second_chunk_start = chunks[1].content[:self.chunker.overlap_size]
+            first_chunk_end = chunks[0].content[-self.chunker.overlap_size :]
+            second_chunk_start = chunks[1].content[: self.chunker.overlap_size]
             # Note: Exact overlap checking is complex due to line boundaries
             assert len(first_chunk_end) > 0
             assert len(second_chunk_start) > 0
@@ -251,12 +254,18 @@ class Calculator:
     def test_large_function_splitting(self):
         """Test splitting large functions into smaller chunks."""
         # Create a large function
-        large_function = '''def large_function():
+        large_function = (
+            '''def large_function():
     """This is a very large function."""
-    ''' + "\n    ".join([f'print("line {i}")' for i in range(50)]) + '''
+    '''
+            + "\n    ".join([f'print("line {i}")' for i in range(50)])
+            + '''
     return "done"'''
+        )
 
-        chunks = self.chunker._split_large_function(large_function, "test.py", 1, "python")
+        chunks = self.chunker._split_large_function(
+            large_function, "test.py", 1, "python"
+        )
 
         # Should split into multiple chunks if content is large enough
         if len(large_function) > self.chunker.max_chunk_size:
@@ -275,7 +284,7 @@ class Calculator:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="def small2(): pass",
@@ -283,7 +292,7 @@ class Calculator:
                 start_line=2,
                 end_line=2,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="def small1(): pass",  # Duplicate
@@ -291,7 +300,7 @@ class Calculator:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="function"
+                chunk_type="function",
             ),
             CodeChunk(
                 content="class LargeClass(): pass",
@@ -299,8 +308,8 @@ class Calculator:
                 start_line=1,
                 end_line=1,
                 language="python",
-                chunk_type="class"
-            )
+                chunk_type="class",
+            ),
         ]
 
         optimized = self.chunker.optimize_chunks(chunks)
@@ -344,7 +353,9 @@ class Calculator:
         empty_chunks = self.chunker.chunk_content("", "empty.py", "python")
         assert len(empty_chunks) >= 0  # Should handle gracefully
 
-        whitespace_chunks = self.chunker.chunk_content("   \n\n   ", "whitespace.py", "python")
+        whitespace_chunks = self.chunker.chunk_content(
+            "   \n\n   ", "whitespace.py", "python"
+        )
         assert len(whitespace_chunks) >= 0  # Should handle gracefully
 
     def test_nonexistent_file(self):
@@ -359,7 +370,11 @@ class Calculator:
         chunks = self.chunker.chunk_content(content, "test.py", "python")
 
         # Most chunks should be within size limits
-        oversized_chunks = [c for c in chunks if len(c.content) > self.chunker.max_chunk_size * 1.1]
+        oversized_chunks = [
+            c for c in chunks if len(c.content) > self.chunker.max_chunk_size * 1.1
+        ]
 
         # Allow some flexibility for chunks that can't be split nicely
-        assert len(oversized_chunks) <= len(chunks) * 0.2  # At most 20% can be oversized
+        assert (
+            len(oversized_chunks) <= len(chunks) * 0.2
+        )  # At most 20% can be oversized

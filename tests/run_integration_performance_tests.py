@@ -14,7 +14,7 @@ class IntegrationPerformanceTestRunner:
 
     def __init__(self, verbose: bool = False):
         """Initialize test runner.
-        
+
         Args:
             verbose: Enable verbose output
         """
@@ -25,7 +25,7 @@ class IntegrationPerformanceTestRunner:
 
     def run_all_tests(self) -> dict[str, Any]:
         """Run all integration and performance tests.
-        
+
         Returns:
             Dictionary with test results
         """
@@ -44,9 +44,9 @@ class IntegrationPerformanceTestRunner:
         results = {}
 
         for category_name, test_file in test_categories:
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Running {category_name}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             result = self._run_test_file(test_file)
             results[category_name] = result
@@ -65,10 +65,10 @@ class IntegrationPerformanceTestRunner:
 
     def run_specific_tests(self, test_names: list[str]) -> dict[str, Any]:
         """Run specific test categories.
-        
+
         Args:
             test_names: List of test category names to run
-            
+
         Returns:
             Dictionary with test results
         """
@@ -92,9 +92,9 @@ class IntegrationPerformanceTestRunner:
                 continue
 
             test_file = test_mapping[test_name]
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Running {test_name}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             result = self._run_test_file(test_file)
             results[test_name] = result
@@ -111,7 +111,7 @@ class IntegrationPerformanceTestRunner:
 
     def run_quick_tests(self) -> dict[str, Any]:
         """Run a quick subset of tests for CI/development.
-        
+
         Returns:
             Dictionary with test results
         """
@@ -120,16 +120,24 @@ class IntegrationPerformanceTestRunner:
 
         # Quick test subset - smaller, faster tests
         quick_tests = [
-            ("Quick Performance", "test_indexing_engine_performance.py", ["test_small_codebase_performance"]),
-            ("Basic Workflow", "test_workflow_orchestration.py", ["test_complete_workflow_integration"]),
+            (
+                "Quick Performance",
+                "test_indexing_engine_performance.py",
+                ["test_small_codebase_performance"],
+            ),
+            (
+                "Basic Workflow",
+                "test_workflow_orchestration.py",
+                ["test_complete_workflow_integration"],
+            ),
         ]
 
         results = {}
 
         for category_name, test_file, specific_tests in quick_tests:
-            print(f"\n{'='*40}")
+            print(f"\n{'=' * 40}")
             print(f"Running {category_name}")
-            print(f"{'='*40}")
+            print(f"{'=' * 40}")
 
             result = self._run_specific_test_methods(test_file, specific_tests)
             results[category_name] = result
@@ -146,10 +154,10 @@ class IntegrationPerformanceTestRunner:
 
     def _run_test_file(self, test_file: str) -> dict[str, Any]:
         """Run a specific test file.
-        
+
         Args:
             test_file: Name of the test file to run
-            
+
         Returns:
             Dictionary with test result information
         """
@@ -160,7 +168,7 @@ class IntegrationPerformanceTestRunner:
                 "success": False,
                 "error": f"Test file not found: {test_file}",
                 "duration": 0,
-                "output": ""
+                "output": "",
             }
 
         start_time = time.time()
@@ -168,11 +176,13 @@ class IntegrationPerformanceTestRunner:
         try:
             # Run pytest on the specific file
             cmd = [
-                sys.executable, "-m", "pytest",
+                sys.executable,
+                "-m",
+                "pytest",
                 str(test_path),
                 "-v",
                 "--tb=short",
-                "--disable-warnings"
+                "--disable-warnings",
             ]
 
             if self.verbose:
@@ -180,9 +190,10 @@ class IntegrationPerformanceTestRunner:
 
             result = subprocess.run(
                 cmd,
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
                 text=True,
-                timeout=1800  # 30 minute timeout
+                timeout=1800,  # 30 minute timeout
             )
 
             duration = time.time() - start_time
@@ -192,7 +203,7 @@ class IntegrationPerformanceTestRunner:
                 "duration": duration,
                 "output": result.stdout,
                 "error": result.stderr if result.returncode != 0 else None,
-                "return_code": result.returncode
+                "return_code": result.returncode,
             }
 
         except subprocess.TimeoutExpired:
@@ -200,23 +211,25 @@ class IntegrationPerformanceTestRunner:
                 "success": False,
                 "error": "Test timed out after 30 minutes",
                 "duration": time.time() - start_time,
-                "output": ""
+                "output": "",
             }
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
                 "duration": time.time() - start_time,
-                "output": ""
+                "output": "",
             }
 
-    def _run_specific_test_methods(self, test_file: str, test_methods: list[str]) -> dict[str, Any]:
+    def _run_specific_test_methods(
+        self, test_file: str, test_methods: list[str]
+    ) -> dict[str, Any]:
         """Run specific test methods from a test file.
-        
+
         Args:
             test_file: Name of the test file
             test_methods: List of specific test method names
-            
+
         Returns:
             Dictionary with test result information
         """
@@ -227,7 +240,7 @@ class IntegrationPerformanceTestRunner:
                 "success": False,
                 "error": f"Test file not found: {test_file}",
                 "duration": 0,
-                "output": ""
+                "output": "",
             }
 
         start_time = time.time()
@@ -236,22 +249,21 @@ class IntegrationPerformanceTestRunner:
             # Run specific test methods
             test_specs = [f"{test_path}::{method}" for method in test_methods]
 
-            cmd = [
-                sys.executable, "-m", "pytest"
-            ] + test_specs + [
-                "-v",
-                "--tb=short",
-                "--disable-warnings"
-            ]
+            cmd = (
+                [sys.executable, "-m", "pytest"]
+                + test_specs
+                + ["-v", "--tb=short", "--disable-warnings"]
+            )
 
             if self.verbose:
                 cmd.append("-s")
 
             result = subprocess.run(
                 cmd,
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
                 text=True,
-                timeout=900  # 15 minute timeout for quick tests
+                timeout=900,  # 15 minute timeout for quick tests
             )
 
             duration = time.time() - start_time
@@ -261,7 +273,7 @@ class IntegrationPerformanceTestRunner:
                 "duration": duration,
                 "output": result.stdout,
                 "error": result.stderr if result.returncode != 0 else None,
-                "return_code": result.returncode
+                "return_code": result.returncode,
             }
 
         except subprocess.TimeoutExpired:
@@ -269,33 +281,39 @@ class IntegrationPerformanceTestRunner:
                 "success": False,
                 "error": "Test timed out",
                 "duration": time.time() - start_time,
-                "output": ""
+                "output": "",
             }
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
                 "duration": time.time() - start_time,
-                "output": ""
+                "output": "",
             }
 
     def _generate_summary(self) -> dict[str, Any]:
         """Generate test summary.
-        
+
         Returns:
             Dictionary with comprehensive test summary
         """
         if not self.test_results:
             return {"error": "No test results available"}
 
-        total_duration = self.end_time - self.start_time if self.end_time and self.start_time else 0
+        total_duration = (
+            self.end_time - self.start_time if self.end_time and self.start_time else 0
+        )
 
         # Calculate statistics
         total_tests = len(self.test_results)
-        passed_tests = sum(1 for result in self.test_results.values() if result["success"])
+        passed_tests = sum(
+            1 for result in self.test_results.values() if result["success"]
+        )
         failed_tests = total_tests - passed_tests
 
-        total_test_duration = sum(result["duration"] for result in self.test_results.values())
+        total_test_duration = sum(
+            result["duration"] for result in self.test_results.values()
+        )
         avg_test_duration = total_test_duration / total_tests if total_tests > 0 else 0
 
         # Generate summary
@@ -304,12 +322,14 @@ class IntegrationPerformanceTestRunner:
             "total_tests": total_tests,
             "passed_tests": passed_tests,
             "failed_tests": failed_tests,
-            "success_rate": (passed_tests / total_tests * 100) if total_tests > 0 else 0,
+            "success_rate": (passed_tests / total_tests * 100)
+            if total_tests > 0
+            else 0,
             "total_duration": total_duration,
             "total_test_duration": total_test_duration,
             "avg_test_duration": avg_test_duration,
             "test_results": self.test_results,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
         # Print summary
@@ -319,13 +339,13 @@ class IntegrationPerformanceTestRunner:
 
     def _print_summary(self, summary: dict[str, Any]) -> None:
         """Print test summary to console.
-        
+
         Args:
             summary: Test summary dictionary
         """
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("🏁 TEST SUMMARY")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         # Overall status
         if summary["overall_success"]:
@@ -354,11 +374,11 @@ class IntegrationPerformanceTestRunner:
                 print(f"      Error: {result['error']}")
 
         print(f"\n🕐 Completed at: {summary['timestamp']}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
     def save_results(self, output_file: str) -> None:
         """Save test results to file.
-        
+
         Args:
             output_file: Path to output file
         """
@@ -377,18 +397,13 @@ class IntegrationPerformanceTestRunner:
 
     def check_requirements(self) -> bool:
         """Check if all required dependencies are available.
-        
+
         Returns:
             True if all requirements are met
         """
         print("🔍 Checking test requirements...")
 
-        required_packages = [
-            "pytest",
-            "psutil",
-            "pandas",
-            "numpy"
-        ]
+        required_packages = ["pytest", "psutil", "pandas", "numpy"]
 
         missing_packages = []
 
@@ -411,36 +426,31 @@ class IntegrationPerformanceTestRunner:
 
 def main():
     """Main entry point for test runner."""
-    parser = argparse.ArgumentParser(description="Run integration and performance tests")
+    parser = argparse.ArgumentParser(
+        description="Run integration and performance tests"
+    )
 
     parser.add_argument(
         "--mode",
         choices=["all", "quick", "specific"],
         default="all",
-        help="Test mode to run"
+        help="Test mode to run",
     )
 
     parser.add_argument(
-        "--tests",
-        nargs="+",
-        help="Specific tests to run (for specific mode)"
+        "--tests", nargs="+", help="Specific tests to run (for specific mode)"
     )
 
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose output"
+        "--verbose", "-v", action="store_true", help="Enable verbose output"
     )
 
     parser.add_argument(
-        "--output", "-o",
-        help="Output file for test results (JSON format)"
+        "--output", "-o", help="Output file for test results (JSON format)"
     )
 
     parser.add_argument(
-        "--check-requirements",
-        action="store_true",
-        help="Check requirements and exit"
+        "--check-requirements", action="store_true", help="Check requirements and exit"
     )
 
     args = parser.parse_args()

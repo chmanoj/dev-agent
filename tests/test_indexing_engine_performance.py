@@ -25,9 +25,11 @@ class TestIndexingEnginePerformance:
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def create_large_python_project(self, num_files: int = 100, lines_per_file: int = 1000) -> None:
+    def create_large_python_project(
+        self, num_files: int = 100, lines_per_file: int = 1000
+    ) -> None:
         """Create a large Python project for testing.
-        
+
         Args:
             num_files: Number of Python files to create
             lines_per_file: Approximate lines of code per file
@@ -271,8 +273,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
             # Generate file content
             content = class_template.format(
-                module_name=module_name,
-                class_name=class_name
+                module_name=module_name, class_name=class_name
             )
 
             # Add extra content to reach target line count
@@ -334,6 +335,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # Track progress
         progress_updates = []
+
         def progress_callback(current, total, message):
             progress_updates.append((current, total, message))
 
@@ -354,7 +356,9 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # Verify progress tracking
         assert len(progress_updates) > 0
-        assert progress_updates[-1][0] == progress_updates[-1][1]  # Final progress should be complete
+        assert (
+            progress_updates[-1][0] == progress_updates[-1][1]
+        )  # Final progress should be complete
 
         print(f"Medium codebase indexed in {indexing_time:.2f} seconds")
         print(f"Functions: {len(result.ast_index.functions)}")
@@ -371,6 +375,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # Monitor memory usage (simplified)
         import psutil
+
         process = psutil.Process()
         initial_memory = process.memory_info().rss / 1024 / 1024  # MB
 
@@ -414,19 +419,21 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # Add many classes and functions
         for i in range(1000):
-            content_lines.extend([
-                f"class LargeClass{i}:",
-                f'    """Class {i} for testing."""',
-                "    ",
-                f"    def method_{i}(self):",
-                f'        """Method {i}."""',
-                f"        return {i}",
-                "    ",
-                f"def function_{i}():",
-                f'    """Function {i}."""',
-                f'    return "result_{i}"',
-                "",
-            ])
+            content_lines.extend(
+                [
+                    f"class LargeClass{i}:",
+                    f'    """Class {i} for testing."""',
+                    "    ",
+                    f"    def method_{i}(self):",
+                    f'        """Method {i}."""',
+                    f"        return {i}",
+                    "    ",
+                    f"def function_{i}():",
+                    f'    """Function {i}."""',
+                    f'    return "result_{i}"',
+                    "",
+                ]
+            )
 
         content = "\n".join(content_lines)
 
@@ -449,12 +456,15 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         # Verify large file was processed
         large_file_functions = [
-            func for func in result.ast_index.functions.values()
+            func
+            for func in result.ast_index.functions.values()
             if func.file_path == str(large_file)
         ]
         assert len(large_file_functions) > 500  # Should find many functions
 
-        print(f"Large file ({file_size / 1024 / 1024:.2f} MB) processed in {end_time - start_time:.2f} seconds")
+        print(
+            f"Large file ({file_size / 1024 / 1024:.2f} MB) processed in {end_time - start_time:.2f} seconds"
+        )
         print(f"Functions found: {len(large_file_functions)}")
 
     def test_parallel_processing_performance(self):
@@ -481,8 +491,12 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         assert result_sequential.success
 
         # Both should produce similar results
-        assert len(result_parallel.ast_index.functions) == len(result_sequential.ast_index.functions)
-        assert len(result_parallel.ast_index.classes) == len(result_sequential.ast_index.classes)
+        assert len(result_parallel.ast_index.functions) == len(
+            result_sequential.ast_index.functions
+        )
+        assert len(result_parallel.ast_index.classes) == len(
+            result_sequential.ast_index.classes
+        )
 
         # Parallel should be faster (or at least not significantly slower)
         # Note: For small codebases, parallel might be slower due to overhead
@@ -541,7 +555,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
             "function that processes data",
             "import statements",
             "error handling code",
-            "data validation logic"
+            "data validation logic",
         ]
 
         total_query_time = 0
@@ -556,7 +570,9 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
             # Each query should complete quickly
             assert query_time < 1.0  # Less than 1 second per query
 
-            print(f"Query '{query}': {len(matches)} matches in {query_time:.3f} seconds")
+            print(
+                f"Query '{query}': {len(matches)} matches in {query_time:.3f} seconds"
+            )
 
         avg_query_time = total_query_time / len(queries)
         print(f"Average query time: {avg_query_time:.3f} seconds")
@@ -583,7 +599,9 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         for file_path in modified_files:
             with open(file_path, "a") as f:
-                f.write('\n\ndef new_function():\n    """Newly added function."""\n    pass\n')
+                f.write(
+                    '\n\ndef new_function():\n    """Newly added function."""\n    pass\n'
+                )
 
         # Re-index (should detect changes)
         start_time = time.time()
@@ -593,7 +611,9 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         assert result2.success
 
         # Re-indexing should find the new functions
-        new_functions = len(result2.ast_index.functions) - len(result1.ast_index.functions)
+        new_functions = len(result2.ast_index.functions) - len(
+            result1.ast_index.functions
+        )
         assert new_functions >= 3  # At least one new function per modified file
 
         print(f"Initial indexing: {initial_time:.2f} seconds")

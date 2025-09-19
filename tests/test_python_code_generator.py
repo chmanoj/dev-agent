@@ -29,7 +29,7 @@ class TestPythonCodeGenerator:
             error_handling_patterns=[],
             testing_patterns=[],
             documentation_patterns=[],
-            overall_style={}
+            overall_style={},
         )
         self.generator = PythonCodeGenerator(self.mock_analyzer)
 
@@ -53,7 +53,7 @@ class TestPythonCodeGenerator:
             description="Create class UserManager with user management functionality",
             requirements_refs=["FR-1.1"],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         context = CodeContext(
@@ -64,7 +64,7 @@ class TestPythonCodeGenerator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         result = self.generator.generate_code_from_task(task, context)
@@ -84,7 +84,7 @@ class TestPythonCodeGenerator:
             description="Implement function validate_user to check user credentials",
             requirements_refs=["FR-2.1"],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         context = CodeContext(
@@ -95,7 +95,7 @@ class TestPythonCodeGenerator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         result = self.generator.generate_code_from_task(task, context)
@@ -113,7 +113,7 @@ class TestPythonCodeGenerator:
             description="Create abstract interface IUserRepository with CRUD operations",
             requirements_refs=["FR-3.1"],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         context = CodeContext(
@@ -124,7 +124,7 @@ class TestPythonCodeGenerator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         result = self.generator.generate_code_from_task(task, context)
@@ -142,7 +142,7 @@ class TestPythonCodeGenerator:
             description="Create dataclass User model with id, name, and status fields",
             requirements_refs=["FR-4.1"],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         context = CodeContext(
@@ -153,7 +153,7 @@ class TestPythonCodeGenerator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         result = self.generator.generate_code_from_task(task, context)
@@ -174,7 +174,7 @@ class TestPythonCodeGenerator:
             description="Create test cases for UserManager class methods",
             requirements_refs=["FR-5.1"],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         context = CodeContext(
@@ -185,7 +185,7 @@ class TestPythonCodeGenerator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         result = self.generator.generate_code_from_task(task, context)
@@ -212,7 +212,7 @@ class myClass:
                     description="Functions use snake_case",
                     examples=["def my_function():", "def process_data():"],
                     frequency=10,
-                    confidence=0.8
+                    confidence=0.8,
                 )
             ],
             structural_patterns=[],
@@ -220,13 +220,15 @@ class myClass:
             error_handling_patterns=[],
             testing_patterns=[],
             documentation_patterns=[],
-            overall_style={}
+            overall_style={},
         )
 
         result = self.generator.ensure_consistency(code, Mock())
 
         # Should apply naming conventions
-        assert "def my_function" in result or "MyFunction" in result  # Either converted or kept
+        assert (
+            "def my_function" in result or "MyFunction" in result
+        )  # Either converted or kept
 
     def test_generate_tests_pytest(self):
         """Test generating pytest tests."""
@@ -285,7 +287,7 @@ class Calculator:
             description="Create class for user data model",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
         context = CodeContext(
             task_id="1.1",
@@ -295,7 +297,7 @@ class Calculator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         file_path = self.generator._determine_file_path(task, context)
@@ -311,7 +313,7 @@ class Calculator:
             description="Create tests for user management",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
         context = CodeContext(
             task_id="2.1",
@@ -321,7 +323,7 @@ class Calculator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         file_path = self.generator._determine_file_path(task, context)
@@ -337,7 +339,7 @@ class Calculator:
             description="Process files and handle JSON data with timestamps",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
         context = CodeContext(
             task_id="1.1",
@@ -347,7 +349,7 @@ class Calculator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         imports = self.generator._generate_imports(task, context)
@@ -365,7 +367,7 @@ class Calculator:
             description="Implement class for user management",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         class_name = self.generator._extract_class_name(task)
@@ -379,7 +381,7 @@ class Calculator:
             description="Create function to validate user credentials",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         function_name = self.generator._extract_function_name(task)
@@ -393,7 +395,7 @@ class Calculator:
             description="Create user service implementation",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         result = self.generator._should_generate_tests(task)
@@ -407,7 +409,7 @@ class Calculator:
             description="Create tests for user service",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         result = self.generator._should_generate_tests(task)
@@ -438,7 +440,9 @@ class Calculator:
         class_element = next(e for e in elements if e["type"] == "class")
         assert class_element["name"] == "Calculator"
         assert "add" in class_element["methods"]
-        assert "_private_method" not in class_element["methods"]  # Private methods excluded
+        assert (
+            "_private_method" not in class_element["methods"]
+        )  # Private methods excluded
 
     def test_generate_with_similar_implementations(self):
         """Test generating code with similar implementations as context."""
@@ -448,7 +452,7 @@ class Calculator:
             description="Create class DataProcessor for data processing",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         similar_impl = ContextualCode(
@@ -461,7 +465,7 @@ class Calculator:
             file_path="example.py",
             relevance_score=0.8,
             context_type="similar_class",
-            explanation="Similar processor class"
+            explanation="Similar processor class",
         )
 
         context = CodeContext(
@@ -472,7 +476,7 @@ class Calculator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         result = self.generator.generate_code_from_task(task, context)
@@ -512,7 +516,7 @@ class Calculator:
             description="Create user model with id, name, description, and timestamp",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
         context = CodeContext(
             task_id="1.1",
@@ -522,7 +526,7 @@ class Calculator:
             suggested_patterns=[],
             dependencies=[],
             test_examples=[],
-            style_guidelines={}
+            style_guidelines={},
         )
 
         fields = self.generator._generate_model_fields(task, context)

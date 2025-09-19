@@ -50,59 +50,81 @@ class TestTaskGenerator:
                 name="UserService",
                 description="Handles user management operations",
                 interfaces=["IUserService"],
-                dependencies=["UserRepository", "AuthService"]
+                dependencies=["UserRepository", "AuthService"],
             ),
             ComponentSpec(
                 name="DataRepository",
                 description="Manages data persistence operations",
                 interfaces=["IDataRepository"],
-                dependencies=["Database"]
-            )
+                dependencies=["Database"],
+            ),
         ]
 
         data_models = [
             DataModel(
                 name="User",
-                fields={"id": "int", "username": "str", "email": "str", "created_at": "datetime"},
-                relationships=["One-to-many with Session"]
+                fields={
+                    "id": "int",
+                    "username": "str",
+                    "email": "str",
+                    "created_at": "datetime",
+                },
+                relationships=["One-to-many with Session"],
             ),
             DataModel(
                 name="Session",
-                fields={"id": "int", "user_id": "int", "token": "str", "expires_at": "datetime"},
-                relationships=["Many-to-one with User"]
-            )
+                fields={
+                    "id": "int",
+                    "user_id": "int",
+                    "token": "str",
+                    "expires_at": "datetime",
+                },
+                relationships=["Many-to-one with User"],
+            ),
         ]
 
         interfaces = [
             InterfaceSpec(
                 name="IUserService",
-                methods=["create_user(data)", "authenticate(credentials)", "get_user(id)"],
-                description="Interface for user management operations"
+                methods=[
+                    "create_user(data)",
+                    "authenticate(credentials)",
+                    "get_user(id)",
+                ],
+                description="Interface for user management operations",
             ),
             InterfaceSpec(
                 name="IDataRepository",
                 methods=["save(entity)", "find(id)", "delete(id)", "list()"],
-                description="Interface for data persistence operations"
-            )
+                description="Interface for data persistence operations",
+            ),
         ]
 
         error_handling = ErrorHandlingStrategy(
-            error_categories=["Validation Errors", "Authentication Errors", "Database Errors"],
-            recovery_mechanisms=["Graceful degradation", "Retry mechanisms", "User notifications"],
-            logging_strategy="Structured logging with appropriate levels"
+            error_categories=[
+                "Validation Errors",
+                "Authentication Errors",
+                "Database Errors",
+            ],
+            recovery_mechanisms=[
+                "Graceful degradation",
+                "Retry mechanisms",
+                "User notifications",
+            ],
+            logging_strategy="Structured logging with appropriate levels",
         )
 
         testing_strategy = TestingStrategy(
             unit_testing="Comprehensive unit testing with pytest",
             integration_testing="Integration tests for component interactions",
             performance_testing="Performance testing for critical paths",
-            test_coverage_target=0.85
+            test_coverage_target=0.85,
         )
 
         architecture = ArchitectureDescription(
             overview="Service-oriented architecture with clear separation",
             patterns=["Repository Pattern", "Service Layer"],
-            components=["UserService", "DataRepository"]
+            components=["UserService", "DataRepository"],
         )
 
         return DesignDocument(
@@ -114,7 +136,7 @@ class TestTaskGenerator:
             error_handling=error_handling,
             testing_strategy=testing_strategy,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
     def test_generate_from_design(self, generator, sample_design):
@@ -144,7 +166,9 @@ class TestTaskGenerator:
         assert len(component_tasks) >= 2  # UserService and DataRepository
 
         # Check UserService task
-        user_service_task = next((t for t in component_tasks if "UserService" in t.title), None)
+        user_service_task = next(
+            (t for t in component_tasks if "UserService" in t.title), None
+        )
         assert user_service_task is not None
         assert "UserService" in user_service_task.title
         assert "user management operations" in user_service_task.description.lower()
@@ -165,7 +189,9 @@ class TestTaskGenerator:
         assert "fields and validation" in user_model_task.description.lower()
 
         # Should also have validation tasks
-        validation_tasks = [t for t in task_list.tasks if "validation" in t.title.lower()]
+        validation_tasks = [
+            t for t in task_list.tasks if "validation" in t.title.lower()
+        ]
         assert len(validation_tasks) >= 2  # One for each model
 
     def test_interface_task_generation(self, generator, sample_design):
@@ -177,7 +203,9 @@ class TestTaskGenerator:
         assert len(interface_tasks) >= 2  # IUserService and IDataRepository
 
         # Check IUserService task
-        user_interface_task = next((t for t in interface_tasks if "IUserService" in t.title), None)
+        user_interface_task = next(
+            (t for t in interface_tasks if "IUserService" in t.title), None
+        )
         assert user_interface_task is not None
         assert "IUserService" in user_interface_task.title
         assert "user management operations" in user_interface_task.description.lower()
@@ -191,13 +219,19 @@ class TestTaskGenerator:
         assert len(testing_tasks) >= 2  # Unit and integration tests
 
         # Check unit testing task
-        unit_test_task = next((t for t in testing_tasks if "unit" in t.title.lower()), None)
+        unit_test_task = next(
+            (t for t in testing_tasks if "unit" in t.title.lower()), None
+        )
         assert unit_test_task is not None
         assert "unit test" in unit_test_task.title.lower()
-        assert "85%" in unit_test_task.implementation_notes or "0.85" in str(unit_test_task.implementation_notes)
+        assert "85%" in unit_test_task.implementation_notes or "0.85" in str(
+            unit_test_task.implementation_notes
+        )
 
         # Check integration testing task
-        integration_test_task = next((t for t in testing_tasks if "integration" in t.title.lower()), None)
+        integration_test_task = next(
+            (t for t in testing_tasks if "integration" in t.title.lower()), None
+        )
         assert integration_test_task is not None
         assert "integration test" in integration_test_task.title.lower()
 
@@ -219,7 +253,9 @@ class TestTaskGenerator:
         task_list = generator.generate_from_design(sample_design)
 
         # Should have integration task
-        integration_tasks = [t for t in task_list.tasks if "integrate" in t.title.lower()]
+        integration_tasks = [
+            t for t in task_list.tasks if "integrate" in t.title.lower()
+        ]
         assert len(integration_tasks) >= 1
 
         integration_task = integration_tasks[0]
@@ -235,7 +271,9 @@ class TestTaskGenerator:
         assert len(task_list.dependencies) > 0
 
         # Integration tasks should depend on other tasks
-        integration_tasks = [t for t in task_list.tasks if "integrate" in t.title.lower()]
+        integration_tasks = [
+            t for t in task_list.tasks if "integrate" in t.title.lower()
+        ]
         if integration_tasks:
             integration_task_id = integration_tasks[0].id
             if integration_task_id in task_list.dependencies:
@@ -336,10 +374,38 @@ class TestTaskGenerator:
     def test_task_categorization(self, generator):
         """Test task categorization logic."""
         # Test different task types
-        data_task = Task(id="1", title="Implement User data model", description="", requirements_refs=[], subtasks=[], status=TaskStatus.NOT_STARTED)
-        component_task = Task(id="2", title="Implement UserService component", description="", requirements_refs=[], subtasks=[], status=TaskStatus.NOT_STARTED)
-        test_task = Task(id="3", title="Implement unit tests", description="", requirements_refs=[], subtasks=[], status=TaskStatus.NOT_STARTED)
-        interface_task = Task(id="4", title="Define IUserService interface", description="", requirements_refs=[], subtasks=[], status=TaskStatus.NOT_STARTED)
+        data_task = Task(
+            id="1",
+            title="Implement User data model",
+            description="",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+        component_task = Task(
+            id="2",
+            title="Implement UserService component",
+            description="",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+        test_task = Task(
+            id="3",
+            title="Implement unit tests",
+            description="",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+        interface_task = Task(
+            id="4",
+            title="Define IUserService interface",
+            description="",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
 
         assert generator._determine_task_category(data_task) == "Data Models"
         assert generator._determine_task_category(component_task) == "Components"
@@ -355,7 +421,9 @@ class TestTaskGenerator:
     def test_requirement_extraction_from_component(self, generator, sample_design):
         """Test extracting requirements from component descriptions."""
         user_component = sample_design.components[0]  # UserService
-        req_refs = generator._extract_requirements_from_component(user_component, sample_design)
+        req_refs = generator._extract_requirements_from_component(
+            user_component, sample_design
+        )
 
         assert len(req_refs) > 0
         assert any("user" in ref.lower() or "auth" in ref.lower() for ref in req_refs)
@@ -395,7 +463,7 @@ class TestTaskGenerator:
             "remove_tasks": ["Remove something"],
             "change_order": False,
             "adjust_effort": {"general": "increase effort"},
-            "add_dependencies": {}
+            "add_dependencies": {},
         }
 
         refined_task_list = generator._apply_refinements(task_list, refinements)
@@ -406,8 +474,10 @@ class TestTaskGenerator:
 
         # Should have added and removed tasks (net effect depends on implementation)
         # At minimum, should be different from original
-        assert len(refined_task_list.tasks) != original_task_count or \
-               refined_task_list.estimated_effort != task_list.estimated_effort
+        assert (
+            len(refined_task_list.tasks) != original_task_count
+            or refined_task_list.estimated_effort != task_list.estimated_effort
+        )
 
 
 class TestTaskGeneratorIntegration:
@@ -426,48 +496,63 @@ class TestTaskGeneratorIntegration:
                 name="AuthenticationService",
                 description="Handles user authentication and authorization",
                 interfaces=["IAuthService", "ITokenManager"],
-                dependencies=["UserRepository", "TokenStorage", "PasswordHasher"]
+                dependencies=["UserRepository", "TokenStorage", "PasswordHasher"],
             ),
             ComponentSpec(
                 name="UserRepository",
                 description="Manages user data persistence and retrieval",
                 interfaces=["IUserRepository"],
-                dependencies=["Database", "UserValidator"]
+                dependencies=["Database", "UserValidator"],
             ),
             ComponentSpec(
                 name="APIController",
                 description="Handles HTTP API requests and responses",
                 interfaces=["IAPIController"],
-                dependencies=["AuthenticationService", "UserRepository", "ResponseFormatter"]
-            )
+                dependencies=[
+                    "AuthenticationService",
+                    "UserRepository",
+                    "ResponseFormatter",
+                ],
+            ),
         ]
 
         data_models = [
             DataModel(
                 name="User",
                 fields={
-                    "id": "int", "username": "str", "email": "str",
-                    "password_hash": "str", "created_at": "datetime",
-                    "updated_at": "datetime", "is_active": "bool"
+                    "id": "int",
+                    "username": "str",
+                    "email": "str",
+                    "password_hash": "str",
+                    "created_at": "datetime",
+                    "updated_at": "datetime",
+                    "is_active": "bool",
                 },
-                relationships=["One-to-many with Session", "One-to-many with ApiKey"]
+                relationships=["One-to-many with Session", "One-to-many with ApiKey"],
             ),
             DataModel(
                 name="Session",
                 fields={
-                    "id": "int", "user_id": "int", "token": "str",
-                    "expires_at": "datetime", "created_at": "datetime"
+                    "id": "int",
+                    "user_id": "int",
+                    "token": "str",
+                    "expires_at": "datetime",
+                    "created_at": "datetime",
                 },
-                relationships=["Many-to-one with User"]
+                relationships=["Many-to-one with User"],
             ),
             DataModel(
                 name="ApiKey",
                 fields={
-                    "id": "int", "user_id": "int", "key": "str",
-                    "name": "str", "created_at": "datetime", "is_active": "bool"
+                    "id": "int",
+                    "user_id": "int",
+                    "key": "str",
+                    "name": "str",
+                    "created_at": "datetime",
+                    "is_active": "bool",
                 },
-                relationships=["Many-to-one with User"]
-            )
+                relationships=["Many-to-one with User"],
+            ),
         ]
 
         interfaces = [
@@ -477,9 +562,9 @@ class TestTaskGeneratorIntegration:
                     "authenticate(username, password) -> AuthResult",
                     "authorize(user, resource) -> bool",
                     "create_session(user) -> Session",
-                    "validate_session(token) -> User"
+                    "validate_session(token) -> User",
                 ],
-                description="Interface for authentication and authorization operations"
+                description="Interface for authentication and authorization operations",
             ),
             InterfaceSpec(
                 name="IUserRepository",
@@ -488,9 +573,9 @@ class TestTaskGeneratorIntegration:
                     "find_user_by_id(id) -> User",
                     "find_user_by_username(username) -> User",
                     "update_user(id, data) -> User",
-                    "delete_user(id) -> bool"
+                    "delete_user(id) -> bool",
                 ],
-                description="Interface for user data persistence operations"
+                description="Interface for user data persistence operations",
             ),
             InterfaceSpec(
                 name="IAPIController",
@@ -498,38 +583,47 @@ class TestTaskGeneratorIntegration:
                     "handle_login(request) -> Response",
                     "handle_logout(request) -> Response",
                     "handle_user_creation(request) -> Response",
-                    "handle_user_update(request) -> Response"
+                    "handle_user_update(request) -> Response",
                 ],
-                description="Interface for HTTP API request handling"
-            )
+                description="Interface for HTTP API request handling",
+            ),
         ]
 
         error_handling = ErrorHandlingStrategy(
             error_categories=[
-                "Authentication Errors", "Authorization Errors", "Validation Errors",
-                "Database Errors", "Network Errors", "Business Logic Errors"
+                "Authentication Errors",
+                "Authorization Errors",
+                "Validation Errors",
+                "Database Errors",
+                "Network Errors",
+                "Business Logic Errors",
             ],
             recovery_mechanisms=[
                 "Graceful degradation for non-critical failures",
                 "Retry mechanisms with exponential backoff",
                 "Circuit breaker pattern for external dependencies",
                 "User-friendly error messages with actionable guidance",
-                "Comprehensive logging and monitoring"
+                "Comprehensive logging and monitoring",
             ],
-            logging_strategy="Structured logging with correlation IDs, appropriate levels (DEBUG, INFO, WARN, ERROR), and centralized log aggregation"
+            logging_strategy="Structured logging with correlation IDs, appropriate levels (DEBUG, INFO, WARN, ERROR), and centralized log aggregation",
         )
 
         testing_strategy = TestingStrategy(
             unit_testing="Comprehensive unit testing with pytest, mocking external dependencies, and focus on edge cases",
             integration_testing="Integration tests for database operations, API endpoints, and service interactions",
             performance_testing="Load testing for authentication endpoints, database query optimization, and response time monitoring",
-            test_coverage_target=0.90
+            test_coverage_target=0.90,
         )
 
         architecture = ArchitectureDescription(
             overview="Layered architecture with clear separation between API, service, and data layers",
-            patterns=["Repository Pattern", "Service Layer Pattern", "Dependency Injection", "MVC Pattern"],
-            components=["APIController", "AuthenticationService", "UserRepository"]
+            patterns=[
+                "Repository Pattern",
+                "Service Layer Pattern",
+                "Dependency Injection",
+                "MVC Pattern",
+            ],
+            components=["APIController", "AuthenticationService", "UserRepository"],
         )
 
         return DesignDocument(
@@ -541,7 +635,7 @@ class TestTaskGeneratorIntegration:
             error_handling=error_handling,
             testing_strategy=testing_strategy,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
     def test_comprehensive_task_generation(self, generator, comprehensive_design):
@@ -563,7 +657,9 @@ class TestTaskGeneratorIntegration:
 
         # Should have data model tasks
         assert any("user" in title and "data model" in title for title in task_titles)
-        assert any("session" in title and "data model" in title for title in task_titles)
+        assert any(
+            "session" in title and "data model" in title for title in task_titles
+        )
         assert any("apikey" in title and "data model" in title for title in task_titles)
 
         # Should have interface tasks
@@ -601,10 +697,14 @@ class TestTaskGeneratorIntegration:
         task_list = generator.generate_from_design(comprehensive_design)
 
         # Find specific task types
-        data_model_tasks = [t for t in task_list.tasks if "data model" in t.title.lower()]
+        data_model_tasks = [
+            t for t in task_list.tasks if "data model" in t.title.lower()
+        ]
         component_tasks = [t for t in task_list.tasks if "component" in t.title.lower()]
         test_tasks = [t for t in task_list.tasks if "test" in t.title.lower()]
-        integration_tasks = [t for t in task_list.tasks if "integrate" in t.title.lower()]
+        integration_tasks = [
+            t for t in task_list.tasks if "integrate" in t.title.lower()
+        ]
 
         # Component tasks should depend on data model tasks
         for component_task in component_tasks:
@@ -715,23 +815,25 @@ class TestTaskGeneratorIntegration:
         # Test with minimal design
         minimal_design = DesignDocument(
             overview="Minimal design",
-            architecture=ArchitectureDescription(overview="Simple", patterns=[], components=[]),
+            architecture=ArchitectureDescription(
+                overview="Simple", patterns=[], components=[]
+            ),
             components=[],
             data_models=[],
             interfaces=[],
             error_handling=ErrorHandlingStrategy(
                 error_categories=["Basic Errors"],
                 recovery_mechanisms=["Basic Recovery"],
-                logging_strategy="Basic Logging"
+                logging_strategy="Basic Logging",
             ),
             testing_strategy=TestingStrategy(
                 unit_testing="Basic unit testing",
                 integration_testing="Basic integration testing",
                 performance_testing="Basic performance testing",
-                test_coverage_target=0.7
+                test_coverage_target=0.7,
             ),
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         task_list = generator.generate_from_design(minimal_design)

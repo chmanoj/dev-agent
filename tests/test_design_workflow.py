@@ -43,18 +43,20 @@ class TestDesignWorkflow:
             interfaces=["ITestInterface"],
             dependencies=["TestDependency"],
             internal_structure={"files": 2, "functions": 10, "classes": 1},
-            complexity_score=2.0
+            complexity_score=2.0,
         )
 
         design_analysis = DesignAnalysis(
             architecture_overview="Test architecture overview",
             components=[component_analysis],
             data_models=[{"name": "TestModel", "attributes": ["id", "name"]}],
-            api_interfaces=[{"name": "test_api", "parameters": ["param1"], "return_type": "str"}],
+            api_interfaces=[
+                {"name": "test_api", "parameters": ["param1"], "return_type": "str"}
+            ],
             design_patterns=["Repository Pattern"],
             quality_metrics={"documentation_coverage": 0.8},
             technical_debt=["Some technical debt"],
-            recommendations=["Add more tests"]
+            recommendations=["Add more tests"],
         )
 
         analyzer.analyze_for_design.return_value = design_analysis
@@ -73,16 +75,13 @@ class TestDesignWorkflow:
         return DesignWorkflow(
             cli_interface=mock_cli,
             codebase_analyzer=mock_analyzer,
-            state_manager=mock_state_manager
+            state_manager=mock_state_manager,
         )
 
     @pytest.fixture
     def workflow_no_state(self, mock_cli, mock_analyzer):
         """Create a design workflow without state manager."""
-        return DesignWorkflow(
-            cli_interface=mock_cli,
-            codebase_analyzer=mock_analyzer
-        )
+        return DesignWorkflow(cli_interface=mock_cli, codebase_analyzer=mock_analyzer)
 
     @pytest.fixture
     def sample_specification(self):
@@ -92,7 +91,7 @@ class TestDesignWorkflow:
                 id="FR-1",
                 user_story="As a user, I want to manage data, so that I can store information",
                 acceptance_criteria=["WHEN I save data THEN it SHALL be stored"],
-                priority=Priority.HIGH
+                priority=Priority.HIGH,
             )
         ]
 
@@ -102,17 +101,22 @@ class TestDesignWorkflow:
             functional_requirements=requirements,
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
-    def test_execute_design_phase_success(self, workflow, sample_specification, mock_cli, mock_analyzer):
+    def test_execute_design_phase_success(
+        self, workflow, sample_specification, mock_cli, mock_analyzer
+    ):
         """Test successful execution of design phase."""
+
         # Mock the generator's request_user_approval to return True and set approved flag
         def mock_approval(design):
             design.approved = True
             return True
 
-        with patch.object(workflow.generator, "request_user_approval", side_effect=mock_approval):
+        with patch.object(
+            workflow.generator, "request_user_approval", side_effect=mock_approval
+        ):
             result = workflow.execute_design_phase(sample_specification)
 
         assert isinstance(result, DesignDocument)
@@ -121,13 +125,20 @@ class TestDesignWorkflow:
         mock_analyzer.analyze_for_design.assert_called_once()
         workflow.state_manager.save_document.assert_called_once()
 
-    def test_execute_design_phase_without_state_manager(self, workflow_no_state, sample_specification):
+    def test_execute_design_phase_without_state_manager(
+        self, workflow_no_state, sample_specification
+    ):
         """Test design phase execution without state manager."""
+
         def mock_approval(design):
             design.approved = True
             return True
 
-        with patch.object(workflow_no_state.generator, "request_user_approval", side_effect=mock_approval):
+        with patch.object(
+            workflow_no_state.generator,
+            "request_user_approval",
+            side_effect=mock_approval,
+        ):
             result = workflow_no_state.execute_design_phase(sample_specification)
 
         assert isinstance(result, DesignDocument)
@@ -150,9 +161,13 @@ class TestDesignWorkflow:
         analysis = workflow._perform_design_analysis()
 
         assert isinstance(analysis, DesignAnalysis)
-        assert analysis.architecture_overview == "Unable to analyze existing architecture"
+        assert (
+            analysis.architecture_overview == "Unable to analyze existing architecture"
+        )
         assert len(analysis.components) == 0
-        mock_cli.display_message.assert_any_call("Warning: Design analysis failed: Analysis failed")
+        mock_cli.display_message.assert_any_call(
+            "Warning: Design analysis failed: Analysis failed"
+        )
 
     def test_generate_design_document(self, workflow, sample_specification, mock_cli):
         """Test design document generation."""
@@ -173,13 +188,17 @@ class TestDesignWorkflow:
             design.approved = True
             return True
 
-        with patch.object(workflow.generator, "request_user_approval", side_effect=mock_approval):
+        with patch.object(
+            workflow.generator, "request_user_approval", side_effect=mock_approval
+        ):
             approved_design = workflow._approval_workflow(design)
 
         assert approved_design.approved
         assert approved_design.version == design.version
 
-    def test_approval_workflow_with_refinement(self, workflow, sample_specification, mock_cli):
+    def test_approval_workflow_with_refinement(
+        self, workflow, sample_specification, mock_cli
+    ):
         """Test approval workflow with one refinement iteration."""
         analysis = workflow._perform_design_analysis()
         design = workflow._generate_design_document(sample_specification, analysis)
@@ -198,7 +217,11 @@ class TestDesignWorkflow:
 
         mock_cli.get_user_input.return_value = "Add more components"
 
-        with patch.object(workflow.generator, "request_user_approval", side_effect=mock_approval_sequence):
+        with patch.object(
+            workflow.generator,
+            "request_user_approval",
+            side_effect=mock_approval_sequence,
+        ):
             with patch.object(workflow.generator, "refine_design") as mock_refine:
                 # Mock refine_design to return a modified design
                 refined_design = DesignDocument(
@@ -210,7 +233,7 @@ class TestDesignWorkflow:
                     error_handling=design.error_handling,
                     testing_strategy=design.testing_strategy,
                     version="1.1",
-                    approved=False
+                    approved=False,
                 )
                 mock_refine.return_value = refined_design
 
@@ -220,7 +243,9 @@ class TestDesignWorkflow:
         mock_refine.assert_called_once_with(design, "Add more components")
         mock_cli.get_user_input.assert_called()
 
-    def test_approval_workflow_max_iterations(self, workflow, sample_specification, mock_cli):
+    def test_approval_workflow_max_iterations(
+        self, workflow, sample_specification, mock_cli
+    ):
         """Test approval workflow reaching maximum iterations."""
         analysis = workflow._perform_design_analysis()
         design = workflow._generate_design_document(sample_specification, analysis)
@@ -228,14 +253,20 @@ class TestDesignWorkflow:
         # Mock approval to always return False
         mock_cli.get_user_input.return_value = "Keep refining"
 
-        with patch.object(workflow.generator, "request_user_approval", return_value=False):
+        with patch.object(
+            workflow.generator, "request_user_approval", return_value=False
+        ):
             with patch.object(workflow.generator, "refine_design", return_value=design):
                 approved_design = workflow._approval_workflow(design)
 
         assert approved_design.approved  # Should be force-approved after max iterations
-        mock_cli.display_message.assert_any_call("Maximum refinement iterations reached. Using current design.")
+        mock_cli.display_message.assert_any_call(
+            "Maximum refinement iterations reached. Using current design."
+        )
 
-    def test_approval_workflow_no_feedback(self, workflow, sample_specification, mock_cli):
+    def test_approval_workflow_no_feedback(
+        self, workflow, sample_specification, mock_cli
+    ):
         """Test approval workflow with no feedback provided."""
         analysis = workflow._perform_design_analysis()
         design = workflow._generate_design_document(sample_specification, analysis)
@@ -244,11 +275,15 @@ class TestDesignWorkflow:
         approval_calls = [False]
         mock_cli.get_user_input.return_value = ""  # Empty feedback
 
-        with patch.object(workflow.generator, "request_user_approval", side_effect=approval_calls):
+        with patch.object(
+            workflow.generator, "request_user_approval", side_effect=approval_calls
+        ):
             approved_design = workflow._approval_workflow(design)
 
         assert approved_design.approved
-        mock_cli.display_message.assert_any_call("No feedback provided. Using current design.")
+        mock_cli.display_message.assert_any_call(
+            "No feedback provided. Using current design."
+        )
 
     def test_display_design_summary(self, workflow, sample_specification, mock_cli):
         """Test design summary display."""
@@ -270,7 +305,9 @@ class TestDesignWorkflow:
         workflow._save_design(design)
 
         workflow.state_manager.save_document.assert_called_once()
-        workflow.cli_interface.display_message.assert_any_call("Design saved to DESIGN.md")
+        workflow.cli_interface.display_message.assert_any_call(
+            "Design saved to DESIGN.md"
+        )
 
     def test_save_design_failure(self, workflow, sample_specification, mock_cli):
         """Test design saving failure handling."""
@@ -281,7 +318,9 @@ class TestDesignWorkflow:
 
         workflow._save_design(design)
 
-        mock_cli.display_message.assert_any_call("Warning: Could not save design: Save failed")
+        mock_cli.display_message.assert_any_call(
+            "Warning: Could not save design: Save failed"
+        )
 
     def test_validate_specification_input_valid(self, workflow, sample_specification):
         """Test specification validation with valid input."""
@@ -302,12 +341,14 @@ class TestDesignWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=False
+            approved=False,
         )
 
         result = workflow.validate_specification_input(spec)
         assert result is False
-        mock_cli.display_message.assert_called_with("Error: Specification must be approved before design generation")
+        mock_cli.display_message.assert_called_with(
+            "Error: Specification must be approved before design generation"
+        )
 
     def test_validate_specification_input_no_requirements(self, workflow, mock_cli):
         """Test specification validation with no requirements."""
@@ -317,12 +358,14 @@ class TestDesignWorkflow:
             functional_requirements=[],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         result = workflow.validate_specification_input(spec)
         assert result is False
-        mock_cli.display_message.assert_called_with("Error: Specification must contain functional requirements")
+        mock_cli.display_message.assert_called_with(
+            "Error: Specification must contain functional requirements"
+        )
 
     def test_get_design_metrics(self, workflow, sample_specification):
         """Test design metrics extraction."""
@@ -353,21 +396,30 @@ class TestDesignWorkflowResult:
         """Test creating a design workflow result."""
         design = DesignDocument(
             overview="Test overview",
-            architecture=ArchitectureDescription(overview="Test arch", patterns=[], components=[]),
+            architecture=ArchitectureDescription(
+                overview="Test arch", patterns=[], components=[]
+            ),
             components=[],
             data_models=[],
             interfaces=[],
-            error_handling=ErrorHandlingStrategy(error_categories=[], recovery_mechanisms=[], logging_strategy="Test"),
-            testing_strategy=TestingStrategy(unit_testing="Test", integration_testing="Test", performance_testing="Test", test_coverage_target=0.8),
+            error_handling=ErrorHandlingStrategy(
+                error_categories=[], recovery_mechanisms=[], logging_strategy="Test"
+            ),
+            testing_strategy=TestingStrategy(
+                unit_testing="Test",
+                integration_testing="Test",
+                performance_testing="Test",
+                test_coverage_target=0.8,
+            ),
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         result = DesignWorkflowResult(
             design=design,
             success=True,
             message="Design generated successfully",
-            metrics={"component_count": 0}
+            metrics={"component_count": 0},
         )
 
         assert result.design == design
@@ -379,20 +431,26 @@ class TestDesignWorkflowResult:
         """Test creating a design workflow result with default metrics."""
         design = DesignDocument(
             overview="Test overview",
-            architecture=ArchitectureDescription(overview="Test arch", patterns=[], components=[]),
+            architecture=ArchitectureDescription(
+                overview="Test arch", patterns=[], components=[]
+            ),
             components=[],
             data_models=[],
             interfaces=[],
-            error_handling=ErrorHandlingStrategy(error_categories=[], recovery_mechanisms=[], logging_strategy="Test"),
-            testing_strategy=TestingStrategy(unit_testing="Test", integration_testing="Test", performance_testing="Test", test_coverage_target=0.8),
+            error_handling=ErrorHandlingStrategy(
+                error_categories=[], recovery_mechanisms=[], logging_strategy="Test"
+            ),
+            testing_strategy=TestingStrategy(
+                unit_testing="Test",
+                integration_testing="Test",
+                performance_testing="Test",
+                test_coverage_target=0.8,
+            ),
             version="1.0",
-            approved=True
+            approved=True,
         )
 
-        result = DesignWorkflowResult(
-            design=design,
-            success=True
-        )
+        result = DesignWorkflowResult(design=design, success=True)
 
         assert result.metrics == {}
 
@@ -416,7 +474,7 @@ class TestDesignWorkflowIntegration:
             design_patterns=[],
             quality_metrics={},
             technical_debt=[],
-            recommendations=[]
+            recommendations=[],
         )
 
         state_manager = Mock(spec=StateManager)
@@ -432,14 +490,16 @@ class TestDesignWorkflowIntegration:
                 id="FR-1",
                 user_story="As a user, I want data management, so that I can store information",
                 acceptance_criteria=["WHEN I save data THEN it SHALL be stored"],
-                priority=Priority.HIGH
+                priority=Priority.HIGH,
             ),
             Requirement(
                 id="FR-2",
                 user_story="As a user, I want authentication, so that my data is secure",
-                acceptance_criteria=["WHEN I login THEN my credentials SHALL be verified"],
-                priority=Priority.HIGH
-            )
+                acceptance_criteria=[
+                    "WHEN I login THEN my credentials SHALL be verified"
+                ],
+                priority=Priority.HIGH,
+            ),
         ]
 
         spec = SpecificationDocument(
@@ -448,7 +508,7 @@ class TestDesignWorkflowIntegration:
             functional_requirements=requirements,
             source=SpecificationSource.USER_INPUT,
             version="1.0",
-            approved=True
+            approved=True,
         )
 
         # Mock approval to return True immediately
@@ -456,7 +516,11 @@ class TestDesignWorkflowIntegration:
             design.approved = True
             return True
 
-        with patch.object(integration_workflow.generator, "request_user_approval", side_effect=mock_approval):
+        with patch.object(
+            integration_workflow.generator,
+            "request_user_approval",
+            side_effect=mock_approval,
+        ):
             design = integration_workflow.execute_design_phase(spec)
 
         # Verify the design was generated properly

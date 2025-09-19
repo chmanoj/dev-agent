@@ -47,18 +47,22 @@ class TestSpecificationGenerator:
             supporting_files=["models/user.py", "services/user_service.py"],
             supporting_functions=["create_user", "update_user", "delete_user"],
             confidence=0.8,
-            code_examples=[]
+            code_examples=[],
         )
 
         return SpecificationAnalysis(
             project_purpose="Web application for user management",
-            main_features=["User Registration", "User Authentication", "Profile Management"],
+            main_features=[
+                "User Registration",
+                "User Authentication",
+                "Profile Management",
+            ],
             user_roles=["User", "Admin"],
             functional_areas=["Authentication", "User Management", "Profile"],
             requirement_evidence=[evidence],
             technology_constraints=["Python 3.x required", "Web framework dependency"],
             external_dependencies=["flask", "sqlalchemy"],
-            confidence_score=0.8
+            confidence_score=0.8,
         )
 
     def test_generate_from_existing_code(self, generator, sample_analysis):
@@ -86,7 +90,7 @@ class TestSpecificationGenerator:
         user_requirements = [
             "Create user registration system",
             "Implement user authentication",
-            "Provide profile management features"
+            "Provide profile management features",
         ]
 
         spec = generator.generate_from_user_input(user_requirements)
@@ -99,7 +103,7 @@ class TestSpecificationGenerator:
 
         # Check requirements structure
         for i, req in enumerate(spec.functional_requirements):
-            assert req.id == f"FR-{i+1}"
+            assert req.id == f"FR-{i + 1}"
             assert "As a user" in req.user_story
             assert len(req.acceptance_criteria) >= 2
             assert req.priority == Priority.MEDIUM
@@ -110,7 +114,7 @@ class TestSpecificationGenerator:
         mock_cli.get_user_input.side_effect = [
             "Create user accounts",
             "Manage user profiles",
-            ""  # Empty input to stop
+            "",  # Empty input to stop
         ]
 
         spec = generator.generate_from_user_input([])
@@ -130,7 +134,9 @@ class TestSpecificationGenerator:
         assert refined_spec.approved is False
         assert refined_spec.approval_timestamp is None
         # Should have added requirements based on feedback
-        assert len(refined_spec.functional_requirements) >= len(original_spec.functional_requirements)
+        assert len(refined_spec.functional_requirements) >= len(
+            original_spec.functional_requirements
+        )
 
     def test_format_specification_document(self, generator, sample_analysis):
         """Test formatting specification document as markdown."""
@@ -148,7 +154,9 @@ class TestSpecificationGenerator:
         assert f"**Version:** {spec.version}" in formatted
         assert "**Status:** Draft" in formatted
 
-    def test_format_specification_with_source_analysis(self, generator, sample_analysis):
+    def test_format_specification_with_source_analysis(
+        self, generator, sample_analysis
+    ):
         """Test formatting specification with source analysis information."""
         spec = generator.generate_from_existing_code(sample_analysis)
         formatted = generator.format_specification_document(spec)
@@ -194,7 +202,9 @@ class TestSpecificationGenerator:
         introduction = generator._generate_introduction_from_analysis(sample_analysis)
 
         assert "web application for user management" in introduction
-        assert "User Registration" in introduction or "User Authentication" in introduction
+        assert (
+            "User Registration" in introduction or "User Authentication" in introduction
+        )
         assert "User, Admin" in introduction or "User" in introduction
         assert "80%" in introduction  # Confidence score
 
@@ -239,7 +249,9 @@ class TestSpecificationGenerator:
         criteria = generator._generate_acceptance_criteria_from_text(req_text)
 
         assert len(criteria) >= 2
-        assert any("WHEN" in criterion and "THEN" in criterion for criterion in criteria)
+        assert any(
+            "WHEN" in criterion and "THEN" in criterion for criterion in criteria
+        )
         assert any("create" in criterion.lower() for criterion in criteria)
 
     def test_determine_priority_from_evidence(self, generator):
@@ -250,7 +262,7 @@ class TestSpecificationGenerator:
             supporting_files=["file1.py"],
             supporting_functions=["func1"],
             confidence=0.9,
-            code_examples=[]
+            code_examples=[],
         )
 
         medium_confidence_evidence = RequirementEvidence(
@@ -259,7 +271,7 @@ class TestSpecificationGenerator:
             supporting_files=["file1.py"],
             supporting_functions=["func1"],
             confidence=0.7,
-            code_examples=[]
+            code_examples=[],
         )
 
         low_confidence_evidence = RequirementEvidence(
@@ -268,12 +280,21 @@ class TestSpecificationGenerator:
             supporting_files=["file1.py"],
             supporting_functions=["func1"],
             confidence=0.4,
-            code_examples=[]
+            code_examples=[],
         )
 
-        assert generator._determine_priority_from_evidence(high_confidence_evidence) == Priority.HIGH
-        assert generator._determine_priority_from_evidence(medium_confidence_evidence) == Priority.MEDIUM
-        assert generator._determine_priority_from_evidence(low_confidence_evidence) == Priority.LOW
+        assert (
+            generator._determine_priority_from_evidence(high_confidence_evidence)
+            == Priority.HIGH
+        )
+        assert (
+            generator._determine_priority_from_evidence(medium_confidence_evidence)
+            == Priority.MEDIUM
+        )
+        assert (
+            generator._determine_priority_from_evidence(low_confidence_evidence)
+            == Priority.LOW
+        )
 
     def test_increment_version(self, generator):
         """Test version incrementing."""
@@ -284,12 +305,17 @@ class TestSpecificationGenerator:
 
     def test_parse_feedback(self, generator):
         """Test parsing user feedback."""
-        feedback = "Add more requirements for authentication and remove low priority items"
+        feedback = (
+            "Add more requirements for authentication and remove low priority items"
+        )
         refinements = generator._parse_feedback(feedback)
 
         assert "add_requirements" in refinements
         assert "remove_requirements" in refinements
-        assert len(refinements["add_requirements"]) > 0 or len(refinements["remove_requirements"]) > 0
+        assert (
+            len(refinements["add_requirements"]) > 0
+            or len(refinements["remove_requirements"]) > 0
+        )
 
     def test_apply_refinements(self, generator, sample_analysis):
         """Test applying refinements to specification."""
@@ -302,7 +328,7 @@ class TestSpecificationGenerator:
             "remove_requirements": ["Remove something"],
             "change_introduction": "Updated introduction text",
             "add_features": [],
-            "remove_features": []
+            "remove_features": [],
         }
 
         refined_spec = generator._apply_refinements(spec, refinements)
@@ -325,7 +351,7 @@ class TestSpecificationGenerator:
             requirement_evidence=[],
             technology_constraints=[],
             external_dependencies=[],
-            confidence_score=0.0
+            confidence_score=0.0,
         )
 
         spec = generator.generate_from_existing_code(minimal_analysis)
@@ -344,7 +370,9 @@ class TestSpecificationGenerator:
 
         assert len(spec.functional_requirements) == 15
         assert all(req.id.startswith("FR-") for req in spec.functional_requirements)
-        assert all(len(req.acceptance_criteria) >= 2 for req in spec.functional_requirements)
+        assert all(
+            len(req.acceptance_criteria) >= 2 for req in spec.functional_requirements
+        )
 
 
 class TestSpecificationGeneratorIntegration:
@@ -364,7 +392,7 @@ class TestSpecificationGeneratorIntegration:
             supporting_files=["models/user.py", "controllers/user_controller.py"],
             supporting_functions=["create_user", "update_profile", "authenticate_user"],
             confidence=0.85,
-            code_examples=[]
+            code_examples=[],
         )
 
         evidence2 = RequirementEvidence(
@@ -373,18 +401,28 @@ class TestSpecificationGeneratorIntegration:
             supporting_files=["models/database.py", "repositories/user_repo.py"],
             supporting_functions=["save_user", "find_user", "delete_user"],
             confidence=0.75,
-            code_examples=[]
+            code_examples=[],
         )
 
         analysis = SpecificationAnalysis(
             project_purpose="User management web application with authentication",
-            main_features=["User Registration", "Authentication", "Profile Management", "Data Persistence"],
+            main_features=[
+                "User Registration",
+                "Authentication",
+                "Profile Management",
+                "Data Persistence",
+            ],
             user_roles=["User", "Admin", "Guest"],
-            functional_areas=["Authentication", "User Management", "Data Storage", "Security"],
+            functional_areas=[
+                "Authentication",
+                "User Management",
+                "Data Storage",
+                "Security",
+            ],
             requirement_evidence=[evidence1, evidence2],
             technology_constraints=["Python 3.8+", "Flask framework", "SQLAlchemy ORM"],
             external_dependencies=["flask", "sqlalchemy", "bcrypt", "jwt"],
-            confidence_score=0.8
+            confidence_score=0.8,
         )
 
         # Generate specification
@@ -404,7 +442,9 @@ class TestSpecificationGeneratorIntegration:
         # Test refinement
         refined_spec = generator.refine_specification(spec, "Add security requirements")
         assert refined_spec.version != spec.version
-        assert len(refined_spec.functional_requirements) >= len(spec.functional_requirements)
+        assert len(refined_spec.functional_requirements) >= len(
+            spec.functional_requirements
+        )
 
     def test_full_workflow_user_input(self, generator):
         """Test full workflow for user input."""
@@ -413,7 +453,7 @@ class TestSpecificationGeneratorIntegration:
             "System should authenticate users securely",
             "Users can update their profile information",
             "Admins can manage user accounts",
-            "System should log all user activities"
+            "System should log all user activities",
         ]
 
         # Generate specification
@@ -422,14 +462,19 @@ class TestSpecificationGeneratorIntegration:
         # Verify specification
         assert len(spec.functional_requirements) == 5
         assert spec.source == SpecificationSource.USER_INPUT
-        assert all(req.priority == Priority.MEDIUM for req in spec.functional_requirements)
+        assert all(
+            req.priority == Priority.MEDIUM for req in spec.functional_requirements
+        )
 
         # Verify user stories are properly formatted
         for req in spec.functional_requirements:
             assert req.user_story.startswith("As a")
             assert "so that" in req.user_story
             assert len(req.acceptance_criteria) >= 2
-            assert all("WHEN" in criteria and "THEN" in criteria for criteria in req.acceptance_criteria)
+            assert all(
+                "WHEN" in criteria and "THEN" in criteria
+                for criteria in req.acceptance_criteria
+            )
 
         # Format and verify
         formatted = generator.format_specification_document(spec)

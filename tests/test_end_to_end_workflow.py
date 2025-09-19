@@ -16,24 +16,24 @@ from dev_agent.state.state_manager import StateManager
 
 class TestEndToEndWorkflow:
     """End-to-end workflow tests with realistic Python projects."""
-    
+
     def setup_method(self):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_path = Path(self.temp_dir) / "test_project"
         self.project_path.mkdir(parents=True)
-    
+
     def teardown_method(self):
         """Clean up test environment."""
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
-    
+
     def create_realistic_python_project(self, project_type: str = "web_api") -> dict:
         """Create a realistic Python project for testing.
-        
+
         Args:
             project_type: Type of project to create ('web_api', 'data_processing', 'cli_tool')
-            
+
         Returns:
             Dictionary with project statistics
         """
@@ -45,7 +45,7 @@ class TestEndToEndWorkflow:
             return self._create_cli_tool_project()
         else:
             raise ValueError(f"Unknown project type: {project_type}")
-    
+
     def _create_web_api_project(self) -> dict:
         """Create a realistic web API project."""
         # Create directory structure
@@ -58,14 +58,16 @@ class TestEndToEndWorkflow:
             "tests/unit",
             "tests/integration",
             "migrations",
-            "config"
+            "config",
         ]
-        
+
         for dir_path in directories:
             (self.project_path / dir_path).mkdir(parents=True, exist_ok=True)
-        
+
         # Main application file
-        (self.project_path / "src" / "main.py").write_text('''"""Main FastAPI application."""
+        (
+            self.project_path / "src" / "main.py"
+        ).write_text('''"""Main FastAPI application."""
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -116,9 +118,11 @@ async def health_check():
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 ''')
-        
+
         # User model
-        (self.project_path / "src" / "models" / "user.py").write_text('''"""User model definition."""
+        (
+            self.project_path / "src" / "models" / "user.py"
+        ).write_text('''"""User model definition."""
 
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship
@@ -175,9 +179,11 @@ class User(Base):
             is_admin=data.get("is_admin", False)
         )
 ''')
-        
+
         # Product model
-        (self.project_path / "src" / "models" / "product.py").write_text('''"""Product model definition."""
+        (
+            self.project_path / "src" / "models" / "product.py"
+        ).write_text('''"""Product model definition."""
 
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime, Boolean
 from sqlalchemy.orm import relationship
@@ -232,9 +238,11 @@ class Product(Base):
         self.stock_quantity = new_quantity
         return True
 ''')
-        
+
         # User service
-        (self.project_path / "src" / "services" / "user_service.py").write_text('''"""User service for business logic."""
+        (
+            self.project_path / "src" / "services" / "user_service.py"
+        ).write_text('''"""User service for business logic."""
 
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -319,9 +327,11 @@ class UserService:
         
         return user
 ''')
-        
+
         # API routes
-        (self.project_path / "src" / "api" / "routes" / "users.py").write_text('''"""User API routes."""
+        (
+            self.project_path / "src" / "api" / "routes" / "users.py"
+        ).write_text('''"""User API routes."""
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -428,9 +438,11 @@ async def delete_user(
     
     return {"message": "User deleted successfully"}
 ''')
-        
+
         # Test files
-        (self.project_path / "tests" / "unit" / "test_user_service.py").write_text('''"""Unit tests for UserService."""
+        (
+            self.project_path / "tests" / "unit" / "test_user_service.py"
+        ).write_text('''"""Unit tests for UserService."""
 
 import pytest
 from unittest.mock import Mock, MagicMock
@@ -535,9 +547,9 @@ class TestUserService:
         
         assert result is None
 ''')
-        
+
         # Configuration files
-        (self.project_path / "requirements.txt").write_text('''fastapi==0.104.1
+        (self.project_path / "requirements.txt").write_text("""fastapi==0.104.1
 uvicorn==0.24.0
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
@@ -548,9 +560,9 @@ python-multipart==0.0.6
 pytest==7.4.3
 pytest-asyncio==0.21.1
 httpx==0.25.2
-''')
-        
-        (self.project_path / "pyproject.toml").write_text('''[build-system]
+""")
+
+        (self.project_path / "pyproject.toml").write_text("""[build-system]
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
@@ -579,16 +591,25 @@ test = [
     "pytest-asyncio>=0.21.0",
     "httpx>=0.25.0",
 ]
-''')
-        
+""")
+
         return {
             "project_type": "web_api",
-            "files_created": len(list(self.project_path.rglob("*.py"))) + 2,  # +2 for config files
-            "total_lines": sum(len(f.read_text().split('\n')) for f in self.project_path.rglob("*.py")),
+            "files_created": len(list(self.project_path.rglob("*.py")))
+            + 2,  # +2 for config files
+            "total_lines": sum(
+                len(f.read_text().split("\n")) for f in self.project_path.rglob("*.py")
+            ),
             "directories": len([d for d in self.project_path.rglob("*") if d.is_dir()]),
-            "features": ["FastAPI", "SQLAlchemy", "Authentication", "CRUD operations", "Testing"]
+            "features": [
+                "FastAPI",
+                "SQLAlchemy",
+                "Authentication",
+                "CRUD operations",
+                "Testing",
+            ],
         }
-    
+
     def _create_data_processing_project(self) -> dict:
         """Create a realistic data processing project."""
         # Create directory structure
@@ -602,14 +623,16 @@ test = [
             "data/raw",
             "data/processed",
             "config",
-            "scripts"
+            "scripts",
         ]
-        
+
         for dir_path in directories:
             (self.project_path / dir_path).mkdir(parents=True, exist_ok=True)
-        
+
         # Main processing pipeline
-        (self.project_path / "src" / "pipeline.py").write_text('''"""Main data processing pipeline."""
+        (
+            self.project_path / "src" / "pipeline.py"
+        ).write_text('''"""Main data processing pipeline."""
 
 import pandas as pd
 import numpy as np
@@ -741,9 +764,11 @@ class DataProcessingPipeline:
                 "input_file": str(input_path)
             }
 ''')
-        
+
         # Data cleaner
-        (self.project_path / "src" / "processors" / "data_cleaner.py").write_text('''"""Data cleaning utilities."""
+        (
+            self.project_path / "src" / "processors" / "data_cleaner.py"
+        ).write_text('''"""Data cleaning utilities."""
 
 import pandas as pd
 import numpy as np
@@ -879,15 +904,23 @@ class DataCleaner:
         logger.info("Data type optimization complete")
         return data
 ''')
-        
+
         return {
             "project_type": "data_processing",
             "files_created": len(list(self.project_path.rglob("*.py"))),
-            "total_lines": sum(len(f.read_text().split('\n')) for f in self.project_path.rglob("*.py")),
+            "total_lines": sum(
+                len(f.read_text().split("\n")) for f in self.project_path.rglob("*.py")
+            ),
             "directories": len([d for d in self.project_path.rglob("*") if d.is_dir()]),
-            "features": ["Pandas", "NumPy", "Data cleaning", "Feature extraction", "Statistical analysis"]
+            "features": [
+                "Pandas",
+                "NumPy",
+                "Data cleaning",
+                "Feature extraction",
+                "Statistical analysis",
+            ],
         }
-    
+
     def _create_cli_tool_project(self) -> dict:
         """Create a realistic CLI tool project."""
         # Create directory structure
@@ -897,12 +930,12 @@ class DataCleaner:
             "src/config",
             "tests/unit",
             "tests/integration",
-            "docs"
+            "docs",
         ]
-        
+
         for dir_path in directories:
             (self.project_path / dir_path).mkdir(parents=True, exist_ok=True)
-        
+
         # Main CLI application
         (self.project_path / "src" / "cli.py").write_text('''"""Main CLI application."""
 
@@ -969,9 +1002,11 @@ cli.add_command(data_group)
 if __name__ == '__main__':
     cli()
 ''')
-        
+
         # File operations commands
-        (self.project_path / "src" / "commands" / "file_operations.py").write_text('''"""File operation commands."""
+        (
+            self.project_path / "src" / "commands" / "file_operations.py"
+        ).write_text('''"""File operation commands."""
 
 import click
 import shutil
@@ -1112,319 +1147,348 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
             modified_str = info['modified'].strftime('%Y-%m-%d %H:%M')
             click.echo(f"{str(info['path']):<50} {size_str:<10} {modified_str:<20} {info['type']:<10}")
 ''')
-        
+
         return {
             "project_type": "cli_tool",
             "files_created": len(list(self.project_path.rglob("*.py"))),
-            "total_lines": sum(len(f.read_text().split('\n')) for f in self.project_path.rglob("*.py")),
+            "total_lines": sum(
+                len(f.read_text().split("\n")) for f in self.project_path.rglob("*.py")
+            ),
             "directories": len([d for d in self.project_path.rglob("*") if d.is_dir()]),
-            "features": ["Click CLI", "File operations", "Data processing", "Configuration management"]
-        } 
-   def test_web_api_project_workflow(self):
+            "features": [
+                "Click CLI",
+                "File operations",
+                "Data processing",
+                "Configuration management",
+            ],
+        }
+
+    def test_web_api_project_workflow(self):
         """Test complete workflow with a web API project."""
         print("\n=== Testing Web API Project Workflow ===")
-        
+
         # Create realistic web API project
         project_stats = self.create_realistic_python_project("web_api")
         print(f"Created web API project: {project_stats}")
-        
+
         # Create mock CLI interface that approves everything
         mock_cli = Mock()
         mock_cli.display_message = Mock()
         mock_cli.display_progress = Mock()
         mock_cli.request_approval = Mock(return_value=True)
         mock_cli.get_user_input = Mock(return_value="Approved")
-        
+
         # Initialize workflow manager
         workflow_manager = WorkflowManager(mock_cli)
-        
+
         # Start project
         project_state = workflow_manager.start_new_project(str(self.project_path))
         assert project_state is not None
         assert project_state.current_phase == PhaseType.INDEXING
-        
+
         # Test indexing phase
         print("Testing indexing phase...")
         success = workflow_manager.transition_to_phase(PhaseType.INDEXING)
         assert success, "Indexing phase should succeed"
-        
+
         # Verify indexing results
         state_manager = StateManager(str(self.project_path))
         current_state = state_manager.load_project_state()
         assert current_state.indexing_complete
         assert current_state.index_metadata is not None
-        
-        print(f"Indexing complete: {current_state.index_metadata.total_files} files indexed")
-        
+
+        print(
+            f"Indexing complete: {current_state.index_metadata.total_files} files indexed"
+        )
+
         # Test specification phase
         print("Testing specification phase...")
         success = workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
         assert success, "Specification phase should succeed"
-        
+
         # Verify specification was generated
         current_state = state_manager.load_project_state()
         assert current_state.specification is not None
         assert current_state.specification.approved
-        
-        print(f"Specification generated with {len(current_state.specification.functional_requirements)} requirements")
-        
+
+        print(
+            f"Specification generated with {len(current_state.specification.functional_requirements)} requirements"
+        )
+
         # Test design phase
         print("Testing design phase...")
         success = workflow_manager.transition_to_phase(PhaseType.DESIGN)
         assert success, "Design phase should succeed"
-        
+
         # Verify design was generated
         current_state = state_manager.load_project_state()
         assert current_state.design is not None
         assert current_state.design.approved
-        
-        print(f"Design generated with {len(current_state.design.components)} components")
-        
+
+        print(
+            f"Design generated with {len(current_state.design.components)} components"
+        )
+
         # Test implementation phase
         print("Testing implementation phase...")
         success = workflow_manager.transition_to_phase(PhaseType.IMPLEMENTATION)
         assert success, "Implementation phase should succeed"
-        
+
         # Verify tasks were generated
         current_state = state_manager.load_project_state()
         assert current_state.tasks is not None
         assert current_state.tasks.approved
-        
+
         print(f"Implementation tasks generated: {len(current_state.tasks.tasks)} tasks")
-        
+
         # Verify CLI interactions
-        assert mock_cli.display_message.call_count > 10, "Should have many status messages"
-        assert mock_cli.request_approval.call_count >= 3, "Should request approval for each phase"
-        
+        assert mock_cli.display_message.call_count > 10, (
+            "Should have many status messages"
+        )
+        assert mock_cli.request_approval.call_count >= 3, (
+            "Should request approval for each phase"
+        )
+
         print("✓ Web API project workflow test passed!")
-    
+
     def test_data_processing_project_workflow(self):
         """Test complete workflow with a data processing project."""
         print("\n=== Testing Data Processing Project Workflow ===")
-        
+
         # Create realistic data processing project
         project_stats = self.create_realistic_python_project("data_processing")
         print(f"Created data processing project: {project_stats}")
-        
+
         # Create mock CLI interface
         mock_cli = Mock()
         mock_cli.display_message = Mock()
         mock_cli.display_progress = Mock()
         mock_cli.request_approval = Mock(return_value=True)
         mock_cli.get_user_input = Mock(return_value="Looks good!")
-        
+
         # Initialize workflow manager
         workflow_manager = WorkflowManager(mock_cli)
-        
+
         # Run complete workflow
         project_state = workflow_manager.start_new_project(str(self.project_path))
         success = workflow_manager.execute_complete_workflow()
-        
+
         assert success, "Complete workflow should succeed"
-        
+
         # Verify final state
         state_manager = StateManager(str(self.project_path))
         final_state = state_manager.load_project_state()
-        
+
         assert final_state.current_phase == PhaseType.IMPLEMENTATION
         assert final_state.indexing_complete
         assert final_state.specification is not None
         assert final_state.design is not None
         assert final_state.tasks is not None
-        
+
         # Verify project-specific characteristics were captured
         spec_text = final_state.specification.introduction.lower()
-        assert any(keyword in spec_text for keyword in ["data", "processing", "analysis", "pipeline"])
-        
+        assert any(
+            keyword in spec_text
+            for keyword in ["data", "processing", "analysis", "pipeline"]
+        )
+
         print("✓ Data processing project workflow test passed!")
-    
+
     def test_cli_tool_project_workflow(self):
         """Test complete workflow with a CLI tool project."""
         print("\n=== Testing CLI Tool Project Workflow ===")
-        
+
         # Create realistic CLI tool project
         project_stats = self.create_realistic_python_project("cli_tool")
         print(f"Created CLI tool project: {project_stats}")
-        
+
         # Create mock CLI interface
         mock_cli = Mock()
         mock_cli.display_message = Mock()
         mock_cli.display_progress = Mock()
         mock_cli.request_approval = Mock(return_value=True)
         mock_cli.get_user_input = Mock(return_value="Approved")
-        
+
         # Initialize workflow manager
         workflow_manager = WorkflowManager(mock_cli)
-        
+
         # Test workflow with timing
         start_time = time.time()
-        
+
         project_state = workflow_manager.start_new_project(str(self.project_path))
         success = workflow_manager.execute_complete_workflow()
-        
+
         end_time = time.time()
         workflow_time = end_time - start_time
-        
+
         assert success, "Complete workflow should succeed"
-        
+
         # Verify timing is reasonable
         assert workflow_time < 300, f"Workflow took too long: {workflow_time:.2f}s"
-        
+
         # Verify final state
         state_manager = StateManager(str(self.project_path))
         final_state = state_manager.load_project_state()
-        
+
         assert final_state.current_phase == PhaseType.IMPLEMENTATION
-        
+
         # Verify CLI-specific characteristics were captured
         spec_text = final_state.specification.introduction.lower()
-        assert any(keyword in spec_text for keyword in ["cli", "command", "tool", "interface"])
-        
+        assert any(
+            keyword in spec_text for keyword in ["cli", "command", "tool", "interface"]
+        )
+
         print(f"✓ CLI tool project workflow test passed in {workflow_time:.2f}s!")
-    
+
     def test_workflow_error_recovery(self):
         """Test workflow error handling and recovery."""
         print("\n=== Testing Workflow Error Recovery ===")
-        
+
         # Create project
         project_stats = self.create_realistic_python_project("web_api")
-        
+
         # Create mock CLI interface that sometimes fails
         mock_cli = Mock()
         mock_cli.display_message = Mock()
         mock_cli.display_progress = Mock()
-        
+
         # First approval fails, second succeeds
         mock_cli.request_approval = Mock(side_effect=[False, True, True, True])
         mock_cli.get_user_input = Mock(return_value="Retry approved")
-        
+
         # Initialize workflow manager
         workflow_manager = WorkflowManager(mock_cli)
-        
+
         # Start project
         project_state = workflow_manager.start_new_project(str(self.project_path))
-        
+
         # Test that failed approval is handled gracefully
         success = workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
         assert not success, "First transition should fail due to approval denial"
-        
+
         # Verify state didn't change
         state_manager = StateManager(str(self.project_path))
         current_state = state_manager.load_project_state()
         assert current_state.current_phase == PhaseType.INDEXING
-        
+
         # Retry should succeed
         success = workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
         assert success, "Retry should succeed"
-        
+
         # Verify error messages were displayed
         assert mock_cli.display_message.call_count > 5
-        
+
         print("✓ Workflow error recovery test passed!")
-    
+
     def test_workflow_state_persistence(self):
         """Test workflow state persistence across sessions."""
         print("\n=== Testing Workflow State Persistence ===")
-        
+
         # Create project
         project_stats = self.create_realistic_python_project("web_api")
-        
+
         # Create mock CLI interface
         mock_cli = Mock()
         mock_cli.display_message = Mock()
         mock_cli.display_progress = Mock()
         mock_cli.request_approval = Mock(return_value=True)
         mock_cli.get_user_input = Mock(return_value="Approved")
-        
+
         # Session 1: Start project and complete indexing
         workflow_manager1 = WorkflowManager(mock_cli)
         project_state1 = workflow_manager1.start_new_project(str(self.project_path))
-        
+
         success = workflow_manager1.transition_to_phase(PhaseType.SPECIFICATION)
         assert success
-        
+
         # Get session ID for verification
         session_id = project_state1.session_data.session_id
-        
+
         # Session 2: Resume project
         workflow_manager2 = WorkflowManager(mock_cli)
         project_state2 = workflow_manager2.resume_project(str(self.project_path))
-        
+
         # Verify state was restored
         assert project_state2.session_data.session_id == session_id
         assert project_state2.current_phase == PhaseType.SPECIFICATION
         assert project_state2.indexing_complete
         assert project_state2.specification is not None
-        
+
         # Continue workflow in second session
         success = workflow_manager2.transition_to_phase(PhaseType.DESIGN)
         assert success
-        
+
         # Session 3: Resume again
         workflow_manager3 = WorkflowManager(mock_cli)
         project_state3 = workflow_manager3.resume_project(str(self.project_path))
-        
+
         # Verify all progress was maintained
         assert project_state3.current_phase == PhaseType.DESIGN
         assert project_state3.specification is not None
         assert project_state3.design is not None
-        
+
         print("✓ Workflow state persistence test passed!")
-    
+
     def test_workflow_performance_benchmarks(self):
         """Test workflow performance with different project sizes."""
         print("\n=== Testing Workflow Performance Benchmarks ===")
-        
+
         project_types = ["web_api", "data_processing", "cli_tool"]
         performance_results = {}
-        
+
         for project_type in project_types:
             print(f"\nBenchmarking {project_type} project...")
-            
+
             # Create project
             project_stats = self.create_realistic_python_project(project_type)
-            
+
             # Create mock CLI interface
             mock_cli = Mock()
             mock_cli.display_message = Mock()
             mock_cli.display_progress = Mock()
             mock_cli.request_approval = Mock(return_value=True)
             mock_cli.get_user_input = Mock(return_value="Approved")
-            
+
             # Measure workflow performance
             workflow_manager = WorkflowManager(mock_cli)
-            
+
             start_time = time.time()
             project_state = workflow_manager.start_new_project(str(self.project_path))
             success = workflow_manager.execute_complete_workflow()
             end_time = time.time()
-            
+
             workflow_time = end_time - start_time
-            
+
             assert success, f"Workflow should succeed for {project_type}"
-            
+
             # Calculate performance metrics
             lines_per_second = project_stats["total_lines"] / workflow_time
             files_per_second = project_stats["files_created"] / workflow_time
-            
+
             performance_results[project_type] = {
                 "total_time": workflow_time,
                 "lines_processed": project_stats["total_lines"],
                 "files_processed": project_stats["files_created"],
                 "lines_per_second": lines_per_second,
-                "files_per_second": files_per_second
+                "files_per_second": files_per_second,
             }
-            
-            print(f"{project_type}: {workflow_time:.2f}s, {lines_per_second:.0f} lines/s")
-            
+
+            print(
+                f"{project_type}: {workflow_time:.2f}s, {lines_per_second:.0f} lines/s"
+            )
+
             # Performance assertions
-            assert workflow_time < 180, f"Workflow too slow for {project_type}: {workflow_time:.2f}s"
-            assert lines_per_second > 100, f"Processing too slow for {project_type}: {lines_per_second:.0f} lines/s"
-            
+            assert workflow_time < 180, (
+                f"Workflow too slow for {project_type}: {workflow_time:.2f}s"
+            )
+            assert lines_per_second > 100, (
+                f"Processing too slow for {project_type}: {lines_per_second:.0f} lines/s"
+            )
+
             # Clean up for next iteration
             self.teardown_method()
             self.setup_method()
-        
+
         # Print summary
         print(f"\n=== Performance Summary ===")
         for project_type, results in performance_results.items():
@@ -1432,73 +1496,92 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
             print(f"  Total time: {results['total_time']:.2f}s")
             print(f"  Lines processed: {results['lines_processed']:,}")
             print(f"  Processing speed: {results['lines_per_second']:.0f} lines/s")
-        
+
         print("✓ Workflow performance benchmarks test passed!")
-    
+
     def test_workflow_with_real_project_patterns(self):
         """Test workflow with realistic project patterns and structures."""
         print("\n=== Testing Workflow with Real Project Patterns ===")
-        
+
         # Create a more complex project with realistic patterns
         project_stats = self.create_realistic_python_project("web_api")
-        
+
         # Add some additional realistic files
         additional_files = [
-            ("docker-compose.yml", "version: '3.8'\nservices:\n  api:\n    build: .\n    ports:\n      - '8000:8000'"),
-            (".env.example", "DATABASE_URL=postgresql://user:pass@localhost/db\nSECRET_KEY=your-secret-key"),
-            ("Dockerfile", "FROM python:3.11\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install -r requirements.txt"),
-            (".github/workflows/ci.yml", "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest"),
+            (
+                "docker-compose.yml",
+                "version: '3.8'\nservices:\n  api:\n    build: .\n    ports:\n      - '8000:8000'",
+            ),
+            (
+                ".env.example",
+                "DATABASE_URL=postgresql://user:pass@localhost/db\nSECRET_KEY=your-secret-key",
+            ),
+            (
+                "Dockerfile",
+                "FROM python:3.11\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install -r requirements.txt",
+            ),
+            (
+                ".github/workflows/ci.yml",
+                "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest",
+            ),
         ]
-        
+
         for filename, content in additional_files:
             file_path = self.project_path / filename
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(content)
-        
+
         # Create mock CLI interface
         mock_cli = Mock()
         mock_cli.display_message = Mock()
         mock_cli.display_progress = Mock()
         mock_cli.request_approval = Mock(return_value=True)
         mock_cli.get_user_input = Mock(return_value="Approved")
-        
+
         # Initialize workflow manager
         workflow_manager = WorkflowManager(mock_cli)
-        
+
         # Run workflow
         project_state = workflow_manager.start_new_project(str(self.project_path))
         success = workflow_manager.execute_complete_workflow()
-        
+
         assert success, "Workflow should handle realistic project patterns"
-        
+
         # Verify the workflow captured project characteristics
         state_manager = StateManager(str(self.project_path))
         final_state = state_manager.load_project_state()
-        
+
         # Check that the specification includes relevant details
         spec_intro = final_state.specification.introduction.lower()
-        assert any(keyword in spec_intro for keyword in ["api", "web", "service", "endpoint"])
-        
+        assert any(
+            keyword in spec_intro for keyword in ["api", "web", "service", "endpoint"]
+        )
+
         # Check that design includes architectural components
         design_overview = final_state.design.overview.lower()
-        assert any(keyword in design_overview for keyword in ["architecture", "component", "service", "model"])
-        
+        assert any(
+            keyword in design_overview
+            for keyword in ["architecture", "component", "service", "model"]
+        )
+
         # Check that tasks are comprehensive
-        assert len(final_state.tasks.tasks) > 5, "Should generate multiple implementation tasks"
-        
+        assert len(final_state.tasks.tasks) > 5, (
+            "Should generate multiple implementation tasks"
+        )
+
         # Verify indexing captured the project structure
         assert final_state.index_metadata.total_files >= project_stats["files_created"]
         assert "python" in final_state.index_metadata.languages_detected
-        
+
         print("✓ Workflow with real project patterns test passed!")
 
 
 if __name__ == "__main__":
     # Run the tests manually for debugging
     test_instance = TestEndToEndWorkflow()
-    
+
     print("Running end-to-end workflow tests...")
-    
+
     test_instance.setup_method()
     try:
         # Run individual tests
@@ -1509,9 +1592,9 @@ if __name__ == "__main__":
         test_instance.test_workflow_state_persistence()
         test_instance.test_workflow_performance_benchmarks()
         test_instance.test_workflow_with_real_project_patterns()
-        
+
         print("\n✅ All end-to-end workflow tests passed!")
-        
+
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         raise

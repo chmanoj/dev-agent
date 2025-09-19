@@ -47,7 +47,7 @@ class TestCodebaseAnalyzer:
                 docstring="Create a new user",
                 file_path="test_file.py",
                 start_line=10,
-                end_line=20
+                end_line=20,
             ),
             "test_file.py:get_user:25": FunctionDef(
                 name="get_user",
@@ -56,7 +56,7 @@ class TestCodebaseAnalyzer:
                 docstring="Get user by ID",
                 file_path="test_file.py",
                 start_line=25,
-                end_line=35
+                end_line=35,
             ),
             "auth.py:login_user:5": FunctionDef(
                 name="login_user",
@@ -65,8 +65,8 @@ class TestCodebaseAnalyzer:
                 docstring="Authenticate user login",
                 file_path="auth.py",
                 start_line=5,
-                end_line=15
-            )
+                end_line=15,
+            ),
         }
 
         classes = {
@@ -81,14 +81,14 @@ class TestCodebaseAnalyzer:
                         docstring="Initialize user",
                         file_path="models.py",
                         start_line=5,
-                        end_line=10
+                        end_line=10,
                     )
                 ],
                 attributes=["name", "email", "id"],
                 docstring="User model class",
                 file_path="models.py",
                 start_line=1,
-                end_line=30
+                end_line=30,
             ),
             "models.py:UserManager:35": ClassDef(
                 name="UserManager",
@@ -101,15 +101,15 @@ class TestCodebaseAnalyzer:
                         docstring="Create new user",
                         file_path="models.py",
                         start_line=40,
-                        end_line=50
+                        end_line=50,
                     )
                 ],
                 attributes=[],
                 docstring="Manages user operations",
                 file_path="models.py",
                 start_line=35,
-                end_line=60
-            )
+                end_line=60,
+            ),
         }
 
         imports = [
@@ -118,22 +118,22 @@ class TestCodebaseAnalyzer:
                 names=["path"],
                 alias=None,
                 file_path="test_file.py",
-                line_number=1
+                line_number=1,
             ),
             Import(
                 module="pytest",
                 names=["fixture"],
                 alias=None,
                 file_path="test_user.py",
-                line_number=2
+                line_number=2,
             ),
             Import(
                 module="flask",
                 names=["Flask"],
                 alias=None,
                 file_path="app.py",
-                line_number=1
-            )
+                line_number=1,
+            ),
         ]
 
         symbols = {
@@ -142,7 +142,7 @@ class TestCodebaseAnalyzer:
                 symbol_type="variable",
                 file_path="test_file.py",
                 line_number=1,
-                scope="module"
+                scope="module",
             )
         }
 
@@ -155,7 +155,7 @@ class TestCodebaseAnalyzer:
                 "class_count": 0,
                 "import_count": 1,
                 "symbol_count": 1,
-                "file_size_bytes": 1200
+                "file_size_bytes": 1200,
             },
             "models.py": {
                 "language": "python",
@@ -165,7 +165,7 @@ class TestCodebaseAnalyzer:
                 "class_count": 2,
                 "import_count": 0,
                 "symbol_count": 0,
-                "file_size_bytes": 2000
+                "file_size_bytes": 2000,
             },
             "auth.py": {
                 "language": "python",
@@ -175,7 +175,7 @@ class TestCodebaseAnalyzer:
                 "class_count": 0,
                 "import_count": 0,
                 "symbol_count": 0,
-                "file_size_bytes": 800
+                "file_size_bytes": 800,
             },
             "test_user.py": {
                 "language": "python",
@@ -185,8 +185,8 @@ class TestCodebaseAnalyzer:
                 "class_count": 0,
                 "import_count": 1,
                 "symbol_count": 0,
-                "file_size_bytes": 1000
-            }
+                "file_size_bytes": 1000,
+            },
         }
 
         return ASTIndex(
@@ -194,7 +194,7 @@ class TestCodebaseAnalyzer:
             classes=classes,
             imports=imports,
             symbols=symbols,
-            file_metadata=file_metadata
+            file_metadata=file_metadata,
         )
 
     @pytest.fixture
@@ -308,7 +308,9 @@ class TestCodebaseAnalyzer:
         mock_match.chunk = mock_chunk
         mock_match.similarity_score = 0.8
 
-        analyzer_with_index.indexing_engine.query_similar_code.return_value = [mock_match]
+        analyzer_with_index.indexing_engine.query_similar_code.return_value = [
+            mock_match
+        ]
 
         result = analyzer_with_index.find_similar_implementations("test query")
         assert len(result) == 1
@@ -324,7 +326,7 @@ class TestCodebaseAnalyzer:
             description="Create a test function",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         result = analyzer.get_context_for_task(task)
@@ -340,7 +342,7 @@ class TestCodebaseAnalyzer:
             description="Create user management functionality",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         result = analyzer_with_index.get_context_for_task(task)
@@ -487,8 +489,9 @@ class TestCodebaseAnalyzer:
         # Should detect absolute imports and standard library usage
         if patterns:
             descriptions = [p.description for p in patterns]
-            assert any("absolute" in desc.lower() for desc in descriptions) or \
-                   any("standard library" in desc.lower() for desc in descriptions)
+            assert any("absolute" in desc.lower() for desc in descriptions) or any(
+                "standard library" in desc.lower() for desc in descriptions
+            )
 
     def test_find_relevant_files(self, analyzer_with_index):
         """Test relevant file finding."""
@@ -498,7 +501,7 @@ class TestCodebaseAnalyzer:
             description="user management functionality",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         files = analyzer_with_index._find_relevant_files(task)
@@ -514,7 +517,7 @@ class TestCodebaseAnalyzer:
             description="create test functionality",
             requirements_refs=[],
             subtasks=[],
-            status=TaskStatus.NOT_STARTED
+            status=TaskStatus.NOT_STARTED,
         )
 
         imports = analyzer_with_index._determine_required_imports(task)

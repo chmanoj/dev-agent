@@ -22,7 +22,7 @@ class TestSessionData(unittest.TestCase):
             current_phase=PhaseType.SPECIFICATION,
             start_time=now,
             last_activity=now,
-            user_preferences={"theme": "dark"}
+            user_preferences={"theme": "dark"},
         )
 
         self.assertEqual(session.session_id, "test-123")
@@ -41,7 +41,7 @@ class TestSessionData(unittest.TestCase):
             current_phase=PhaseType.DESIGN,
             start_time=now,
             last_activity=now,
-            user_preferences={"theme": "dark"}
+            user_preferences={"theme": "dark"},
         )
 
         data = session.to_dict()
@@ -62,7 +62,7 @@ class TestSessionData(unittest.TestCase):
             "current_phase": "implementation",
             "start_time": now.isoformat(),
             "last_activity": now.isoformat(),
-            "user_preferences": {"theme": "light"}
+            "user_preferences": {"theme": "light"},
         }
 
         session = SessionData.from_dict(data)
@@ -82,7 +82,7 @@ class TestSessionData(unittest.TestCase):
             "project_path": "/test/path",
             "current_phase": "indexing",
             "start_time": now.isoformat(),
-            "last_activity": now.isoformat()
+            "last_activity": now.isoformat(),
         }
 
         session = SessionData.from_dict(data)
@@ -101,12 +101,15 @@ class TestSessionManager(unittest.TestCase):
     def tearDown(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_session_manager_init(self):
         """Test SessionManager initialization."""
         self.assertEqual(self.session_manager.project_path, self.project_path)
-        expected_session_file = os.path.join(self.project_path, ".dev_agent", "session.json")
+        expected_session_file = os.path.join(
+            self.project_path, ".dev_agent", "session.json"
+        )
         self.assertEqual(self.session_manager.session_file, expected_session_file)
         self.assertIsNone(self.session_manager.current_session)
 
@@ -175,6 +178,7 @@ class TestSessionManager(unittest.TestCase):
 
         # Wait a small amount to ensure timestamp difference
         import time
+
         time.sleep(0.01)
 
         self.session_manager.update_activity()
@@ -193,6 +197,7 @@ class TestSessionManager(unittest.TestCase):
 
         # Wait a small amount to ensure timestamp difference
         import time
+
         time.sleep(0.01)
 
         self.session_manager.update_phase(PhaseType.SPECIFICATION)
@@ -210,7 +215,9 @@ class TestSessionManager(unittest.TestCase):
         self.assertEqual(self.session_manager.get_preference("theme"), "dark")
         self.assertEqual(self.session_manager.get_preference("auto_save"), True)
         self.assertIsNone(self.session_manager.get_preference("nonexistent"))
-        self.assertEqual(self.session_manager.get_preference("nonexistent", "default"), "default")
+        self.assertEqual(
+            self.session_manager.get_preference("nonexistent", "default"), "default"
+        )
 
     def test_preferences_no_session(self):
         """Test preferences when no session exists."""

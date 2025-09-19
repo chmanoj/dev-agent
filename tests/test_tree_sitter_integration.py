@@ -72,13 +72,28 @@ class TestTreeSitterIntegration(unittest.TestCase):
 
         # Check classes
         class_names = [c.name for c in classes]
-        expected_classes = ["Config", "ProcessorError", "BaseProcessor", "TextProcessor", "JSONProcessor", "ProcessorFactory"]
+        expected_classes = [
+            "Config",
+            "ProcessorError",
+            "BaseProcessor",
+            "TextProcessor",
+            "JSONProcessor",
+            "ProcessorFactory",
+        ]
         for class_name in expected_classes:
             self.assertIn(class_name, class_names)
 
         # Check imports
         import_modules = [imp.module for imp in imports]
-        expected_imports = ["os", "sys", "typing", "abc", "dataclasses", "functools", "json"]
+        expected_imports = [
+            "os",
+            "sys",
+            "typing",
+            "abc",
+            "dataclasses",
+            "functools",
+            "json",
+        ]
         for import_name in expected_imports:
             self.assertIn(import_name, import_modules)
 
@@ -128,8 +143,12 @@ class TestTreeSitterIntegration(unittest.TestCase):
         self.assertGreater(complex_metadata["line_count"], 0)
 
         # Complex file should have more functions and classes
-        self.assertGreater(complex_metadata["function_count"], simple_metadata["function_count"])
-        self.assertGreater(complex_metadata["class_count"], simple_metadata["class_count"])
+        self.assertGreater(
+            complex_metadata["function_count"], simple_metadata["function_count"]
+        )
+        self.assertGreater(
+            complex_metadata["class_count"], simple_metadata["class_count"]
+        )
 
     def test_symbol_map_creation(self):
         """Test creating symbol map from sample files."""
