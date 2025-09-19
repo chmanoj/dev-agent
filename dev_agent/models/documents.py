@@ -2,76 +2,84 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Dict
+
 from .enums import Priority, SpecificationSource, TaskStatus
 
 
 @dataclass
 class CodeAnalysisRef:
     """Reference to code analysis that informed a requirement."""
-    file_paths: List[str]
-    functions: List[str]
+
+    file_paths: list[str]
+    functions: list[str]
     confidence_score: float
 
 
 @dataclass
 class Requirement:
     """A functional requirement with acceptance criteria."""
+
     id: str
     user_story: str
-    acceptance_criteria: List[str]
+    acceptance_criteria: list[str]
     priority: Priority
-    source_analysis: Optional[CodeAnalysisRef] = None
+    source_analysis: CodeAnalysisRef | None = None
 
 
 @dataclass
 class SpecificationDocument:
     """Complete specification document."""
+
     introduction: str
-    key_features: List[str]
-    functional_requirements: List[Requirement]
+    key_features: list[str]
+    functional_requirements: list[Requirement]
     source: SpecificationSource
     version: str
     approved: bool
-    approval_timestamp: Optional[datetime] = None
+    approval_timestamp: datetime | None = None
 
 
 @dataclass
 class ComponentSpec:
     """Specification for a system component."""
+
     name: str
     description: str
-    interfaces: List[str]
-    dependencies: List[str]
+    interfaces: list[str]
+    dependencies: list[str]
 
 
 @dataclass
 class DataModel:
     """Data model specification."""
+
     name: str
-    fields: Dict[str, str]
-    relationships: List[str]
+    fields: dict[str, str]
+    relationships: list[str]
 
 
 @dataclass
 class InterfaceSpec:
     """Interface specification."""
+
     name: str
-    methods: List[str]
+    methods: list[str]
     description: str
 
 
 @dataclass
 class ErrorHandlingStrategy:
     """Error handling strategy specification."""
-    error_categories: List[str]
-    recovery_mechanisms: List[str]
+
+    error_categories: list[str]
+    recovery_mechanisms: list[str]
     logging_strategy: str
 
 
 @dataclass
 class TestingStrategy:
     """Testing strategy specification."""
+
     unit_testing: str
     integration_testing: str
     performance_testing: str
@@ -81,19 +89,21 @@ class TestingStrategy:
 @dataclass
 class ArchitectureDescription:
     """Architecture description."""
+
     overview: str
-    patterns: List[str]
-    components: List[str]
+    patterns: list[str]
+    components: list[str]
 
 
 @dataclass
 class DesignDocument:
     """Complete design document."""
+
     overview: str
     architecture: ArchitectureDescription
-    components: List[ComponentSpec]
-    data_models: List[DataModel]
-    interfaces: List[InterfaceSpec]
+    components: list[ComponentSpec]
+    data_models: list[DataModel]
+    interfaces: list[InterfaceSpec]
     error_handling: ErrorHandlingStrategy
     testing_strategy: TestingStrategy
     version: str
@@ -103,17 +113,18 @@ class DesignDocument:
 @dataclass
 class Task:
     """Implementation task specification."""
+
     id: str
     title: str
     description: str
-    requirements_refs: List[str]
-    subtasks: List[str]
+    requirements_refs: list[str]
+    subtasks: list[str]
     status: TaskStatus
     target_language: str = "python"
-    context_requirements: List[str] = None
-    implementation_notes: Optional[str] = None
-    generated_files: List[str] = None
-    
+    context_requirements: list[str] = None
+    implementation_notes: str | None = None
+    generated_files: list[str] = None
+
     def __post_init__(self):
         if self.context_requirements is None:
             self.context_requirements = []
@@ -124,8 +135,9 @@ class Task:
 @dataclass
 class TaskList:
     """Complete task list document."""
-    tasks: List[Task]
-    dependencies: Dict[str, List[str]]
-    estimated_effort: Dict[str, int]
+
+    tasks: list[Task]
+    dependencies: dict[str, list[str]]
+    estimated_effort: dict[str, int]
     version: str
     approved: bool

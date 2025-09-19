@@ -1,12 +1,13 @@
 """Custom exception classes for dev-agent system."""
 
-from enum import Enum
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any
 
 
 class ErrorSeverity(Enum):
     """Error severity levels."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -15,6 +16,7 @@ class ErrorSeverity(Enum):
 
 class ErrorCategory(Enum):
     """Error categories for classification."""
+
     INDEXING = "indexing"
     USER_INPUT = "user_input"
     SYSTEM = "system"
@@ -27,23 +29,24 @@ class ErrorCategory(Enum):
 @dataclass
 class ErrorContext:
     """Context information for errors."""
+
     operation: str
-    file_path: Optional[str] = None
-    phase: Optional[str] = None
-    additional_info: Optional[Dict[str, Any]] = None
+    file_path: str | None = None
+    phase: str | None = None
+    additional_info: dict[str, Any] | None = None
 
 
 class DevAgentError(Exception):
     """Base exception class for all dev-agent errors."""
-    
+
     def __init__(
         self,
         message: str,
         category: ErrorCategory,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-        context: Optional[ErrorContext] = None,
+        context: ErrorContext | None = None,
         recoverable: bool = True,
-        user_message: Optional[str] = None
+        user_message: str | None = None,
     ):
         super().__init__(message)
         self.message = message
@@ -52,38 +55,40 @@ class DevAgentError(Exception):
         self.context = context
         self.recoverable = recoverable
         self.user_message = user_message or self._generate_user_message()
-    
+
     def _generate_user_message(self) -> str:
         """Generate a user-friendly error message."""
         return f"An error occurred: {self.message}"
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert error to dictionary for logging/serialization."""
         return {
-            'message': self.message,
-            'category': self.category.value,
-            'severity': self.severity.value,
-            'recoverable': self.recoverable,
-            'user_message': self.user_message,
-            'context': {
-                'operation': self.context.operation if self.context else None,
-                'file_path': self.context.file_path if self.context else None,
-                'phase': self.context.phase if self.context else None,
-                'additional_info': self.context.additional_info if self.context else None,
-            }
+            "message": self.message,
+            "category": self.category.value,
+            "severity": self.severity.value,
+            "recoverable": self.recoverable,
+            "user_message": self.user_message,
+            "context": {
+                "operation": self.context.operation if self.context else None,
+                "file_path": self.context.file_path if self.context else None,
+                "phase": self.context.phase if self.context else None,
+                "additional_info": self.context.additional_info
+                if self.context
+                else None,
+            },
         }
 
 
 class IndexingError(DevAgentError):
     """Errors related to codebase indexing operations."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.HIGH,
-        context: Optional[ErrorContext] = None,
-        failed_files: Optional[List[str]] = None,
-        partial_success: bool = False
+        context: ErrorContext | None = None,
+        failed_files: list[str] | None = None,
+        partial_success: bool = False,
     ):
         self.failed_files = failed_files or []
         self.partial_success = partial_success
@@ -92,9 +97,9 @@ class IndexingError(DevAgentError):
             category=ErrorCategory.INDEXING,
             severity=severity,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
-    
+
     def _generate_user_message(self) -> str:
         if self.partial_success:
             return (
@@ -109,13 +114,13 @@ class IndexingError(DevAgentError):
 
 class UserInputError(DevAgentError):
     """Errors related to user input validation and processing."""
-    
+
     def __init__(
         self,
         message: str,
-        expected_input: Optional[str] = None,
-        received_input: Optional[str] = None,
-        context: Optional[ErrorContext] = None
+        expected_input: str | None = None,
+        received_input: str | None = None,
+        context: ErrorContext | None = None,
     ):
         self.expected_input = expected_input
         self.received_input = received_input
@@ -124,9 +129,9 @@ class UserInputError(DevAgentError):
             category=ErrorCategory.USER_INPUT,
             severity=ErrorSeverity.LOW,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
-    
+
     def _generate_user_message(self) -> str:
         if self.expected_input:
             return (
@@ -138,23 +143,23 @@ class UserInputError(DevAgentError):
 
 class SystemError(DevAgentError):
     """Errors related to system operations (file I/O, permissions, etc.)."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.HIGH,
-        context: Optional[ErrorContext] = None,
-        system_errno: Optional[int] = None
+        context: ErrorContext | None = None,
+        system_errno: int | None = None,
     ):
         super().__init__(
             message=message,
             category=ErrorCategory.SYSTEM,
             severity=severity,
             context=context,
-            recoverable=severity != ErrorSeverity.CRITICAL
+            recoverable=severity != ErrorSeverity.CRITICAL,
         )
         self.system_errno = system_errno
-    
+
     def _generate_user_message(self) -> str:
         return (
             f"System error: {self.message}. "
@@ -164,25 +169,25 @@ class SystemError(DevAgentError):
 
 class ImplementationError(DevAgentError):
     """Errors related to code generation and implementation."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-        context: Optional[ErrorContext] = None,
-        syntax_errors: Optional[List[str]] = None,
-        import_errors: Optional[List[str]] = None
+        context: ErrorContext | None = None,
+        syntax_errors: list[str] | None = None,
+        import_errors: list[str] | None = None,
     ):
         super().__init__(
             message=message,
             category=ErrorCategory.IMPLEMENTATION,
             severity=severity,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
         self.syntax_errors = syntax_errors or []
         self.import_errors = import_errors or []
-    
+
     def _generate_user_message(self) -> str:
         return (
             f"Code generation error: {self.message}. "
@@ -192,25 +197,25 @@ class ImplementationError(DevAgentError):
 
 class PerformanceError(DevAgentError):
     """Errors related to performance issues and resource constraints."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-        context: Optional[ErrorContext] = None,
-        memory_usage_mb: Optional[float] = None,
-        execution_time_seconds: Optional[float] = None
+        context: ErrorContext | None = None,
+        memory_usage_mb: float | None = None,
+        execution_time_seconds: float | None = None,
     ):
         super().__init__(
             message=message,
             category=ErrorCategory.PERFORMANCE,
             severity=severity,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
         self.memory_usage_mb = memory_usage_mb
         self.execution_time_seconds = execution_time_seconds
-    
+
     def _generate_user_message(self) -> str:
         return (
             f"Performance issue: {self.message}. "
@@ -220,14 +225,14 @@ class PerformanceError(DevAgentError):
 
 class StateCorruptionError(DevAgentError):
     """Errors related to corrupted or invalid state data."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.HIGH,
-        context: Optional[ErrorContext] = None,
-        corrupted_files: Optional[List[str]] = None,
-        backup_available: bool = False
+        context: ErrorContext | None = None,
+        corrupted_files: list[str] | None = None,
+        backup_available: bool = False,
     ):
         self.corrupted_files = corrupted_files or []
         self.backup_available = backup_available
@@ -236,9 +241,9 @@ class StateCorruptionError(DevAgentError):
             category=ErrorCategory.STATE,
             severity=severity,
             context=context,
-            recoverable=backup_available
+            recoverable=backup_available,
         )
-    
+
     def _generate_user_message(self) -> str:
         if self.backup_available:
             return (
@@ -253,25 +258,25 @@ class StateCorruptionError(DevAgentError):
 
 class TimeoutError(DevAgentError):
     """Errors related to operation timeouts."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-        context: Optional[ErrorContext] = None,
-        timeout_seconds: Optional[float] = None,
-        operation_type: Optional[str] = None
+        context: ErrorContext | None = None,
+        timeout_seconds: float | None = None,
+        operation_type: str | None = None,
     ):
         super().__init__(
             message=message,
             category=ErrorCategory.TIMEOUT,
             severity=severity,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
         self.timeout_seconds = timeout_seconds
         self.operation_type = operation_type
-    
+
     def _generate_user_message(self) -> str:
         return (
             f"Operation timed out: {self.message}. "
@@ -281,25 +286,25 @@ class TimeoutError(DevAgentError):
 
 class ConfigurationError(DevAgentError):
     """Errors related to configuration issues."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.HIGH,
-        context: Optional[ErrorContext] = None,
-        config_key: Optional[str] = None,
-        expected_value: Optional[str] = None
+        context: ErrorContext | None = None,
+        config_key: str | None = None,
+        expected_value: str | None = None,
     ):
         super().__init__(
             message=message,
             category=ErrorCategory.SYSTEM,
             severity=severity,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
         self.config_key = config_key
         self.expected_value = expected_value
-    
+
     def _generate_user_message(self) -> str:
         return (
             f"Configuration error: {self.message}. "
@@ -309,25 +314,25 @@ class ConfigurationError(DevAgentError):
 
 class ServiceError(DevAgentError):
     """Errors related to external service operations."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.HIGH,
-        context: Optional[ErrorContext] = None,
-        service_name: Optional[str] = None,
-        status_code: Optional[int] = None
+        context: ErrorContext | None = None,
+        service_name: str | None = None,
+        status_code: int | None = None,
     ):
         super().__init__(
             message=message,
             category=ErrorCategory.SYSTEM,
             severity=severity,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
         self.service_name = service_name
         self.status_code = status_code
-    
+
     def _generate_user_message(self) -> str:
         return (
             f"Service error: {self.message}. "
@@ -337,23 +342,23 @@ class ServiceError(DevAgentError):
 
 class GenerationError(DevAgentError):
     """Errors related to AI-powered generation operations."""
-    
+
     def __init__(
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-        context: Optional[ErrorContext] = None,
-        generation_type: Optional[str] = None
+        context: ErrorContext | None = None,
+        generation_type: str | None = None,
     ):
         super().__init__(
             message=message,
             category=ErrorCategory.IMPLEMENTATION,
             severity=severity,
             context=context,
-            recoverable=True
+            recoverable=True,
         )
         self.generation_type = generation_type
-    
+
     def _generate_user_message(self) -> str:
         return (
             f"Generation error: {self.message}. "

@@ -2,4 +2,4 @@
 
 from .codebase_analyzer import CodebaseAnalyzer
 
-__all__ = ['CodebaseAnalyzer']
+__all__ = ["CodebaseAnalyzer"]

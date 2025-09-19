@@ -1,10 +1,11 @@
 """Core enums for the dev-agent system."""
 
-from enum import Enum, auto
+from enum import Enum
 
 
 class PhaseType(Enum):
     """Represents the four phases of the development workflow."""
+
     INDEXING = "indexing"
     SPECIFICATION = "specification"
     DESIGN = "design"
@@ -13,6 +14,7 @@ class PhaseType(Enum):
 
 class PhaseStatus(Enum):
     """Status of a workflow phase."""
+
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -22,6 +24,7 @@ class PhaseStatus(Enum):
 
 class TaskStatus(Enum):
     """Status of an implementation task."""
+
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -31,6 +34,7 @@ class TaskStatus(Enum):
 
 class Priority(Enum):
     """Priority level for requirements and tasks."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -39,6 +43,7 @@ class Priority(Enum):
 
 class DocumentType(Enum):
     """Types of documents managed by the system."""
+
     SPECIFICATION = "specification"
     DESIGN = "design"
     TASKS = "tasks"
@@ -46,5 +51,6 @@ class DocumentType(Enum):
 
 class SpecificationSource(Enum):
     """Source of specification generation."""
+
     EXISTING_CODE = "existing_code"
     USER_INPUT = "user_input"

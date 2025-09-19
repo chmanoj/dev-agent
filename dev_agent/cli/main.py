@@ -15,7 +15,6 @@ from ..config import (
     log_system_info,
     setup_logging,
 )
-from ..models.enums import PhaseType
 from .interactive_cli import InteractiveCLI
 from .session_manager import SessionManager
 
@@ -98,9 +97,10 @@ def init(
 
         # Initialize CLI and session manager
         session_manager = SessionManager(project_path)
-        
+
         # Initialize workflow manager
         from ..workflow.workflow_manager import WorkflowManager
+
         cli = InteractiveCLI()
         workflow_manager = WorkflowManager(cli)
         cli.workflow_manager = workflow_manager
@@ -110,7 +110,7 @@ def init(
 
         # Initialize project through workflow manager
         project_state = workflow_manager.start_new_project(project_path)
-        
+
         success_msg = f"Started new project: {project_state.project_path}"
         if logger:
             logger.info(success_msg)
@@ -169,9 +169,10 @@ def resume(
 
         # Initialize session manager and try to resume
         session_manager = SessionManager(project_path)
-        
+
         # Initialize workflow manager
         from ..workflow.workflow_manager import WorkflowManager
+
         cli = InteractiveCLI()
         workflow_manager = WorkflowManager(cli)
         cli.workflow_manager = workflow_manager
@@ -272,6 +273,7 @@ app.add_typer(config_app, name="config")
 
 # Azure command group
 from .azure_config import app as azure_app
+
 app.add_typer(azure_app, name="azure")
 
 

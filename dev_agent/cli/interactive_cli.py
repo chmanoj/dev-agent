@@ -1,9 +1,9 @@
 """Interactive CLI implementation for dev-agent."""
 
 import os
-import sys
 import signal
-from typing import Optional
+import sys
+
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.workflow_interface import IWorkflowManager
 from ..models.enums import PhaseType
@@ -11,32 +11,33 @@ from ..models.enums import PhaseType
 
 class InteractiveCLI(ICLIInterface):
     """Interactive command-line interface with chat-based interaction."""
-    
-    def __init__(self, workflow_manager: Optional[IWorkflowManager] = None):
+
+    def __init__(self, workflow_manager: IWorkflowManager | None = None):
         """Initialize the interactive CLI.
-        
+
         Args:
             workflow_manager: Optional workflow manager for handling project operations
         """
         self.workflow_manager = workflow_manager
         self.session_active = False
         self._setup_signal_handlers()
-        
+
         # Initialize workflow manager if not provided
         if not self.workflow_manager:
             from ..workflow.workflow_manager import WorkflowManager
+
             self.workflow_manager = WorkflowManager(self)
-    
+
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""
         signal.signal(signal.SIGINT, self._handle_interrupt)
         signal.signal(signal.SIGTERM, self._handle_interrupt)
-    
+
     def _handle_interrupt(self, signum: int, frame) -> None:
         """Handle interrupt signals for graceful shutdown."""
         print("\n\nReceived interrupt signal. Shutting down gracefully...")
         self._graceful_exit()
-    
+
     def _graceful_exit(self) -> None:
         """Perform graceful exit operations."""
         if self.session_active:
@@ -45,18 +46,20 @@ class InteractiveCLI(ICLIInterface):
             self.session_active = False
         print("Goodbye!")
         sys.exit(0)
-    
+
     def start_chat_session(self) -> None:
         """Start an interactive chat session with the user."""
         self.session_active = True
-        self.display_message("Welcome to dev-agent! Type 'help' for available commands or 'exit' to quit.")
-        
+        self.display_message(
+            "Welcome to dev-agent! Type 'help' for available commands or 'exit' to quit."
+        )
+
         while self.session_active:
             try:
                 user_input = self.get_user_input("dev-agent> ")
-                if user_input.lower().strip() in ['exit', 'quit', 'q']:
+                if user_input.lower().strip() in ["exit", "quit", "q"]:
                     self._graceful_exit()
-                elif user_input.lower().strip() == 'help':
+                elif user_input.lower().strip() == "help":
                     self._display_help()
                 else:
                     response = self.handle_user_input(user_input)
@@ -68,45 +71,45 @@ class InteractiveCLI(ICLIInterface):
             except KeyboardInterrupt:
                 # Handle Ctrl+C
                 self._graceful_exit()
-    
+
     def handle_user_input(self, input_text: str) -> str:
         """Process user input and return response.
-        
+
         Args:
             input_text: The user's input text
-            
+
         Returns:
             Response message for the user
         """
         input_text = input_text.strip()
-        
+
         if not input_text:
             return ""
-        
+
         # Handle init command
-        if input_text.startswith('init'):
+        if input_text.startswith("init"):
             parts = input_text.split()
             if len(parts) > 1:
                 project_path = parts[1]
             else:
                 project_path = os.getcwd()
-            
+
             try:
                 self.init_command(project_path)
                 return f"Project initialized at: {project_path}"
             except Exception as e:
-                return f"Error initializing project: {str(e)}"
-        
+                return f"Error initializing project: {e!s}"
+
         # Handle status command
-        elif input_text == 'status':
+        elif input_text == "status":
             if self.workflow_manager:
                 current_phase = self.workflow_manager.get_current_phase()
                 return f"Current phase: {current_phase.value}"
             else:
                 return "No active project. Use 'init [path]' to start."
-        
+
         # Handle workflow commands
-        elif input_text == 'run' or input_text == 'start':
+        elif input_text == "run" or input_text == "start":
             if self.workflow_manager:
                 try:
                     success = self.workflow_manager.execute_complete_workflow()
@@ -115,15 +118,16 @@ class InteractiveCLI(ICLIInterface):
                     else:
                         return "Workflow execution failed. Check the logs for details."
                 except Exception as e:
-                    return f"Error running workflow: {str(e)}"
+                    return f"Error running workflow: {e!s}"
             else:
                 return "No active project. Use 'init [path]' to start."
-        
-        elif input_text.startswith('phase '):
+
+        elif input_text.startswith("phase "):
             phase_name = input_text[6:].strip().upper()
             if self.workflow_manager:
                 try:
                     from ..models.enums import PhaseType
+
                     phase = PhaseType(phase_name)
                     success = self.workflow_manager.transition_to_phase(phase)
                     if success:
@@ -133,41 +137,47 @@ class InteractiveCLI(ICLIInterface):
                 except ValueError:
                     return f"Invalid phase: {phase_name}. Valid phases: INDEXING, SPECIFICATION, DESIGN, IMPLEMENTATION"
                 except Exception as e:
-                    return f"Error transitioning to phase: {str(e)}"
+                    return f"Error transitioning to phase: {e!s}"
             else:
                 return "No active project. Use 'init [path]' to start."
-        
+
         # Default response for unrecognized commands
         else:
-            return f"Unknown command: '{input_text}'. Type 'help' for available commands."
-    
+            return (
+                f"Unknown command: '{input_text}'. Type 'help' for available commands."
+            )
+
     def request_approval(self, document: str, document_type: str) -> bool:
         """Request user approval for a generated document.
-        
+
         Args:
             document: The document content to approve
             document_type: Type of document (specification, design, tasks)
-            
+
         Returns:
             True if approved, False if rejected
         """
         self.display_message(f"\n--- Generated {document_type.title()} ---")
         self.display_message(document)
         self.display_message(f"--- End of {document_type.title()} ---\n")
-        
+
         while True:
-            response = self.get_user_input(f"Do you approve this {document_type}? (y/n): ").lower().strip()
-            
-            if response in ['y', 'yes']:
+            response = (
+                self.get_user_input(f"Do you approve this {document_type}? (y/n): ")
+                .lower()
+                .strip()
+            )
+
+            if response in ["y", "yes"]:
                 return True
-            elif response in ['n', 'no']:
+            elif response in ["n", "no"]:
                 return False
             else:
                 self.display_message("Please enter 'y' for yes or 'n' for no.")
-    
+
     def display_progress(self, phase: PhaseType, progress: float) -> None:
         """Display progress information for the current phase.
-        
+
         Args:
             phase: The current phase
             progress: Progress as a float between 0.0 and 1.0
@@ -175,26 +185,28 @@ class InteractiveCLI(ICLIInterface):
         progress_percent = int(progress * 100)
         bar_length = 30
         filled_length = int(bar_length * progress)
-        bar = '█' * filled_length + '-' * (bar_length - filled_length)
-        
-        print(f"\r{phase.value.title()}: |{bar}| {progress_percent}%", end='', flush=True)
-        
+        bar = "█" * filled_length + "-" * (bar_length - filled_length)
+
+        print(
+            f"\r{phase.value.title()}: |{bar}| {progress_percent}%", end="", flush=True
+        )
+
         if progress >= 1.0:
             print()  # New line when complete
-    
+
     def init_command(self, project_path: str) -> None:
         """Initialize a new project or resume an existing one.
-        
+
         Args:
             project_path: Path to the project directory
         """
         if not os.path.exists(project_path):
             raise ValueError(f"Project path does not exist: {project_path}")
-        
-        dev_agent_dir = os.path.join(project_path, '.dev_agent')
-        documents_dir = os.path.join(dev_agent_dir, 'documents')
-        index_dir = os.path.join(dev_agent_dir, 'index')
-        
+
+        dev_agent_dir = os.path.join(project_path, ".dev_agent")
+        documents_dir = os.path.join(dev_agent_dir, "documents")
+        index_dir = os.path.join(dev_agent_dir, "index")
+
         # Check if this is an existing project by looking for actual project structure
         if os.path.exists(documents_dir) and os.path.exists(index_dir):
             self.display_message("Found existing dev-agent project. Resuming...")
@@ -206,29 +218,29 @@ class InteractiveCLI(ICLIInterface):
             os.makedirs(dev_agent_dir, exist_ok=True)
             os.makedirs(documents_dir, exist_ok=True)
             os.makedirs(index_dir, exist_ok=True)
-            
+
             if self.workflow_manager:
                 self.workflow_manager.start_new_project(project_path)
-    
+
     def display_message(self, message: str) -> None:
         """Display a message to the user.
-        
+
         Args:
             message: The message to display
         """
         print(message)
-    
+
     def get_user_input(self, prompt: str) -> str:
         """Get input from the user with a prompt.
-        
+
         Args:
             prompt: The prompt to display
-            
+
         Returns:
             The user's input as a string
         """
         return input(prompt)
-    
+
     def _display_help(self) -> None:
         """Display help information."""
         help_text = """
