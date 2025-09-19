@@ -47,34 +47,35 @@ class CodebaseAnalyzer(ICodebaseAnalyzer):
         """Analyze codebase to generate specification requirements."""
         if not self.ast_index:
             return SpecificationAnalysis(
-                project_purpose="Unable to analyze - no index available",
+                project_purpose="New software project",
                 main_features=[],
-                user_roles=[],
+                user_roles=["User"],
                 functional_areas=[],
+                technology_constraints=["Python 3.x"],
                 requirement_evidence=[],
-                technology_constraints=[],
-                external_dependencies=[],
-                confidence_score=0.0
+                confidence_score=0.1
             )
         
-        # Analyze project structure and purpose
+        # Analyze project structure and patterns
         project_purpose = self._infer_project_purpose()
         main_features = self._extract_main_features()
         user_roles = self._identify_user_roles()
         functional_areas = self._identify_functional_areas()
-        requirement_evidence = self._gather_requirement_evidence()
-        technology_constraints = self._analyze_technology_constraints()
-        external_dependencies = self._analyze_external_dependencies()
-        confidence_score = self._calculate_specification_confidence()
+        technology_constraints = self._identify_technology_constraints()
+        requirement_evidence = self._extract_requirement_evidence()
+        
+        # Calculate confidence based on available information
+        confidence_score = self._calculate_specification_confidence(
+            main_features, functional_areas, requirement_evidence
+        )
         
         return SpecificationAnalysis(
             project_purpose=project_purpose,
             main_features=main_features,
             user_roles=user_roles,
             functional_areas=functional_areas,
-            requirement_evidence=requirement_evidence,
             technology_constraints=technology_constraints,
-            external_dependencies=external_dependencies,
+            requirement_evidence=requirement_evidence,
             confidence_score=confidence_score
         )
     
@@ -1246,3 +1247,265 @@ class CodebaseAnalyzer(ICodebaseAnalyzer):
                 guidelines['import_style'] = 'absolute_preferred'
         
         return guidelines
+    
+    def _infer_project_purpose(self) -> str:
+        """Infer the main purpose of the project from code analysis."""
+        if not self.ast_index:
+            return "Software application"
+        
+        # Analyze imports and class names to infer purpose
+        imports = [imp.module.lower() for imp in self.ast_index.imports]
+        class_names = [cls.name.lower() for cls in self.ast_index.classes.values()]
+        function_names = [func.name.lower() for func in self.ast_index.functions.values()]
+        
+        # Web application indicators
+        web_indicators = ['flask', 'django', 'fastapi', 'tornado', 'bottle', 'pyramid']
+        if any(indicator in ' '.join(imports) for indicator in web_indicators):
+            return "Web application providing HTTP API services"
+        
+        # CLI application indicators
+        cli_indicators = ['argparse', 'click', 'typer', 'fire']
+        if any(indicator in ' '.join(imports) for indicator in cli_indicators):
+            return "Command-line application for task automation"
+        
+        # Data processing indicators
+        data_indicators = ['pandas', 'numpy', 'scipy', 'sklearn', 'tensorflow', 'pytorch']
+        if any(indicator in ' '.join(imports) for indicator in data_indicators):
+            return "Data processing and analysis application"
+        
+        # Default based on class/function analysis
+        if any('server' in name or 'api' in name for name in class_names + function_names):
+            return "Server application providing services"
+        elif any('client' in name for name in class_names + function_names):
+            return "Client application for interacting with services"
+        else:
+            return "General-purpose software application"
+    
+    def _extract_main_features(self) -> List[str]:
+        """Extract main features from code analysis."""
+        if not self.ast_index:
+            return []
+        
+        features = []
+        
+        # Analyze class names for feature indicators
+        class_names = [cls.name for cls in self.ast_index.classes.values()]
+        
+        for class_name in class_names:
+            name_lower = class_name.lower()
+            
+            if 'auth' in name_lower or 'login' in name_lower:
+                features.append("User Authentication")
+            elif 'user' in name_lower and 'manage' in name_lower:
+                features.append("User Management")
+            elif 'data' in name_lower or 'model' in name_lower:
+                features.append("Data Management")
+            elif 'api' in name_lower or 'endpoint' in name_lower:
+                features.append("API Services")
+            elif 'config' in name_lower or 'setting' in name_lower:
+                features.append("Configuration Management")
+            elif 'log' in name_lower:
+                features.append("Logging and Monitoring")
+            elif 'test' in name_lower:
+                features.append("Testing Framework")
+            elif 'cache' in name_lower:
+                features.append("Caching System")
+            elif 'queue' in name_lower or 'task' in name_lower:
+                features.append("Task Processing")
+            elif 'file' in name_lower or 'storage' in name_lower:
+                features.append("File Management")
+        
+        # Remove duplicates and limit
+        features = list(dict.fromkeys(features))[:8]
+        
+        # Add generic features if none found
+        if not features:
+            features = ["Core Application Logic", "Data Processing", "User Interface"]
+        
+        return features
+    
+    def _identify_user_roles(self) -> List[str]:
+        """Identify potential user roles from code analysis."""
+        roles = ["User"]  # Default role
+        
+        if not self.ast_index:
+            return roles
+        
+        # Look for role-related classes or functions
+        all_names = []
+        all_names.extend([cls.name.lower() for cls in self.ast_index.classes.values()])
+        all_names.extend([func.name.lower() for func in self.ast_index.functions.values()])
+        
+        role_indicators = {
+            'admin': 'Administrator',
+            'manager': 'Manager',
+            'operator': 'Operator',
+            'developer': 'Developer',
+            'customer': 'Customer',
+            'client': 'Client',
+            'guest': 'Guest User',
+            'moderator': 'Moderator',
+            'editor': 'Editor'
+        }
+        
+        for name in all_names:
+            for indicator, role in role_indicators.items():
+                if indicator in name and role not in roles:
+                    roles.append(role)
+        
+        return roles[:5]  # Limit to 5 roles
+    
+    def _identify_functional_areas(self) -> List[str]:
+        """Identify functional areas from code structure."""
+        if not self.ast_index:
+            return []
+        
+        areas = set()
+        
+        # Analyze file paths for functional grouping
+        file_paths = list(self.ast_index.file_metadata.keys())
+        
+        for file_path in file_paths:
+            path_parts = Path(file_path).parts
+            
+            for part in path_parts:
+                part_lower = part.lower()
+                
+                if part_lower in ['auth', 'authentication']:
+                    areas.add("Authentication & Authorization")
+                elif part_lower in ['api', 'endpoints', 'routes']:
+                    areas.add("API Management")
+                elif part_lower in ['data', 'models', 'database', 'db']:
+                    areas.add("Data Management")
+                elif part_lower in ['ui', 'interface', 'frontend', 'views']:
+                    areas.add("User Interface")
+                elif part_lower in ['config', 'settings', 'configuration']:
+                    areas.add("Configuration")
+                elif part_lower in ['utils', 'utilities', 'helpers']:
+                    areas.add("Utility Functions")
+                elif part_lower in ['tests', 'testing']:
+                    areas.add("Testing")
+                elif part_lower in ['docs', 'documentation']:
+                    areas.add("Documentation")
+        
+        # Analyze class names for additional areas
+        class_names = [cls.name.lower() for cls in self.ast_index.classes.values()]
+        
+        for name in class_names:
+            if 'service' in name:
+                areas.add("Service Layer")
+            elif 'controller' in name:
+                areas.add("Request Handling")
+            elif 'repository' in name or 'dao' in name:
+                areas.add("Data Access")
+            elif 'validator' in name:
+                areas.add("Data Validation")
+            elif 'processor' in name:
+                areas.add("Data Processing")
+        
+        return list(areas)[:10]  # Limit to 10 areas
+    
+    def _identify_technology_constraints(self) -> List[str]:
+        """Identify technology constraints from imports and dependencies."""
+        if not self.ast_index:
+            return ["Python 3.x"]
+        
+        constraints = ["Python 3.x"]  # Base constraint
+        
+        # Analyze imports for technology stack
+        imports = [imp.module for imp in self.ast_index.imports]
+        
+        # Web frameworks
+        web_frameworks = {
+            'flask': 'Flask web framework',
+            'django': 'Django web framework',
+            'fastapi': 'FastAPI framework',
+            'tornado': 'Tornado web server',
+            'bottle': 'Bottle micro-framework'
+        }
+        
+        for imp in imports:
+            imp_lower = imp.lower()
+            for framework, constraint in web_frameworks.items():
+                if framework in imp_lower:
+                    constraints.append(constraint)
+        
+        # Database technologies
+        db_technologies = {
+            'sqlite3': 'SQLite database',
+            'psycopg2': 'PostgreSQL database',
+            'pymongo': 'MongoDB database',
+            'redis': 'Redis cache/database',
+            'sqlalchemy': 'SQLAlchemy ORM'
+        }
+        
+        for imp in imports:
+            imp_lower = imp.lower()
+            for tech, constraint in db_technologies.items():
+                if tech in imp_lower:
+                    constraints.append(constraint)
+        
+        # Remove duplicates
+        constraints = list(dict.fromkeys(constraints))
+        
+        return constraints[:8]  # Limit to 8 constraints
+    
+    def _extract_requirement_evidence(self) -> List[RequirementEvidence]:
+        """Extract evidence for requirements from code analysis."""
+        if not self.ast_index:
+            return []
+        
+        evidence = []
+        
+        # Analyze functions for requirement evidence
+        functions = list(self.ast_index.functions.values())
+        
+        # Group functions by type/purpose
+        function_groups = defaultdict(list)
+        
+        for func in functions:
+            name_lower = func.name.lower()
+            
+            if any(keyword in name_lower for keyword in ['create', 'add', 'insert', 'save']):
+                function_groups['Data Creation'].append(func)
+            elif any(keyword in name_lower for keyword in ['read', 'get', 'fetch', 'load', 'find']):
+                function_groups['Data Retrieval'].append(func)
+            elif any(keyword in name_lower for keyword in ['update', 'modify', 'edit', 'change']):
+                function_groups['Data Modification'].append(func)
+            elif any(keyword in name_lower for keyword in ['delete', 'remove', 'destroy']):
+                function_groups['Data Deletion'].append(func)
+            elif any(keyword in name_lower for keyword in ['auth', 'login', 'verify', 'validate']):
+                function_groups['Authentication'].append(func)
+            elif any(keyword in name_lower for keyword in ['process', 'handle', 'execute']):
+                function_groups['Business Logic'].append(func)
+        
+        # Create evidence for each group
+        for req_type, funcs in function_groups.items():
+            if funcs:
+                evidence_item = RequirementEvidence(
+                    requirement_type=req_type,
+                    description=f"System provides {req_type.lower()} functionality",
+                    supporting_files=list(set(func.file_path for func in funcs)),
+                    supporting_functions=[func.name for func in funcs[:5]],  # Limit to 5
+                    confidence=min(0.9, 0.5 + (len(funcs) * 0.1))  # Higher confidence with more functions
+                )
+                evidence.append(evidence_item)
+        
+        return evidence[:8]  # Limit to 8 evidence items
+    
+    def _calculate_specification_confidence(self, features: List[str], areas: List[str], evidence: List[RequirementEvidence]) -> float:
+        """Calculate confidence score for specification analysis."""
+        base_confidence = 0.3
+        
+        # Increase confidence based on available information
+        if features:
+            base_confidence += min(0.3, len(features) * 0.05)
+        
+        if areas:
+            base_confidence += min(0.2, len(areas) * 0.03)
+        
+        if evidence:
+            avg_evidence_confidence = sum(e.confidence for e in evidence) / len(evidence)
+            base_confidence += avg_evidence_confidence * 0.3
+        
+        return min(0.95, base_confidence)

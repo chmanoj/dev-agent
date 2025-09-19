@@ -21,6 +21,11 @@ class InteractiveCLI(ICLIInterface):
         self.workflow_manager = workflow_manager
         self.session_active = False
         self._setup_signal_handlers()
+        
+        # Initialize workflow manager if not provided
+        if not self.workflow_manager:
+            from ..workflow.workflow_manager import WorkflowManager
+            self.workflow_manager = WorkflowManager(self)
     
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""
@@ -97,6 +102,38 @@ class InteractiveCLI(ICLIInterface):
             if self.workflow_manager:
                 current_phase = self.workflow_manager.get_current_phase()
                 return f"Current phase: {current_phase.value}"
+            else:
+                return "No active project. Use 'init [path]' to start."
+        
+        # Handle workflow commands
+        elif input_text == 'run' or input_text == 'start':
+            if self.workflow_manager:
+                try:
+                    success = self.workflow_manager.execute_complete_workflow()
+                    if success:
+                        return "Workflow completed successfully!"
+                    else:
+                        return "Workflow execution failed. Check the logs for details."
+                except Exception as e:
+                    return f"Error running workflow: {str(e)}"
+            else:
+                return "No active project. Use 'init [path]' to start."
+        
+        elif input_text.startswith('phase '):
+            phase_name = input_text[6:].strip().upper()
+            if self.workflow_manager:
+                try:
+                    from ..models.enums import PhaseType
+                    phase = PhaseType(phase_name)
+                    success = self.workflow_manager.transition_to_phase(phase)
+                    if success:
+                        return f"Successfully transitioned to {phase_name} phase"
+                    else:
+                        return f"Failed to transition to {phase_name} phase"
+                except ValueError:
+                    return f"Invalid phase: {phase_name}. Valid phases: INDEXING, SPECIFICATION, DESIGN, IMPLEMENTATION"
+                except Exception as e:
+                    return f"Error transitioning to phase: {str(e)}"
             else:
                 return "No active project. Use 'init [path]' to start."
         
@@ -196,17 +233,27 @@ class InteractiveCLI(ICLIInterface):
         """Display help information."""
         help_text = """
 Available commands:
-  init [path]    - Initialize a new project or resume existing (default: current directory)
-  status         - Show current project status and phase
-  help           - Show this help message
-  exit/quit/q    - Exit the application
+  init [path]       - Initialize a new project or resume existing (default: current directory)
+  status            - Show current project status and phase
+  run/start         - Execute the complete four-phase workflow
+  phase <PHASE>     - Transition to a specific phase (INDEXING, SPECIFICATION, DESIGN, IMPLEMENTATION)
+  help              - Show this help message
+  exit/quit/q       - Exit the application
+
+Workflow Phases:
+  1. INDEXING       - Analyze and index the codebase
+  2. SPECIFICATION  - Generate requirements specification
+  3. DESIGN         - Create technical design document
+  4. IMPLEMENTATION - Generate implementation tasks
 
 During workflow phases, you'll be prompted for approval of generated documents.
 Use Ctrl+C or Ctrl+D to exit at any time.
 
 Examples:
-  init           - Initialize project in current directory
-  init /path     - Initialize project at specific path
-  status         - Check current workflow phase
+  init              - Initialize project in current directory
+  init /path        - Initialize project at specific path
+  status            - Check current workflow phase
+  run               - Execute complete workflow
+  phase INDEXING    - Run indexing phase
         """
         self.display_message(help_text.strip())

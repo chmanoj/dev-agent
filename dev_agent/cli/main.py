@@ -98,16 +98,20 @@ def init(
 
         # Initialize CLI and session manager
         session_manager = SessionManager(project_path)
+        
+        # Initialize workflow manager
+        from ..workflow.workflow_manager import WorkflowManager
         cli = InteractiveCLI()
+        workflow_manager = WorkflowManager(cli)
+        cli.workflow_manager = workflow_manager
 
         if logger:
             logger.info(f"Initializing project at: {project_path}")
 
-        cli.init_command(project_path)
-
-        # Start a new session
-        session = session_manager.start_session(PhaseType.INDEXING)
-        success_msg = f"Started new session: {session.session_id}"
+        # Initialize project through workflow manager
+        project_state = workflow_manager.start_new_project(project_path)
+        
+        success_msg = f"Started new project: {project_state.project_path}"
         if logger:
             logger.info(success_msg)
         console.print(f"[green]{success_msg}[/green]")
@@ -165,28 +169,34 @@ def resume(
 
         # Initialize session manager and try to resume
         session_manager = SessionManager(project_path)
+        
+        # Initialize workflow manager
+        from ..workflow.workflow_manager import WorkflowManager
+        cli = InteractiveCLI()
+        workflow_manager = WorkflowManager(cli)
+        cli.workflow_manager = workflow_manager
 
         if logger:
             logger.info(f"Resuming project at: {project_path}")
 
-        session = session_manager.resume_session()
-        if session:
-            resume_msg = f"Resumed session: {session.session_id}"
-            phase_msg = f"Current phase: {session.current_phase.value}"
+        # Resume project through workflow manager
+        try:
+            project_state = workflow_manager.resume_project(project_path)
+            resume_msg = f"Resumed project: {project_state.project_path}"
+            phase_msg = f"Current phase: {project_state.current_phase.value}"
             if logger:
                 logger.info(f"{resume_msg}, {phase_msg}")
             console.print(f"[green]{resume_msg}[/green]")
             console.print(f"[blue]{phase_msg}[/blue]")
-        else:
+        except Exception as e:
             if logger:
-                logger.info("No previous session found, starting new session")
+                logger.info(f"Could not resume project: {e}, starting new project")
             console.print(
-                "[yellow]No previous session found, starting new session...[/yellow]"
+                "[yellow]Could not resume project, starting new project...[/yellow]"
             )
-            session = session_manager.start_session(PhaseType.INDEXING)
+            project_state = workflow_manager.start_new_project(project_path)
 
         # Start interactive mode
-        cli = InteractiveCLI()
         _start_interactive_mode(project_path, session_manager, cli)
 
     except Exception as e:
@@ -259,6 +269,10 @@ def _start_interactive_mode(
 # Config command group
 config_app = typer.Typer(name="config", help="Configuration management")
 app.add_typer(config_app, name="config")
+
+# Azure command group
+from .azure_config import app as azure_app
+app.add_typer(azure_app, name="azure")
 
 
 @config_app.command("show")

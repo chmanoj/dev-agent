@@ -33,6 +33,7 @@ dependencies = [
     "numpy>=2.0.0",
     "faiss-cpu>=1.9.0",
     "sentence-transformers>=3.3.0",
+    "openai>=1.50.0",
 ]
 
 [project.optional-dependencies]
@@ -54,6 +55,10 @@ test = [
 ]
 
 [dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+]
 docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.4.0",
@@ -82,15 +87,12 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--verbose",
-    "--cov=dev_agent",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "asyncio: marks tests as async tests",
 ]
 
 [tool.coverage.run]

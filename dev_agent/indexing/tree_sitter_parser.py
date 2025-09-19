@@ -1,6 +1,8 @@
 """Tree-sitter based AST parser for code analysis."""
 
+import ast
 import os
+import re
 from typing import List, Dict, Optional, Any, Set
 from pathlib import Path
 
@@ -8,46 +10,312 @@ from ..models.indexing import (
     ASTIndex, FunctionDef, ClassDef, Import, SymbolInfo, CodeChunk
 )
 
+# Use Python's built-in AST as fallback when tree-sitter isn't available
 try:
     import tree_sitter
     from tree_sitter import Language, Parser, Node
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-    # Mock classes for testing without tree-sitter
-    class Language:
-        pass
-    class Parser:
-        pass
-    class Node:
-        pass
 
 
 class TreeSitterParser:
-    """High-performance AST parser using Tree-sitter for multiple languages."""
+    """High-performance AST parser using Python's AST module with Tree-sitter fallback."""
     
     def __init__(self):
         """Initialize the parser with support for Python language."""
-        self.supported_languages = ['python']
+        self.supported_languages = ['python', 'javascript', 'typescript']
         self.parsers: Dict[str, Any] = {}
         self.languages: Dict[str, Any] = {}
         
-        if TREE_SITTER_AVAILABLE:
-            self._initialize_parsers()
+        # Always use Python's AST for Python files as it's more reliable
+        self._initialize_python_parser()
     
-    def _initialize_parsers(self) -> None:
-        """Initialize Tree-sitter parsers for supported languages."""
+    def _initialize_python_parser(self) -> None:
+        """Initialize Python AST parser."""
+        # Python AST is built-in, no initialization needed
+        pass
+    
+    def parse_file(self, file_path: str, language: str = 'python') -> Optional[ast.AST]:
+        """Parse a single file into an AST.
+        
+        Args:
+            file_path: Path to the file to parse
+            language: Programming language of the file
+            
+        Returns:
+            AST object or None if parsing fails
+        """
         try:
-            # Try to load Python language
-            # Note: In a real implementation, you would need to build the language
-            # For now, we'll create a mock implementation that can be extended
-            python_parser = Parser()
-            self.parsers['python'] = python_parser
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            if language == 'python':
+                return ast.parse(content, filename=file_path)
+            else:
+                # For non-Python files, return a simple mock AST
+                # In a full implementation, you'd use tree-sitter here
+                return self._create_mock_ast(content, file_path, language)
+                
         except Exception as e:
-            # Graceful fallback if tree-sitter languages aren't available
-            print(f"Warning: Could not initialize Tree-sitter parser: {e}")
+            print(f"Error parsing {file_path}: {e}")
+            return None
     
-    def parse_file(self, file_path: str, language: str = 'python') -> Optional['AST']:
+    def _create_mock_ast(self, content: str, file_path: str, language: str) -> Any:
+        """Create a mock AST for non-Python files."""
+        # Simple mock AST that can be extended
+        class MockAST:
+            def __init__(self, content: str, file_path: str, language: str):
+                self.content = content
+                self.file_path = file_path
+                self.language = language
+                self.functions = self._extract_functions(content, language)
+                self.classes = self._extract_classes(content, language)
+                self.imports = self._extract_imports(content, language)
+        
+            def _extract_functions(self, content: str, language: str) -> List[str]:
+                if language == 'javascript' or language == 'typescript':
+                    # Simple regex for JS/TS functions
+                    pattern = r'function\s+(\w+)\s*\('
+                    return re.findall(pattern, content)
+                return []
+            
+            def _extract_classes(self, content: str, language: str) -> List[str]:
+                if language == 'javascript' or language == 'typescript':
+                    pattern = r'class\s+(\w+)'
+                    return re.findall(pattern, content)
+                return []
+            
+            def _extract_imports(self, content: str, language: str) -> List[str]:
+                if language == 'javascript' or language == 'typescript':
+                    pattern = r'import\s+.*?from\s+[\'"]([^\'"]+)[\'"]'
+                    return re.findall(pattern, content)
+                return []
+        
+        return MockAST(content, file_path, language)
+    
+    def extract_symbols(self, ast_obj: ast.AST, file_path: str = "") -> List[SymbolInfo]:
+        """Extract symbols from an AST.
+        
+        Args:
+            ast_obj: AST object to analyze
+            file_path: Path to the source file
+            
+        Returns:
+            List of SymbolInfo objects
+        """
+        symbols = []
+        
+        if isinstance(ast_obj, ast.AST):
+            # Python AST
+            for node in ast.walk(ast_obj):
+                if isinstance(node, ast.FunctionDef):
+                    symbol = SymbolInfo(
+                        name=node.name,
+                        symbol_type="function",
+                        file_path=file_path,
+                        line_number=getattr(node, 'lineno', 0),
+                        column=getattr(node, 'col_offset', 0),
+                        docstring=ast.get_docstring(node) or ""
+                    )
+                    symbols.append(symbol)
+                
+                elif isinstance(node, ast.ClassDef):
+                    symbol = SymbolInfo(
+                        name=node.name,
+                        symbol_type="class",
+                        file_path=file_path,
+                        line_number=getattr(node, 'lineno', 0),
+                        column=getattr(node, 'col_offset', 0),
+                        docstring=ast.get_docstring(node) or ""
+                    )
+                    symbols.append(symbol)
+                
+                elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                    # Variable assignments
+                    symbol = SymbolInfo(
+                        name=node.id,
+                        symbol_type="variable",
+                        file_path=file_path,
+                        line_number=getattr(node, 'lineno', 0),
+                        column=getattr(node, 'col_offset', 0),
+                        docstring=""
+                    )
+                    symbols.append(symbol)
+        else:
+            # Mock AST for other languages
+            if hasattr(ast_obj, 'functions'):
+                for func_name in ast_obj.functions:
+                    symbol = SymbolInfo(
+                        name=func_name,
+                        symbol_type="function",
+                        file_path=file_path,
+                        line_number=0,
+                        column=0,
+                        docstring=""
+                    )
+                    symbols.append(symbol)
+        
+        return symbols
+    
+    def get_function_definitions(self, ast_obj: ast.AST, file_path: str = "") -> List[FunctionDef]:
+        """Extract function definitions from an AST.
+        
+        Args:
+            ast_obj: AST object to analyze
+            file_path: Path to the source file
+            
+        Returns:
+            List of FunctionDef objects
+        """
+        functions = []
+        
+        if isinstance(ast_obj, ast.AST):
+            for node in ast.walk(ast_obj):
+                if isinstance(node, ast.FunctionDef):
+                    try:
+                        # Extract parameters
+                        params = []
+                        for arg in node.args.args:
+                            params.append(arg.arg)
+                        
+                        # Extract return type annotation if available
+                        return_type = ""
+                        if node.returns:
+                            if isinstance(node.returns, ast.Name):
+                                return_type = node.returns.id
+                            elif isinstance(node.returns, ast.Constant):
+                                return_type = str(node.returns.value)
+                        
+                        func_def = FunctionDef(
+                            name=node.name,
+                            parameters=params,
+                            return_type=return_type,
+                            docstring=ast.get_docstring(node) or "",
+                            start_line=getattr(node, 'lineno', 0),
+                            end_line=getattr(node, 'end_lineno', 0) or getattr(node, 'lineno', 0),
+                            file_path=file_path
+                        )
+                        functions.append(func_def)
+                    except Exception as e:
+                        print(f"Error processing function {node.name}: {e}")
+                        continue
+        
+        return functions
+    
+    def get_class_definitions(self, ast_obj: ast.AST, file_path: str = "") -> List[ClassDef]:
+        """Extract class definitions from an AST.
+        
+        Args:
+            ast_obj: AST object to analyze
+            file_path: Path to the source file
+            
+        Returns:
+            List of ClassDef objects
+        """
+        classes = []
+        
+        if isinstance(ast_obj, ast.AST):
+            for node in ast.walk(ast_obj):
+                if isinstance(node, ast.ClassDef):
+                    # Extract base classes
+                    bases = []
+                    for base in node.bases:
+                        if isinstance(base, ast.Name):
+                            bases.append(base.id)
+                        elif isinstance(base, ast.Attribute):
+                            bases.append(f"{base.value.id}.{base.attr}")
+                    
+                    # Extract methods as FunctionDef objects
+                    methods = []
+                    for item in node.body:
+                        if isinstance(item, ast.FunctionDef):
+                            # Create FunctionDef for method
+                            method_params = [arg.arg for arg in item.args.args]
+                            method_def = FunctionDef(
+                                name=item.name,
+                                parameters=method_params,
+                                return_type="",
+                                docstring=ast.get_docstring(item) or "",
+                                start_line=getattr(item, 'lineno', 0),
+                                end_line=getattr(item, 'end_lineno', 0) or getattr(item, 'lineno', 0),
+                                file_path=file_path
+                            )
+                            methods.append(method_def)
+                    
+                    # Extract attributes (simplified)
+                    attributes = []
+                    for item in node.body:
+                        if isinstance(item, ast.Assign):
+                            for target in item.targets:
+                                if isinstance(target, ast.Name):
+                                    attributes.append(target.id)
+                    
+                    class_def = ClassDef(
+                        name=node.name,
+                        base_classes=bases,
+                        methods=methods,
+                        attributes=attributes,
+                        docstring=ast.get_docstring(node) or "",
+                        start_line=getattr(node, 'lineno', 0),
+                        end_line=getattr(node, 'end_lineno', 0) or getattr(node, 'lineno', 0),
+                        file_path=file_path
+                    )
+                    classes.append(class_def)
+        
+        return classes
+    
+    def extract_imports(self, ast_obj: ast.AST, file_path: str = "") -> List[Import]:
+        """Extract import statements from an AST.
+        
+        Args:
+            ast_obj: AST object to analyze
+            file_path: Path to the source file
+            
+        Returns:
+            List of Import objects
+        """
+        imports = []
+        
+        if isinstance(ast_obj, ast.AST):
+            for node in ast.walk(ast_obj):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        import_obj = Import(
+                            module=alias.name,
+                            names=[],
+                            alias=alias.asname or "",
+                            line_number=getattr(node, 'lineno', 0),
+                            file_path=file_path
+                        )
+                        imports.append(import_obj)
+                
+                elif isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    for alias in node.names:
+                        import_obj = Import(
+                            module=module,
+                            names=[alias.name],
+                            alias=alias.asname or "",
+                            line_number=getattr(node, 'lineno', 0),
+                            file_path=file_path
+                        )
+                        imports.append(import_obj)
+        
+        return imports
+    
+    def _get_decorator_name(self, decorator_node: ast.AST) -> str:
+        """Extract decorator name from AST node."""
+        if isinstance(decorator_node, ast.Name):
+            return decorator_node.id
+        elif isinstance(decorator_node, ast.Attribute):
+            return f"{decorator_node.value.id}.{decorator_node.attr}"
+        elif isinstance(decorator_node, ast.Call):
+            if isinstance(decorator_node.func, ast.Name):
+                return decorator_node.func.id
+            elif isinstance(decorator_node.func, ast.Attribute):
+                return f"{decorator_node.func.value.id}.{decorator_node.func.attr}"
+        return "unknown_decorator"
         """Parse a single file and return its AST.
         
         Args:
@@ -159,58 +427,16 @@ class TreeSitterParser:
         
         return symbols
     
-    def _traverse_node_for_symbols(self, node: Node, file_path: str, symbols: List[SymbolInfo]) -> None:
+    def _traverse_node_for_symbols(self, node: Any, file_path: str, symbols: List[SymbolInfo]) -> None:
         """Recursively traverse AST node to extract symbols."""
-        if not node:
-            return
-            
-        # Extract different types of symbols based on node type
-        if node.type == 'function_definition':
-            func_info = self._extract_function_info(node, file_path)
-            if func_info:
-                symbols.append(SymbolInfo(
-                    name=func_info.name,
-                    symbol_type='function',
-                    file_path=file_path,
-                    line_number=func_info.start_line,
-                    scope='module',
-                    signature=f"def {func_info.name}({', '.join(func_info.parameters)})",
-                    docstring=func_info.docstring
-                ))
-        
-        elif node.type == 'class_definition':
-            class_info = self._extract_class_info(node, file_path)
-            if class_info:
-                symbols.append(SymbolInfo(
-                    name=class_info.name,
-                    symbol_type='class',
-                    file_path=file_path,
-                    line_number=class_info.start_line,
-                    scope='module',
-                    docstring=class_info.docstring
-                ))
-        
-        # Recursively process child nodes
-        for child in node.children:
-            self._traverse_node_for_symbols(child, file_path, symbols)
+        # This method is for tree-sitter integration which is not fully implemented
+        # For now, we use Python's AST module which is handled in extract_symbols
+        pass
     
-    def get_function_definitions(self, ast: Any, file_path: str) -> List[FunctionDef]:
-        """Extract function definitions from AST.
-        
-        Args:
-            ast: The AST to analyze
-            file_path: Path to the source file
-            
-        Returns:
-            List of FunctionDef objects
-        """
-        if not TREE_SITTER_AVAILABLE:
-            return self._mock_get_functions(ast, file_path)
-            
-        functions = []
-        
-        if ast and hasattr(ast, 'root_node'):
-            self._traverse_node_for_functions(ast.root_node, file_path, functions)
+    def _get_function_definitions_tree_sitter(self, ast: Any, file_path: str) -> List[FunctionDef]:
+        """Extract function definitions from tree-sitter AST (not used)."""
+        # This method was for tree-sitter integration which is not fully implemented
+        return []
         
         return functions
     
@@ -258,94 +484,20 @@ class TreeSitterParser:
         
         return functions
     
-    def _traverse_node_for_functions(self, node: Node, file_path: str, functions: List[FunctionDef]) -> None:
+    def _traverse_node_for_functions(self, node: Any, file_path: str, functions: List[FunctionDef]) -> None:
         """Recursively traverse AST node to extract function definitions."""
-        if not node:
-            return
-            
-        if node.type == 'function_definition':
-            func_info = self._extract_function_info(node, file_path)
-            if func_info:
-                functions.append(func_info)
-        
-        # Recursively process child nodes
-        for child in node.children:
-            self._traverse_node_for_functions(child, file_path, functions)
+        # Tree-sitter specific implementation - not used with Python AST
+        pass
     
-    def _extract_function_info(self, node: Node, file_path: str) -> Optional[FunctionDef]:
+    def _extract_function_info(self, node: Any, file_path: str) -> Optional[FunctionDef]:
         """Extract detailed function information from a function node."""
-        try:
-            # Extract function name
-            name_node = None
-            for child in node.children:
-                if child.type == 'identifier':
-                    name_node = child
-                    break
-            
-            if not name_node:
-                return None
-                
-            func_name = name_node.text.decode('utf-8')
-            
-            # Extract parameters
-            parameters = []
-            param_node = None
-            for child in node.children:
-                if child.type == 'parameters':
-                    param_node = child
-                    break
-            
-            if param_node:
-                for param_child in param_node.children:
-                    if param_child.type == 'identifier':
-                        parameters.append(param_child.text.decode('utf-8'))
-            
-            # Extract docstring
-            docstring = None
-            for child in node.children:
-                if child.type == 'block':
-                    for block_child in child.children:
-                        if block_child.type == 'expression_statement':
-                            for expr_child in block_child.children:
-                                if expr_child.type == 'string':
-                                    docstring = expr_child.text.decode('utf-8').strip('"\'')
-                                    break
-                            break
-                    break
-            
-            return FunctionDef(
-                name=func_name,
-                parameters=parameters,
-                return_type=None,  # TODO: Extract return type annotation
-                docstring=docstring,
-                file_path=file_path,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1
-            )
-            
-        except Exception as e:
-            print(f"Error extracting function info: {e}")
-            return None
+        # Tree-sitter specific implementation - not used with Python AST
+        return None
     
-    def get_class_definitions(self, ast: Any, file_path: str) -> List[ClassDef]:
-        """Extract class definitions from AST.
-        
-        Args:
-            ast: The AST to analyze
-            file_path: Path to the source file
-            
-        Returns:
-            List of ClassDef objects
-        """
-        if not TREE_SITTER_AVAILABLE:
-            return self._mock_get_classes(ast, file_path)
-            
-        classes = []
-        
-        if ast and hasattr(ast, 'root_node'):
-            self._traverse_node_for_classes(ast.root_node, file_path, classes)
-        
-        return classes
+    def _get_class_definitions_tree_sitter(self, ast: Any, file_path: str) -> List[ClassDef]:
+        """Extract class definitions from tree-sitter AST (not used)."""
+        # This method was for tree-sitter integration which is not fully implemented
+        return []
     
     def _mock_get_classes(self, ast: Any, file_path: str) -> List[ClassDef]:
         """Mock class extraction for testing."""
@@ -392,76 +544,15 @@ class TreeSitterParser:
         
         return classes
     
-    def _traverse_node_for_classes(self, node: Node, file_path: str, classes: List[ClassDef]) -> None:
+    def _traverse_node_for_classes(self, node: Any, file_path: str, classes: List[ClassDef]) -> None:
         """Recursively traverse AST node to extract class definitions."""
-        if not node:
-            return
-            
-        if node.type == 'class_definition':
-            class_info = self._extract_class_info(node, file_path)
-            if class_info:
-                classes.append(class_info)
-        
-        # Recursively process child nodes
-        for child in node.children:
-            self._traverse_node_for_classes(child, file_path, classes)
+        # Tree-sitter specific implementation - not used with Python AST
+        pass
     
-    def _extract_class_info(self, node: Node, file_path: str) -> Optional[ClassDef]:
+    def _extract_class_info(self, node: Any, file_path: str) -> Optional[ClassDef]:
         """Extract detailed class information from a class node."""
-        try:
-            # Extract class name
-            name_node = None
-            for child in node.children:
-                if child.type == 'identifier':
-                    name_node = child
-                    break
-            
-            if not name_node:
-                return None
-                
-            class_name = name_node.text.decode('utf-8')
-            
-            # Extract base classes
-            base_classes = []
-            for child in node.children:
-                if child.type == 'argument_list':
-                    for arg_child in child.children:
-                        if arg_child.type == 'identifier':
-                            base_classes.append(arg_child.text.decode('utf-8'))
-            
-            # Extract methods
-            methods = []
-            for child in node.children:
-                if child.type == 'block':
-                    self._traverse_node_for_functions(child, file_path, methods)
-            
-            # Extract docstring
-            docstring = None
-            for child in node.children:
-                if child.type == 'block':
-                    for block_child in child.children:
-                        if block_child.type == 'expression_statement':
-                            for expr_child in block_child.children:
-                                if expr_child.type == 'string':
-                                    docstring = expr_child.text.decode('utf-8').strip('"\'')
-                                    break
-                            break
-                    break
-            
-            return ClassDef(
-                name=class_name,
-                base_classes=base_classes,
-                methods=methods,
-                attributes=[],  # TODO: Extract class attributes
-                docstring=docstring,
-                file_path=file_path,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1
-            )
-            
-        except Exception as e:
-            print(f"Error extracting class info: {e}")
-            return None
+        # Tree-sitter specific implementation - not used with Python AST
+        return None
     
     def extract_imports(self, ast: Any, file_path: str) -> List[Import]:
         """Extract import statements from AST.
@@ -527,75 +618,15 @@ class TreeSitterParser:
         
         return imports
     
-    def _traverse_node_for_imports(self, node: Node, file_path: str, imports: List[Import]) -> None:
+    def _traverse_node_for_imports(self, node: Any, file_path: str, imports: List[Import]) -> None:
         """Recursively traverse AST node to extract import statements."""
-        if not node:
-            return
-            
-        if node.type in ['import_statement', 'import_from_statement']:
-            import_info = self._extract_import_info(node, file_path)
-            if import_info:
-                imports.append(import_info)
-        
-        # Recursively process child nodes
-        for child in node.children:
-            self._traverse_node_for_imports(child, file_path, imports)
+        # Tree-sitter specific implementation - not used with Python AST
+        pass
     
-    def _extract_import_info(self, node: Node, file_path: str) -> Optional[Import]:
+    def _extract_import_info(self, node: Any, file_path: str) -> Optional[Import]:
         """Extract detailed import information from an import node."""
-        try:
-            if node.type == 'import_statement':
-                # Handle "import module" statements
-                module_name = None
-                alias = None
-                
-                for child in node.children:
-                    if child.type == 'dotted_name':
-                        module_name = child.text.decode('utf-8')
-                    elif child.type == 'aliased_import':
-                        # Handle "import module as alias"
-                        for alias_child in child.children:
-                            if alias_child.type == 'dotted_name':
-                                module_name = alias_child.text.decode('utf-8')
-                            elif alias_child.type == 'identifier':
-                                alias = alias_child.text.decode('utf-8')
-                
-                if module_name:
-                    return Import(
-                        module=module_name,
-                        names=[],
-                        alias=alias,
-                        file_path=file_path,
-                        line_number=node.start_point[0] + 1
-                    )
-            
-            elif node.type == 'import_from_statement':
-                # Handle "from module import name1, name2" statements
-                module_name = None
-                names = []
-                
-                for child in node.children:
-                    if child.type == 'dotted_name':
-                        module_name = child.text.decode('utf-8')
-                    elif child.type == 'import_list':
-                        for import_child in child.children:
-                            if import_child.type == 'identifier':
-                                names.append(import_child.text.decode('utf-8'))
-                
-                if module_name:
-                    return Import(
-                        module=module_name,
-                        names=names,
-                        alias=None,
-                        file_path=file_path,
-                        line_number=node.start_point[0] + 1
-                    )
-            
-            return None
-            
-        except Exception as e:
-            print(f"Error extracting import info: {e}")
-            return None
+        # Tree-sitter specific implementation - not used with Python AST
+        return None
     
     def create_symbol_map(self, file_paths: List[str]) -> Dict[str, SymbolInfo]:
         """Create a comprehensive symbol map for multiple files.

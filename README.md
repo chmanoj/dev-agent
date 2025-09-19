@@ -5,7 +5,10 @@ AI-powered development workflow assistant that implements a four-phase developme
 ## Features
 
 - **Interactive CLI**: Chat-based command-line interface with user approval workflows built with Typer and Rich
+- **Azure OpenAI Integration**: Enterprise-grade AI-powered generation using your Azure OpenAI deployments
 - **High-Performance Indexing**: Analyzes large codebases using Tree-sitter and vector embeddings
+- **AI-Powered Generation**: Intelligent specification, design, and task generation using GPT models
+- **Enhanced Code Embeddings**: Better code similarity search with Azure OpenAI embeddings
 - **Context-Aware Code Generation**: Generates Python code consistent with existing patterns
 - **Session Management**: Persistent state across CLI sessions
 - **Modern Python Stack**: Built with Pydantic v2, FastAPI, and modern tooling
@@ -59,6 +62,29 @@ uv run dev-agent resume [path]
 ### Interactive mode (default)
 ```bash
 uv run dev-agent [path]
+```
+
+### Azure OpenAI Configuration
+
+Configure Azure OpenAI for enhanced AI-powered features:
+
+```bash
+# Interactive configuration
+uv run dev-agent azure configure
+
+# Test connection
+uv run dev-agent azure test
+
+# Check status
+uv run dev-agent azure status
+```
+
+Or set environment variables:
+```bash
+export AZURE_OPENAI_API_KEY="your-api-key"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_OPENAI_CHAT_MODEL="gpt-4"
+export AZURE_OPENAI_EMBEDDING_MODEL="text-embedding-ada-002"
 ```
 
 ### Configuration management

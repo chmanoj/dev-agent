@@ -8,6 +8,20 @@ from pathlib import Path
 
 
 @dataclass
+class AzureOpenAIConfig:
+    """Configuration for Azure OpenAI integration."""
+    api_key: Optional[str] = None
+    endpoint: Optional[str] = None
+    api_version: str = "2024-02-01"
+    chat_model: str = "gpt-4"
+    embedding_model: str = "text-embedding-ada-002"
+    max_tokens: int = 4000
+    temperature: float = 0.1
+    timeout: int = 60
+    max_retries: int = 3
+
+
+@dataclass
 class IndexingConfig:
     """Configuration for indexing operations."""
     max_file_size_mb: int = 10
@@ -16,6 +30,7 @@ class IndexingConfig:
     max_files_per_batch: int = 100
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     vector_db_type: str = "faiss"
+    use_azure_embeddings: bool = False
 
 
 @dataclass
@@ -45,6 +60,7 @@ class DevAgentConfig:
     indexing: IndexingConfig
     logging: LoggingConfig
     cli: CLIConfig
+    azure_openai: AzureOpenAIConfig
     version: str = "0.1.0"
     
     @classmethod
@@ -53,7 +69,8 @@ class DevAgentConfig:
         return cls(
             indexing=IndexingConfig(),
             logging=LoggingConfig(),
-            cli=CLIConfig()
+            cli=CLIConfig(),
+            azure_openai=AzureOpenAIConfig()
         )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -67,6 +84,7 @@ class DevAgentConfig:
             indexing=IndexingConfig(**data.get('indexing', {})),
             logging=LoggingConfig(**data.get('logging', {})),
             cli=CLIConfig(**data.get('cli', {})),
+            azure_openai=AzureOpenAIConfig(**data.get('azure_openai', {})),
             version=data.get('version', '0.1.0')
         )
 

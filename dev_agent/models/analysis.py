@@ -131,3 +131,68 @@ class CodeContext:
     dependencies: List[str]
     test_examples: List[ContextualCode]
     style_guidelines: Dict[str, Any]
+
+
+@dataclass
+class RequirementEvidence:
+    """Evidence for a requirement found in the codebase."""
+    requirement_type: str
+    description: str
+    supporting_files: List[str]
+    supporting_functions: List[str]
+    confidence: float
+
+
+@dataclass
+class SpecificationAnalysis:
+    """Analysis results for specification generation."""
+    project_purpose: str
+    main_features: List[str]
+    user_roles: List[str]
+    functional_areas: List[str]
+    technology_constraints: List[str]
+    requirement_evidence: List[RequirementEvidence]
+    confidence_score: float
+
+
+@dataclass
+class ComponentAnalysis:
+    """Analysis of a system component."""
+    name: str
+    purpose: str
+    interfaces: List[str]
+    dependencies: List[str]
+
+
+@dataclass
+class DesignAnalysis:
+    """Analysis results for design generation."""
+    architecture_overview: str
+    components: List[ComponentAnalysis]
+    design_patterns: List[str]
+    data_models: List[Dict[str, Any]]
+    api_interfaces: List[Dict[str, Any]]
+    quality_metrics: Dict[str, float]
+    technical_debt: List[str]
+
+
+@dataclass
+class CodeContext:
+    """Context information for code generation."""
+    task: Any  # Task object
+    relevant_patterns: List[str]
+    similar_implementations: List[CodeExample]
+    dependencies: List[str]
+    suggested_approach: str
+
+
+@dataclass
+class ContextualCode:
+    """Code with contextual information."""
+    code: str
+    file_path: str
+    start_line: int
+    end_line: int
+    context_type: str  # 'function', 'class', 'module', etc.
+    related_symbols: List[str]
+    dependencies: List[str]

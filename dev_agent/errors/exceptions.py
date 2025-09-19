@@ -277,3 +277,85 @@ class TimeoutError(DevAgentError):
             f"Operation timed out: {self.message}. "
             f"The system will retry with optimized settings."
         )
+
+
+class ConfigurationError(DevAgentError):
+    """Errors related to configuration issues."""
+    
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.HIGH,
+        context: Optional[ErrorContext] = None,
+        config_key: Optional[str] = None,
+        expected_value: Optional[str] = None
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.SYSTEM,
+            severity=severity,
+            context=context,
+            recoverable=True
+        )
+        self.config_key = config_key
+        self.expected_value = expected_value
+    
+    def _generate_user_message(self) -> str:
+        return (
+            f"Configuration error: {self.message}. "
+            f"Please check your configuration settings."
+        )
+
+
+class ServiceError(DevAgentError):
+    """Errors related to external service operations."""
+    
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.HIGH,
+        context: Optional[ErrorContext] = None,
+        service_name: Optional[str] = None,
+        status_code: Optional[int] = None
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.SYSTEM,
+            severity=severity,
+            context=context,
+            recoverable=True
+        )
+        self.service_name = service_name
+        self.status_code = status_code
+    
+    def _generate_user_message(self) -> str:
+        return (
+            f"Service error: {self.message}. "
+            f"Please check your network connection and service configuration."
+        )
+
+
+class GenerationError(DevAgentError):
+    """Errors related to AI-powered generation operations."""
+    
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+        context: Optional[ErrorContext] = None,
+        generation_type: Optional[str] = None
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.IMPLEMENTATION,
+            severity=severity,
+            context=context,
+            recoverable=True
+        )
+        self.generation_type = generation_type
+    
+    def _generate_user_message(self) -> str:
+        return (
+            f"Generation error: {self.message}. "
+            f"The system will attempt to use fallback generation methods."
+        )
