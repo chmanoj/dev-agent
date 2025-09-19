@@ -93,8 +93,15 @@ def test_vector_search():
     print(f"  ✅ Search Success: {len(matches)} matches found")
     
     for i, match in enumerate(matches[:2]):
-        print(f"    - Match {i+1}: {match.file_path} (similarity: {match.similarity_score:.2f})")
-        print(f"      Content: {match.content[:50]}...")
+        print(f"    - Match {i+1} type: {type(match)}")
+        if hasattr(match, 'chunk'):
+            print(f"      File: {match.chunk.file_path} (similarity: {match.similarity_score:.2f})")
+            print(f"      Content: {match.chunk.content[:50] if match.chunk.content else 'No content'}...")
+        elif hasattr(match, 'file_path'):
+            print(f"      File: {match.file_path} (similarity: {match.similarity_score:.2f})")
+            print(f"      Content: {match.content[:50] if hasattr(match, 'content') else 'No content'}...")
+        else:
+            print(f"      Unknown match structure: {match}")
     
     return len(matches) > 0
 
