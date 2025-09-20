@@ -9,7 +9,9 @@ from ..models.context import ProjectContext
 from ..models.enums import PhaseStatus, PhaseType
 from ..models.project_state import ProjectState
 from ..models.results import PhaseResult
+from ..models.undo_redo import ActionType, SnapshotType
 from ..state.state_manager import StateManager
+from ..state.undo_redo_manager import UndoRedoManager
 from .phase_manager import PhaseManager
 
 
@@ -25,6 +27,7 @@ class WorkflowManager(IWorkflowManager):
         self.cli_interface = cli_interface
         self.state_manager: StateManager | None = None
         self.phase_manager: PhaseManager | None = None
+        self.undo_redo_manager: UndoRedoManager | None = None
         self.current_project_state: ProjectState | None = None
         self.error_handler = WorkflowErrorHandler(cli_interface)
 
@@ -48,6 +51,9 @@ class WorkflowManager(IWorkflowManager):
 
             # Initialize state manager
             self.state_manager = StateManager(project_path)
+            
+            # Initialize undo/redo manager
+            self.undo_redo_manager = UndoRedoManager(project_path)
 
             # Create initial project state
             session_id = str(uuid.uuid4())
@@ -60,6 +66,14 @@ class WorkflowManager(IWorkflowManager):
                 raise Exception("Failed to save initial project state")
 
             self.current_project_state = project_state
+
+            # Create initial snapshot
+            self.undo_redo_manager.create_snapshot(
+                project_state,
+                SnapshotType.AUTOMATIC,
+                "Initial project state",
+                {"phase": project_state.current_phase, "action": "project_initialization"}
+            )
 
             # Initialize phase manager after state is set
             self.phase_manager = PhaseManager(
@@ -92,6 +106,9 @@ class WorkflowManager(IWorkflowManager):
 
             # Initialize state manager
             self.state_manager = StateManager(project_path)
+            
+            # Initialize undo/redo manager
+            self.undo_redo_manager = UndoRedoManager(project_path)
 
             # Load existing project state
             project_state = self.state_manager.load_project_state()
@@ -105,6 +122,14 @@ class WorkflowManager(IWorkflowManager):
             self.state_manager.save_project_state(project_state)
 
             self.current_project_state = project_state
+
+            # Create resume snapshot
+            self.undo_redo_manager.create_snapshot(
+                project_state,
+                SnapshotType.AUTOMATIC,
+                f"Project resumed in {project_state.current_phase.value} phase",
+                {"phase": project_state.current_phase, "action": "project_resume"}
+            )
 
             # Initialize phase manager after state is set
             self.phase_manager = PhaseManager(
@@ -154,6 +179,16 @@ class WorkflowManager(IWorkflowManager):
             if not self._validate_phase_transition(current_phase, phase):
                 return False
 
+            # Create before snapshot
+            before_snapshot_id = None
+            if self.undo_redo_manager:
+                before_snapshot_id = self.undo_redo_manager.create_snapshot(
+                    self.current_project_state,
+                    SnapshotType.AUTOMATIC,
+                    f"Before transition from {current_phase.value} to {phase.value}",
+                    {"phase": current_phase, "action": "phase_transition_before", "target_phase": phase}
+                )
+
             self.cli_interface.display_message(
                 f"Transitioning from {current_phase.value} to {phase.value} phase..."
             )
@@ -166,11 +201,49 @@ class WorkflowManager(IWorkflowManager):
                 self.current_project_state.current_phase = phase
                 self.state_manager.save_project_state(self.current_project_state)
 
+                # Create after snapshot and action
+                if self.undo_redo_manager and before_snapshot_id:
+                    after_snapshot_id = self.undo_redo_manager.create_snapshot(
+                        self.current_project_state,
+                        SnapshotType.AUTOMATIC,
+                        f"After transition to {phase.value}",
+                        {"phase": phase, "action": "phase_transition_after", "source_phase": current_phase}
+                    )
+                    
+                    # Create undo/redo action
+                    self.undo_redo_manager.create_action(
+                        ActionType.PHASE_TRANSITION,
+                        f"Transition from {current_phase.value} to {phase.value}",
+                        before_snapshot_id,
+                        after_snapshot_id,
+                        {"source_phase": current_phase, "target_phase": phase}
+                    )
+                    
+                    # Add command history entry
+                    self.undo_redo_manager.add_command_history_entry(
+                        f"transition_to_phase({phase.value})",
+                        phase,
+                        True,
+                        after_snapshot_id,
+                        metadata={"source_phase": current_phase, "target_phase": phase}
+                    )
+
                 self.cli_interface.display_message(
                     f"Successfully transitioned to {phase.value} phase!"
                 )
                 return True
             else:
+                # Add failed command history entry
+                if self.undo_redo_manager and before_snapshot_id:
+                    self.undo_redo_manager.add_command_history_entry(
+                        f"transition_to_phase({phase.value})",
+                        current_phase,
+                        False,
+                        before_snapshot_id,
+                        error_message=result.message,
+                        metadata={"source_phase": current_phase, "target_phase": phase}
+                    )
+
                 self.cli_interface.display_message(
                     f"Phase transition failed: {result.message}"
                 )
@@ -211,6 +284,16 @@ class WorkflowManager(IWorkflowManager):
                     approved
                 )
                 self.state_manager.save_project_state(self.current_project_state)
+
+                # Create approval point snapshot
+                if self.undo_redo_manager:
+                    approval_description = f"{phase.value.title()} phase {'approved' if approved else 'rejected'}"
+                    self.undo_redo_manager.create_snapshot(
+                        self.current_project_state,
+                        SnapshotType.APPROVAL_POINT,
+                        approval_description,
+                        {"phase": phase, "action": "user_approval", "approved": approved}
+                    )
 
             if approved:
                 self.cli_interface.display_message(
@@ -451,6 +534,199 @@ class WorkflowManager(IWorkflowManager):
         self.cli_interface.display_message(
             "Check the .dev_agent/documents/ folder for generated documents."
         )
+
+    def create_manual_snapshot(self, description: str) -> str | None:
+        """Create a manual snapshot of the current state.
+
+        Args:
+            description: Description for the snapshot
+
+        Returns:
+            Snapshot ID if successful, None otherwise
+        """
+        if not self.current_project_state or not self.undo_redo_manager:
+            self.cli_interface.display_message(
+                "Error: No active project or undo/redo manager not initialized."
+            )
+            return None
+
+        try:
+            snapshot_id = self.undo_redo_manager.create_snapshot(
+                self.current_project_state,
+                SnapshotType.MANUAL,
+                description,
+                {"phase": self.current_project_state.current_phase, "action": "manual_snapshot"}
+            )
+            
+            self.cli_interface.display_message(
+                f"Manual snapshot created: {description}"
+            )
+            return snapshot_id
+            
+        except Exception as e:
+            self.cli_interface.display_message(f"Error creating snapshot: {e}")
+            return None
+
+    def restore_from_snapshot(self, snapshot_id: str) -> bool:
+        """Restore project state from a specific snapshot.
+
+        Args:
+            snapshot_id: ID of the snapshot to restore
+
+        Returns:
+            True if successful
+        """
+        if not self.undo_redo_manager or not self.state_manager:
+            self.cli_interface.display_message(
+                "Error: Undo/redo manager or state manager not initialized."
+            )
+            return False
+
+        try:
+            # Restore project state
+            restored_state = self.undo_redo_manager.restore_snapshot(snapshot_id)
+            if not restored_state:
+                self.cli_interface.display_message(
+                    f"Error: Could not restore snapshot {snapshot_id}"
+                )
+                return False
+
+            # Update current state
+            self.current_project_state = restored_state
+            
+            # Save restored state
+            if not self.state_manager.save_project_state(restored_state):
+                self.cli_interface.display_message(
+                    "Error: Could not save restored state"
+                )
+                return False
+
+            # Create restoration snapshot
+            self.undo_redo_manager.create_snapshot(
+                restored_state,
+                SnapshotType.AUTOMATIC,
+                f"Restored from snapshot {snapshot_id}",
+                {"phase": restored_state.current_phase, "action": "snapshot_restore", "source_snapshot": snapshot_id}
+            )
+
+            self.cli_interface.display_message(
+                f"Successfully restored to snapshot {snapshot_id}"
+            )
+            self.cli_interface.display_message(
+                f"Current phase: {restored_state.current_phase.value}"
+            )
+            
+            return True
+            
+        except Exception as e:
+            self.cli_interface.display_message(f"Error restoring snapshot: {e}")
+            return False
+
+    def undo_last_action(self) -> bool:
+        """Undo the last action.
+
+        Returns:
+            True if successful
+        """
+        if not self.undo_redo_manager:
+            self.cli_interface.display_message(
+                "Error: Undo/redo manager not initialized."
+            )
+            return False
+
+        try:
+            undo_actions = self.undo_redo_manager.get_undo_actions(limit=1)
+            if not undo_actions:
+                self.cli_interface.display_message(
+                    "No actions available to undo."
+                )
+                return False
+
+            action = undo_actions[0]
+            restored_state = self.undo_redo_manager.undo_action(action.id)
+            
+            if not restored_state:
+                self.cli_interface.display_message(
+                    "Error: Could not undo action"
+                )
+                return False
+
+            # Update current state
+            self.current_project_state = restored_state
+            
+            # Save restored state
+            if not self.state_manager.save_project_state(restored_state):
+                self.cli_interface.display_message(
+                    "Error: Could not save undone state"
+                )
+                return False
+
+            self.cli_interface.display_message(
+                f"Successfully undone: {action.description}"
+            )
+            
+            return True
+            
+        except Exception as e:
+            self.cli_interface.display_message(f"Error undoing action: {e}")
+            return False
+
+    def redo_last_action(self) -> bool:
+        """Redo the last undone action.
+
+        Returns:
+            True if successful
+        """
+        if not self.undo_redo_manager:
+            self.cli_interface.display_message(
+                "Error: Undo/redo manager not initialized."
+            )
+            return False
+
+        try:
+            redo_actions = self.undo_redo_manager.get_redo_actions(limit=1)
+            if not redo_actions:
+                self.cli_interface.display_message(
+                    "No actions available to redo."
+                )
+                return False
+
+            action = redo_actions[0]
+            restored_state = self.undo_redo_manager.redo_action(action.id)
+            
+            if not restored_state:
+                self.cli_interface.display_message(
+                    "Error: Could not redo action"
+                )
+                return False
+
+            # Update current state
+            self.current_project_state = restored_state
+            
+            # Save restored state
+            if not self.state_manager.save_project_state(restored_state):
+                self.cli_interface.display_message(
+                    "Error: Could not save redone state"
+                )
+                return False
+
+            self.cli_interface.display_message(
+                f"Successfully redone: {action.description}"
+            )
+            
+            return True
+            
+        except Exception as e:
+            self.cli_interface.display_message(f"Error redoing action: {e}")
+            return False
+
+    def get_undo_redo_manager(self) -> UndoRedoManager | None:
+        """Get the undo/redo manager instance.
+
+        Returns:
+            UndoRedoManager instance or None if not initialized
+        """
+        return self.undo_redo_manager
 
 
 class WorkflowErrorHandler:

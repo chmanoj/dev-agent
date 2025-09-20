@@ -1,0 +1,712 @@
+"""Enhanced CLI with Rich UI components for improved user experience."""
+
+from __future__ import annotations
+
+import difflib
+import os
+import signal
+import sys
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+from rich.prompt import Confirm, Prompt
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
+from dev_agent.interfaces.cli_interface import ICLIInterface
+from dev_agent.models.enums import PhaseType
+
+if TYPE_CHECKING:
+    from dev_agent.interfaces.workflow_interface import IWorkflowManager
+
+
+class EnhancedCLI(ICLIInterface):
+    """Enhanced interactive CLI with Rich UI components and advanced features."""
+
+    def __init__(self, workflow_manager: IWorkflowManager | None = None):
+        """Initialize the enhanced CLI.
+
+        Args:
+            workflow_manager: Optional workflow manager for handling project operations
+        """
+        self.workflow_manager = workflow_manager
+        self.session_active = False
+        self.console = Console()
+        self.progress_manager = ProgressManager(self.console)
+        self.document_previewer = DocumentPreviewer(self.console)
+        self.help_system = ContextualHelpSystem(self.console)
+        self._setup_signal_handlers()
+
+        # Initialize workflow manager if not provided
+        if not self.workflow_manager:
+            from dev_agent.workflow.workflow_manager import WorkflowManager
+
+            self.workflow_manager = WorkflowManager(self)
+
+    def _setup_signal_handlers(self) -> None:
+        """Set up signal handlers for graceful exit."""
+        signal.signal(signal.SIGINT, self._handle_interrupt)
+        signal.signal(signal.SIGTERM, self._handle_interrupt)
+
+    def _handle_interrupt(self, signum: int, frame) -> None:
+        """Handle interrupt signals for graceful shutdown."""
+        self.console.print("\n[yellow]Received interrupt signal. Shutting down gracefully...[/yellow]")
+        self._graceful_exit()
+
+    def _graceful_exit(self) -> None:
+        """Perform graceful exit operations."""
+        if self.session_active:
+            self.console.print("[blue]Saving session state...[/blue]")
+            self.session_active = False
+        self.console.print("[green]Goodbye![/green]")
+        sys.exit(0)
+
+    def start_chat_session(self) -> None:
+        """Start an interactive chat session with enhanced UI."""
+        self.session_active = True
+
+        # Display welcome banner
+        self._display_welcome_banner()
+
+        while self.session_active:
+            try:
+                # Get current context for help system
+                current_context = self._get_current_context()
+
+                # Show contextual help if needed
+                if self.help_system.should_show_help(current_context):
+                    self.help_system.show_contextual_help(current_context)
+
+                user_input = Prompt.ask(
+                    "[bold cyan]dev-agent[/bold cyan]",
+                    default="help"
+                )
+
+                if user_input.lower().strip() in ["exit", "quit", "q"]:
+                    self._graceful_exit()
+                elif user_input.lower().strip() == "help":
+                    self.help_system.display_full_help(current_context)
+                else:
+                    response = self.handle_user_input(user_input)
+                    if response:
+                        self.display_message(response)
+
+            except EOFError:
+                self._graceful_exit()
+            except KeyboardInterrupt:
+                self._graceful_exit()
+
+    def _display_welcome_banner(self) -> None:
+        """Display an enhanced welcome banner."""
+        banner_text = """
+[bold blue]🤖 dev-agent[/bold blue] - AI-powered development workflow assistant
+
+[dim]Features:[/dim]
+• [green]Interactive progress tracking[/green] with time estimates
+• [blue]Syntax-highlighted document previews[/blue] with diff views
+• [yellow]Contextual help system[/yellow] based on workflow state
+• [magenta]Rich UI components[/magenta] for enhanced experience
+
+Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
+        """
+
+        panel = Panel(
+            banner_text.strip(),
+            title="[bold]Welcome[/bold]",
+            border_style="blue",
+            padding=(1, 2)
+        )
+        self.console.print(panel)
+
+    def handle_user_input(self, input_text: str) -> str:
+        """Process user input with enhanced feedback.
+
+        Args:
+            input_text: The user's input text
+
+        Returns:
+            Response message for the user
+        """
+        input_text = input_text.strip()
+
+        if not input_text:
+            return ""
+
+        # Handle init command
+        if input_text.startswith("init"):
+            parts = input_text.split()
+            project_path = parts[1] if len(parts) > 1 else str(Path.cwd())
+
+            try:
+                with self.progress_manager.create_task("Initializing project") as task:
+                    self.init_command(project_path)
+                    self.progress_manager.update_task(task, 100)
+                return f"[green]✓[/green] Project initialized at: {project_path}"
+            except Exception as e:
+                return f"[red]✗[/red] Error initializing project: {e!s}"
+
+        # Handle status command
+        elif input_text == "status":
+            return self._get_status_display()
+
+        # Handle workflow commands
+        elif input_text in ["run", "start"]:
+            return self._execute_workflow()
+
+        elif input_text.startswith("phase "):
+            phase_name = input_text[6:].strip()
+            return self._transition_to_phase(phase_name)
+
+        # Handle preview command
+        elif input_text.startswith("preview "):
+            doc_type = input_text[8:].strip()
+            return self._preview_document(doc_type)
+
+        # Default response for unrecognized commands
+        else:
+            return f"[yellow]Unknown command:[/yellow] '{input_text}'. Type [bold]help[/bold] for available commands."
+
+    def _get_status_display(self) -> str:
+        """Get enhanced status display with rich formatting."""
+        if not self.workflow_manager:
+            return "[yellow]No active project. Use [bold]init [path][/bold] to start.[/yellow]"
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+
+            # Create status table
+            table = Table(title="Project Status", show_header=True, header_style="bold magenta")
+            table.add_column("Property", style="cyan", no_wrap=True)
+            table.add_column("Value", style="green")
+
+            table.add_row("Current Phase", current_phase.value.title())
+            table.add_row("Status", "Active")
+            table.add_row("Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+            # Render table to string
+            with self.console.capture() as capture:
+                self.console.print(table)
+
+            return capture.get()
+
+        except Exception as e:
+            return f"[red]Error getting status: {e!s}[/red]"
+
+    def _execute_workflow(self) -> str:
+        """Execute workflow with enhanced progress tracking."""
+        if not self.workflow_manager:
+            return "[yellow]No active project. Use [bold]init [path][/bold] to start.[/yellow]"
+
+        try:
+            with self.progress_manager.create_workflow_progress():
+                success = self.workflow_manager.execute_complete_workflow()
+
+            if success:
+                return "[green]🎉 Workflow completed successfully![/green]"
+            else:
+                return "[red]❌ Workflow execution failed. Check the logs for details.[/red]"
+
+        except Exception as e:
+            return f"[red]❌ Error running workflow: {e!s}[/red]"
+
+    def _transition_to_phase(self, phase_name: str) -> str:
+        """Transition to a specific phase with progress tracking."""
+        if not self.workflow_manager:
+            return "[yellow]No active project. Use [bold]init [path][/bold] to start.[/yellow]"
+
+        try:
+            # Try to match phase name case-insensitively
+            phase_name_lower = phase_name.lower()
+            phase = None
+            for p in PhaseType:
+                if p.value.lower() == phase_name_lower:
+                    phase = p
+                    break
+
+            if phase is None:
+                raise ValueError(f"Invalid phase: {phase_name}")
+
+            with self.progress_manager.create_task(f"Transitioning to {phase.value}") as task:
+                success = self.workflow_manager.transition_to_phase(phase)
+                self.progress_manager.update_task(task, 100)
+
+            if success:
+                return f"[green]✓[/green] Successfully transitioned to {phase.value} phase"
+            else:
+                return f"[red]✗[/red] Failed to transition to {phase.value} phase"
+
+        except ValueError:
+            valid_phases = ", ".join([p.value for p in PhaseType])
+            return f"[red]Invalid phase:[/red] {phase_name}. Valid phases: {valid_phases}"
+        except Exception as e:
+            return f"[red]Error transitioning to phase: {e!s}[/red]"
+
+    def _preview_document(self, doc_type: str) -> str:
+        """Preview a document with syntax highlighting."""
+        try:
+            # This would integrate with the document system
+            # For now, return a placeholder
+            return f"[blue]Document preview for {doc_type} would be displayed here[/blue]"
+        except Exception as e:
+            return f"[red]Error previewing document: {e!s}[/red]"
+
+    def _get_current_context(self) -> dict[str, Any]:
+        """Get current workflow context for help system."""
+        context = {
+            "has_project": self.workflow_manager is not None,
+            "current_phase": None,
+            "available_commands": ["init", "status", "help", "exit"]
+        }
+
+        if self.workflow_manager:
+            try:
+                context["current_phase"] = self.workflow_manager.get_current_phase()
+                context["available_commands"].extend(["run", "start", "phase", "preview"])
+            except Exception:
+                pass
+
+        return context
+
+    def request_approval(self, document: str, document_type: str) -> bool:
+        """Request user approval with enhanced document preview.
+
+        Args:
+            document: The document content to approve
+            document_type: Type of document (specification, design, tasks)
+
+        Returns:
+            True if approved, False if rejected
+        """
+        # Show document with syntax highlighting
+        self.document_previewer.show_document(document, document_type)
+
+        # Request approval with Rich prompt
+        return Confirm.ask(
+            f"[bold yellow]Do you approve this {document_type}?[/bold yellow]",
+            default=False
+        )
+
+    def display_progress(self, phase: PhaseType, progress: float) -> None:
+        """Display enhanced progress information.
+
+        Args:
+            phase: The current phase
+            progress: Progress as a float between 0.0 and 1.0
+        """
+        self.progress_manager.update_phase_progress(phase, progress)
+
+    def init_command(self, project_path: str) -> None:
+        """Initialize a new project with enhanced feedback.
+
+        Args:
+            project_path: Path to the project directory
+        """
+        project_path_obj = Path(project_path)
+        if not project_path_obj.exists():
+
+        dev_agent_dir = Path(project_path, ".dev_agent")
+        dev_agent_dir = project_path_obj / ".dev_agent"
+        documents_dir = dev_agent_dir / "documents"
+        index_dir = dev_agent_dir / "index"
+        # Check if this is an existing project
+        if Path.exists(documents_dir) and Path.exists(index_dir):
+        if documents_dir.exists() and index_dir.exists():
+            if self.workflow_manager:
+                self.workflow_manager.resume_project(project_path)
+        else:
+            self.display_message("[green]Initializing new dev-agent project...[/green]")
+            # Create directory structure
+            Path.mkdir(dev_agent_dir, exist_ok=True)
+            dev_agent_dir.mkdir(parents=True, exist_ok=True)
+            documents_dir.mkdir(parents=True, exist_ok=True)
+            index_dir.mkdir(parents=True, exist_ok=True)
+            if self.workflow_manager:
+                self.workflow_manager.start_new_project(project_path)
+
+    def display_message(self, message: str) -> None:
+        """Display a message with Rich formatting.
+
+        Args:
+            message: The message to display
+        """
+        self.console.print(message)
+
+    def get_user_input(self, prompt: str) -> str:
+        """Get input from the user with Rich prompt.
+
+        Args:
+            prompt: The prompt to display
+
+        Returns:
+            The user's input as a string
+        """
+        return Prompt.ask(prompt)
+
+
+class ProgressManager:
+    """Manages progress tracking with Rich progress bars and time estimates."""
+
+    def __init__(self, console: Console):
+        """Initialize the progress manager.
+
+        Args:
+            console: Rich console instance
+        """
+        self.console = console
+        self.current_progress: Progress | None = None
+        self.phase_tasks: dict[PhaseType, TaskID] = {}
+        self.start_times: dict[TaskID, datetime] = {}
+
+    def create_task(self, description: str) -> TaskContext:
+        """Create a simple task with progress tracking.
+
+        Args:
+            description: Task description
+
+        Returns:
+            Task context manager
+        """
+        return TaskContext(self, description)
+
+    def create_workflow_progress(self) -> WorkflowProgressContext:
+        """Create workflow progress tracking for all phases.
+
+        Returns:
+            Workflow progress context manager
+        """
+        return WorkflowProgressContext(self)
+
+    def update_phase_progress(self, phase: PhaseType, progress: float) -> None:
+        """Update progress for a specific phase.
+
+        Args:
+            phase: The phase to update
+            progress: Progress as a float between 0.0 and 1.0
+        """
+        if self.current_progress and phase in self.phase_tasks:
+            task_id = self.phase_tasks[phase]
+            completed = int(progress * 100)
+            self.current_progress.update(task_id, completed=completed)
+
+    def update_task(self, task_id: TaskID, progress: float) -> None:
+        """Update task progress.
+
+        Args:
+            task_id: Task identifier
+            progress: Progress as a float between 0.0 and 1.0
+        """
+        if self.current_progress:
+            completed = int(progress * 100)
+            self.current_progress.update(task_id, completed=completed)
+
+
+class TaskContext:
+    """Context manager for simple task progress tracking."""
+
+    def __init__(self, progress_manager: ProgressManager, description: str):
+        """Initialize task context.
+
+        Args:
+            progress_manager: Progress manager instance
+            description: Task description
+        """
+        self.progress_manager = progress_manager
+        self.description = description
+        self.task_id: TaskID | None = None
+        self.progress: Progress | None = None
+
+    def __enter__(self) -> TaskID:
+        """Enter the task context."""
+        self.progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            console=self.progress_manager.console,
+        )
+
+        self.progress.start()
+        self.task_id = self.progress.add_task(self.description, total=100)
+        self.progress_manager.current_progress = self.progress
+        self.progress_manager.start_times[self.task_id] = datetime.now()
+
+        return self.task_id
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the task context."""
+        if self.progress:
+            self.progress.stop()
+        self.progress_manager.current_progress = None
+
+
+class WorkflowProgressContext:
+    """Context manager for complete workflow progress tracking."""
+
+    def __init__(self, progress_manager: ProgressManager):
+        """Initialize workflow progress context.
+
+        Args:
+            progress_manager: Progress manager instance
+        """
+        self.progress_manager = progress_manager
+        self.progress: Progress | None = None
+
+    def __enter__(self) -> None:
+        """Enter the workflow progress context."""
+        self.progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=self.progress_manager.console,
+        )
+
+        self.progress.start()
+
+        # Add tasks for each phase
+        phases = [PhaseType.INDEXING, PhaseType.SPECIFICATION, PhaseType.DESIGN, PhaseType.IMPLEMENTATION]
+        for phase in phases:
+            task_id = self.progress.add_task(f"{phase.value.title()} Phase", total=100)
+            self.progress_manager.phase_tasks[phase] = task_id
+            self.progress_manager.start_times[task_id] = datetime.now()
+
+        self.progress_manager.current_progress = self.progress
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the workflow progress context."""
+        if self.progress:
+            self.progress.stop()
+        self.progress_manager.current_progress = None
+        self.progress_manager.phase_tasks.clear()
+
+
+class DocumentPreviewer:
+    """Handles document preview with syntax highlighting and diff views."""
+
+    def __init__(self, console: Console):
+        """Initialize the document previewer.
+
+        Args:
+            console: Rich console instance
+        """
+        self.console = console
+
+    def show_document(self, content: str, document_type: str) -> None:
+        """Show document with syntax highlighting.
+
+        Args:
+            content: Document content
+            document_type: Type of document
+        """
+        # Determine syntax based on document type
+        lexer = self._get_lexer_for_document_type(document_type)
+
+        # Create syntax-highlighted content
+        syntax = Syntax(content, lexer, theme="monokai", line_numbers=True)
+
+        # Display in a panel
+        panel = Panel(
+            syntax,
+            title=f"[bold]{document_type.title()} Preview[/bold]",
+            border_style="blue",
+            padding=(1, 2)
+        )
+
+        self.console.print(panel)
+
+    def show_diff(self, old_content: str, new_content: str, title: str = "Changes") -> None:
+        """Show diff between two versions of content.
+
+        Args:
+            old_content: Original content
+            new_content: Modified content
+            title: Title for the diff display
+        """
+        # Generate unified diff
+        diff_lines = list(difflib.unified_diff(
+            old_content.splitlines(keepends=True),
+            new_content.splitlines(keepends=True),
+            fromfile="original",
+            tofile="modified",
+            lineterm=""
+        ))
+
+        if not diff_lines:
+            self.console.print("[green]No changes detected[/green]")
+            return
+
+        # Format diff with colors
+        diff_text = Text()
+        for line in diff_lines:
+            if line.startswith("+"):
+                diff_text.append(line, style="green")
+            elif line.startswith("-"):
+                diff_text.append(line, style="red")
+            elif line.startswith("@@"):
+                diff_text.append(line, style="cyan")
+            else:
+                diff_text.append(line)
+
+        # Display in a panel
+        panel = Panel(
+            diff_text,
+            title=f"[bold]{title}[/bold]",
+            border_style="yellow",
+            padding=(1, 2)
+        )
+
+        self.console.print(panel)
+
+    def _get_lexer_for_document_type(self, document_type: str) -> str:
+        """Get appropriate lexer for document type.
+
+        Args:
+            document_type: Type of document
+
+        Returns:
+            Lexer name for syntax highlighting
+        """
+        lexer_map = {
+            "specification": "markdown",
+            "design": "markdown",
+            "tasks": "markdown",
+            "code": "python",
+            "config": "yaml",
+            "json": "json"
+        }
+
+        return lexer_map.get(document_type.lower(), "text")
+
+
+class ContextualHelpSystem:
+    """Provides contextual help based on current workflow state."""
+
+    def __init__(self, console: Console):
+        """Initialize the contextual help system.
+
+        Args:
+            console: Rich console instance
+        """
+        self.console = console
+        self.help_shown_count = 0
+
+    def should_show_help(self, context: dict[str, Any]) -> bool:
+        """Determine if contextual help should be shown.
+
+        Args:
+            context: Current workflow context
+
+        Returns:
+            True if help should be shown
+        """
+        # Show help on first interaction or if user seems stuck
+        return self.help_shown_count == 0 and not context.get("has_project", False)
+
+    def show_contextual_help(self, context: dict[str, Any]) -> None:
+        """Show contextual help based on current state.
+
+        Args:
+            context: Current workflow context
+        """
+        if not context.get("has_project", False):
+            self._show_getting_started_help()
+        elif context.get("current_phase"):
+            self._show_phase_help(context["current_phase"])
+
+        self.help_shown_count += 1
+
+    def display_full_help(self, context: dict[str, Any]) -> None:
+        """Display comprehensive help information.
+
+        Args:
+            context: Current workflow context
+        """
+        help_table = Table(title="Available Commands", show_header=True, header_style="bold magenta")
+        help_table.add_column("Command", style="cyan", no_wrap=True)
+        help_table.add_column("Description", style="white")
+        help_table.add_column("Example", style="dim")
+
+        # Basic commands
+        help_table.add_row("init [path]", "Initialize project", "init /path/to/project")
+        help_table.add_row("status", "Show project status", "status")
+        help_table.add_row("help", "Show this help", "help")
+        help_table.add_row("exit", "Exit application", "exit")
+
+        # Workflow commands (if project exists)
+        if context.get("has_project", False):
+            help_table.add_row("run", "Execute complete workflow", "run")
+            help_table.add_row("phase <name>", "Transition to phase", "phase INDEXING")
+            help_table.add_row("preview <type>", "Preview document", "preview specification")
+
+        self.console.print(help_table)
+
+        # Show workflow phases
+        self._show_workflow_phases()
+
+    def _show_getting_started_help(self) -> None:
+        """Show help for getting started."""
+        help_text = """
+[bold yellow]👋 Getting Started[/bold yellow]
+
+To begin using dev-agent, initialize a project:
+• [cyan]init[/cyan] - Initialize in current directory
+• [cyan]init /path[/cyan] - Initialize at specific path
+
+Once initialized, you can run the complete workflow or execute individual phases.
+        """
+
+        panel = Panel(
+            help_text.strip(),
+            title="[bold]Quick Start[/bold]",
+            border_style="yellow",
+            padding=(1, 2)
+        )
+        self.console.print(panel)
+
+    def _show_phase_help(self, current_phase: PhaseType) -> None:
+        """Show help for current phase.
+
+        Args:
+            current_phase: Current workflow phase
+        """
+        phase_help = {
+            PhaseType.INDEXING: "Analyzing and indexing your codebase...",
+            PhaseType.SPECIFICATION: "Generating requirements specification...",
+            PhaseType.DESIGN: "Creating technical design document...",
+            PhaseType.IMPLEMENTATION: "Generating implementation tasks..."
+        }
+
+        help_text = f"[bold blue]Current Phase: {current_phase.value.title()}[/bold blue]\n\n"
+        help_text += phase_help.get(current_phase, "Working on current phase...")
+
+        self.console.print(Panel(help_text, border_style="blue"))
+
+    def _show_workflow_phases(self) -> None:
+        """Show information about workflow phases."""
+        phases_table = Table(title="Workflow Phases", show_header=True, header_style="bold blue")
+        phases_table.add_column("Phase", style="cyan", no_wrap=True)
+        phases_table.add_column("Description", style="white")
+
+        phases_table.add_row("INDEXING", "Analyze and index the codebase")
+        phases_table.add_row("SPECIFICATION", "Generate requirements specification")
+        phases_table.add_row("DESIGN", "Create technical design document")
+        phases_table.add_row("IMPLEMENTATION", "Generate implementation tasks")
+
+        self.console.print(phases_table)

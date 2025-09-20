@@ -34,6 +34,11 @@ class IWorkflowManager(ABC):
         """Get the current workflow phase."""
         pass
 
+    @abstractmethod
+    def execute_complete_workflow(self) -> bool:
+        """Execute the complete four-phase workflow."""
+        pass
+
 
 class IPhaseManager(ABC):
     """Interface for managing individual workflow phases."""

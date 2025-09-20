@@ -212,3 +212,69 @@ class ContextualCode:
     context_type: str  # 'function', 'class', 'module', etc.
     related_symbols: list[str]
     dependencies: list[str]
+
+@dataclass
+class LanguageInfo:
+    """Information about a programming language used in the project."""
+
+    language: str
+    version: str | None
+    file_count: int
+    line_count: int
+    frameworks: list[str]
+    conventions: dict[str, Any]
+    quality_score: float
+
+
+@dataclass
+class UsagePattern:
+    """Pattern of framework or library usage."""
+
+    pattern: str
+    file_path: str
+    occurrences: int
+    examples: list[str]
+
+
+@dataclass
+class Improvement:
+    """Suggested improvement for code or architecture."""
+
+    category: str
+    description: str
+    priority: str  # 'low', 'medium', 'high'
+    effort: str    # 'low', 'medium', 'high'
+
+
+@dataclass
+class FrameworkInfo:
+    """Information about a framework used in the project."""
+
+    name: str
+    version: str
+    usage_patterns: list[UsagePattern]
+    configuration_files: list[str]
+    best_practices_compliance: float
+    suggested_improvements: list[Improvement]
+
+
+@dataclass
+class CrossLanguageMappings:
+    """Mappings and interactions between different languages in the project."""
+
+    api_interactions: dict[str, Any]
+    data_flow: dict[str, Any]
+    shared_configurations: dict[str, Any]
+    build_dependencies: dict[str, Any]
+    integration_patterns: list[str]
+
+
+@dataclass
+class LanguageConventions:
+    """Coding conventions for a specific language."""
+
+    naming_style: dict[str, Any]
+    formatting_style: dict[str, Any]
+    documentation_style: dict[str, Any]
+    error_handling_style: dict[str, Any]
+    consistency_score: float

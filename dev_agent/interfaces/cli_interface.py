@@ -1,6 +1,7 @@
 """Interface for CLI components."""
 
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
 
 from ..models.enums import PhaseType
 
@@ -41,4 +42,17 @@ class ICLIInterface(ABC):
     @abstractmethod
     def get_user_input(self, prompt: str) -> str:
         """Get input from the user with a prompt."""
+        pass
+
+    # Enhanced CLI methods (optional for backward compatibility)
+    def show_document_preview(self, content: str, document_type: str) -> None:
+        """Show document preview with syntax highlighting (optional enhancement)."""
+        pass
+
+    def show_diff_view(self, old_content: str, new_content: str, title: str = "Changes") -> None:
+        """Show diff between two versions of content (optional enhancement)."""
+        pass
+
+    def get_contextual_help(self, context: Optional[Dict[str, Any]] = None) -> None:
+        """Show contextual help based on current state (optional enhancement)."""
         pass

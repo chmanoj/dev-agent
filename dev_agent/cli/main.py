@@ -15,6 +15,7 @@ from ..config import (
     log_system_info,
     setup_logging,
 )
+# from .enhanced_cli import EnhancedCLI
 from .interactive_cli import InteractiveCLI
 from .session_manager import SessionManager
 
