@@ -364,3 +364,59 @@ class GenerationError(DevAgentError):
             f"Generation error: {self.message}. "
             f"The system will attempt to use fallback generation methods."
         )
+
+
+class TemplateError(DevAgentError):
+    """Errors related to template processing and scaffolding."""
+
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+        context: ErrorContext | None = None,
+        template_id: str | None = None,
+        template_path: str | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.IMPLEMENTATION,
+            severity=severity,
+            context=context,
+            recoverable=True,
+        )
+        self.template_id = template_id
+        self.template_path = template_path
+
+    def _generate_user_message(self) -> str:
+        return (
+            f"Template error: {self.message}. "
+            f"Please check the template configuration and try again."
+        )
+
+
+class ValidationError(DevAgentError):
+    """Errors related to data validation."""
+
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.LOW,
+        context: ErrorContext | None = None,
+        field_name: str | None = None,
+        validation_rule: str | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.USER_INPUT,
+            severity=severity,
+            context=context,
+            recoverable=True,
+        )
+        self.field_name = field_name
+        self.validation_rule = validation_rule
+
+    def _generate_user_message(self) -> str:
+        return (
+            f"Validation error: {self.message}. "
+            f"Please correct the input and try again."
+        )

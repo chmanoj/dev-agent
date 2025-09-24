@@ -1,4 +1,4 @@
-"""Framework detection for different programming languages."""
+"""Framework detection and analysis components."""
 
 from __future__ import annotations
 
@@ -8,1156 +8,606 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-from ..models.analysis import FrameworkInfo, UsagePattern, Improvement
+from ..models.analysis import FrameworkInfo, Improvement, UsagePattern
+from ..models.enums import FrameworkType, LanguageType
 
 
 class FrameworkDetector(ABC):
-    """Base class for framework detection."""
+    """Base class for framework detection and analysis."""
 
     @abstractmethod
-    def detect_frameworks(self, files: list[str]) -> list[str]:
-        """Detect frameworks used in the given files.
+    def detect_frameworks(self, project_path: Path, files: list[Path]) -> list[FrameworkType]:
+        """Detect frameworks in the given files.
 
         Args:
-            files: List of file paths to analyze
+            project_path: Path to the project root
+            files: List of files to analyze
 
         Returns:
-            List of detected framework names
+            List of detected frameworks
         """
+        pass
 
     @abstractmethod
-    def analyze_framework(self, framework_name: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze detailed information about a specific framework.
+    def analyze_usage(self, project_path: Path) -> FrameworkInfo | None:
+        """Analyze framework usage in the project.
 
         Args:
-            framework_name: Name of the framework to analyze
-            files: List of file paths to analyze
+            project_path: Path to the project root
 
         Returns:
-            FrameworkInfo object with detailed analysis or None if not found
+            FrameworkInfo object or None if framework not found
         """
+        pass
 
 
 class PythonFrameworkDetector(FrameworkDetector):
     """Detector for Python frameworks."""
 
-    def __init__(self):
-        """Initialize Python framework detector."""
-        self.framework_indicators = {
-            'django': {
-                'imports': ['django', 'django.conf', 'django.urls', 'django.views'],
-                'files': ['manage.py', 'settings.py', 'urls.py', 'models.py'],
-                'patterns': [r'from django', r'import django', r'DJANGO_SETTINGS_MODULE']
-            },
-            'flask': {
-                'imports': ['flask', 'Flask'],
-                'files': ['app.py', 'wsgi.py'],
-                'patterns': [r'from flask import', r'Flask\(__name__\)', r'@app\.route']
-            },
-            'fastapi': {
-                'imports': ['fastapi', 'FastAPI'],
-                'files': ['main.py', 'app.py'],
-                'patterns': [r'from fastapi import', r'FastAPI\(', r'@app\.(get|post|put|delete)']
-            },
-            'pytest': {
-                'imports': ['pytest'],
-                'files': ['conftest.py', 'pytest.ini'],
-                'patterns': [r'import pytest', r'def test_', r'@pytest\.(fixture|mark)']
-            },
-            'sqlalchemy': {
-                'imports': ['sqlalchemy', 'SQLAlchemy'],
-                'files': ['models.py', 'database.py'],
-                'patterns': [r'from sqlalchemy', r'declarative_base', r'Column\(']
-            },
-            'celery': {
-                'imports': ['celery', 'Celery'],
-                'files': ['celeryconfig.py', 'tasks.py'],
-                'patterns': [r'from celery import', r'Celery\(', r'@app\.task']
-            },
-            'pandas': {
-                'imports': ['pandas', 'pd'],
-                'files': [],
-                'patterns': [r'import pandas', r'pd\.DataFrame', r'pd\.read_']
-            },
-            'numpy': {
-                'imports': ['numpy', 'np'],
-                'files': [],
-                'patterns': [r'import numpy', r'np\.array', r'np\.']
-            },
-            'tensorflow': {
-                'imports': ['tensorflow', 'tf'],
-                'files': [],
-                'patterns': [r'import tensorflow', r'tf\.', r'keras']
-            },
-            'pytorch': {
-                'imports': ['torch', 'pytorch'],
-                'files': [],
-                'patterns': [r'import torch', r'torch\.', r'nn\.Module']
-            }
-        }
-
-    def detect_frameworks(self, files: list[str]) -> list[str]:
+    def detect_frameworks(self, project_path: Path, files: list[Path]) -> list[FrameworkType]:
         """Detect Python frameworks."""
-        detected = set()
+        frameworks = []
         
-        for file_path in files:
+        # Check dependencies
+        dependencies = self._get_python_dependencies(project_path)
+        
+        # Framework detection patterns
+        framework_patterns = {
+            FrameworkType.DJANGO: ["django"],
+            FrameworkType.FLASK: ["flask"],
+            FrameworkType.FASTAPI: ["fastapi"],
+            FrameworkType.PYTEST: ["pytest"],
+            FrameworkType.SQLALCHEMY: ["sqlalchemy"],
+            FrameworkType.CELERY: ["celery"],
+            FrameworkType.PANDAS: ["pandas"],
+            FrameworkType.NUMPY: ["numpy"],
+            FrameworkType.TENSORFLOW: ["tensorflow"],
+            FrameworkType.PYTORCH: ["torch", "pytorch"],
+        }
+        
+        for framework, patterns in framework_patterns.items():
+            if any(pattern in dep.lower() for dep in dependencies for pattern in patterns):
+                frameworks.append(framework)
+        
+        # Check import statements in files
+        for file_path in files[:20]:  # Limit to avoid performance issues
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read()
                 
-                file_name = Path(file_path).name
-                
-                for framework, indicators in self.framework_indicators.items():
-                    # Check file names
-                    if file_name in indicators['files']:
-                        detected.add(framework)
-                        continue
-                    
-                    # Check import patterns
-                    for import_name in indicators['imports']:
-                        if re.search(rf'\b{re.escape(import_name)}\b', content):
-                            detected.add(framework)
-                            break
-                    
-                    # Check code patterns
-                    for pattern in indicators['patterns']:
-                        if re.search(pattern, content):
-                            detected.add(framework)
-                            break
-                            
-            except (UnicodeDecodeError, IOError):
+                for framework, patterns in framework_patterns.items():
+                    if framework not in frameworks:
+                        for pattern in patterns:
+                            if re.search(rf'\bimport\s+{pattern}\b|\bfrom\s+{pattern}\b', content):
+                                frameworks.append(framework)
+                                break
+            except Exception:
                 continue
         
-        return list(detected)
+        return frameworks
 
-    def analyze_framework(self, framework_name: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze Python framework usage."""
-        if framework_name not in self.framework_indicators:
-            return None
-        
-        indicators = self.framework_indicators[framework_name]
-        usage_patterns = []
-        config_files = []
-        version = None
-        
-        # Analyze usage patterns
-        for file_path in files:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                file_name = Path(file_path).name
-                
-                # Check for configuration files
-                if file_name in indicators['files']:
-                    config_files.append(file_path)
-                
-                # Analyze patterns
-                for pattern in indicators['patterns']:
-                    matches = re.findall(pattern, content)
-                    if matches:
-                        usage_patterns.append(UsagePattern(
-                            pattern=pattern,
-                            file_path=file_path,
-                            occurrences=len(matches),
-                            examples=matches[:3]  # First 3 examples
-                        ))
-                        
-            except (UnicodeDecodeError, IOError):
-                continue
-        
-        # Try to detect version from requirements files
-        version = self._detect_python_framework_version(framework_name, files)
-        
-        # Calculate compliance score
-        compliance_score = self._calculate_python_compliance(framework_name, usage_patterns)
-        
-        # Generate improvements
-        improvements = self._suggest_python_improvements(framework_name, usage_patterns)
-        
-        return FrameworkInfo(
-            name=framework_name,
-            version=version or 'unknown',
-            usage_patterns=usage_patterns,
-            configuration_files=config_files,
-            best_practices_compliance=compliance_score,
-            suggested_improvements=improvements
-        )
-
-    def _detect_python_framework_version(self, framework_name: str, files: list[str]) -> str | None:
-        """Detect framework version from requirements files."""
-        req_files = ['requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile']
-        
-        for file_path in files:
-            file_name = Path(file_path).name
-            if file_name in req_files:
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    
-                    # Check for version in requirements.txt
-                    if file_name == 'requirements.txt':
-                        pattern = rf'{re.escape(framework_name)}([>=<~!]+[\d.]+)'
-                        match = re.search(pattern, content, re.IGNORECASE)
-                        if match:
-                            return match.group(1)
-                    
-                    # Check for version in pyproject.toml
-                    elif file_name == 'pyproject.toml':
-                        pattern = rf'"{re.escape(framework_name)}"\s*=\s*"([^"]+)"'
-                        match = re.search(pattern, content, re.IGNORECASE)
-                        if match:
-                            return match.group(1)
-                            
-                except (UnicodeDecodeError, IOError):
-                    continue
-        
+    def analyze_usage(self, project_path: Path) -> FrameworkInfo | None:
+        """Analyze Python framework usage (generic implementation)."""
+        # This is a generic implementation - specific frameworks would override this
         return None
 
-    def _calculate_python_compliance(self, framework_name: str, patterns: list[UsagePattern]) -> float:
-        """Calculate best practices compliance score."""
-        base_score = 0.5
+    def _get_python_dependencies(self, project_path: Path) -> list[str]:
+        """Get Python dependencies from various sources."""
+        dependencies = []
         
-        # Framework-specific compliance checks
-        if framework_name == 'django':
-            return self._calculate_django_compliance(patterns)
-        elif framework_name == 'flask':
-            return self._calculate_flask_compliance(patterns)
-        elif framework_name == 'fastapi':
-            return self._calculate_fastapi_compliance(patterns)
+        # Check pyproject.toml
+        pyproject_path = project_path / "pyproject.toml"
+        if pyproject_path.exists():
+            try:
+                with open(pyproject_path, encoding="utf-8") as f:
+                    content = f.read()
+                # Simple extraction - could be enhanced with proper TOML parsing
+                deps = re.findall(r'"([^"]+)"', content)
+                dependencies.extend(deps)
+            except Exception:
+                pass
         
-        return base_score
-
-    def _calculate_django_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate Django best practices compliance."""
-        score = 0.5
+        # Check requirements.txt
+        req_path = project_path / "requirements.txt"
+        if req_path.exists():
+            try:
+                with open(req_path, encoding="utf-8") as f:
+                    dependencies.extend(f.read().splitlines())
+            except Exception:
+                pass
         
-        # Check for proper URL patterns
-        url_patterns = [p for p in patterns if 'urls.py' in p.file_path]
-        if url_patterns:
-            score += 0.1
+        # Check setup.py
+        setup_path = project_path / "setup.py"
+        if setup_path.exists():
+            try:
+                with open(setup_path, encoding="utf-8") as f:
+                    content = f.read()
+                # Extract from install_requires
+                matches = re.findall(r'install_requires\s*=\s*\[(.*?)\]', content, re.DOTALL)
+                for match in matches:
+                    deps = re.findall(r'["\']([^"\']+)["\']', match)
+                    dependencies.extend(deps)
+            except Exception:
+                pass
         
-        # Check for model usage
-        model_patterns = [p for p in patterns if 'models.py' in p.file_path]
-        if model_patterns:
-            score += 0.1
-        
-        # Check for proper view structure
-        view_patterns = [p for p in patterns if any(keyword in p.pattern for keyword in ['views', 'View'])]
-        if view_patterns:
-            score += 0.1
-        
-        return min(score, 1.0)
-
-    def _calculate_flask_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate Flask best practices compliance."""
-        score = 0.5
-        
-        # Check for proper route decorators
-        route_patterns = [p for p in patterns if '@app.route' in p.pattern]
-        if route_patterns:
-            score += 0.2
-        
-        # Check for blueprint usage (advanced pattern)
-        blueprint_patterns = [p for p in patterns if 'Blueprint' in p.pattern]
-        if blueprint_patterns:
-            score += 0.2
-        
-        return min(score, 1.0)
-
-    def _calculate_fastapi_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate FastAPI best practices compliance."""
-        score = 0.5
-        
-        # Check for proper route decorators
-        route_patterns = [p for p in patterns if any(method in p.pattern for method in ['get', 'post', 'put', 'delete'])]
-        if route_patterns:
-            score += 0.2
-        
-        # Check for dependency injection
-        dependency_patterns = [p for p in patterns if 'Depends' in p.pattern]
-        if dependency_patterns:
-            score += 0.2
-        
-        return min(score, 1.0)
-
-    def _suggest_python_improvements(self, framework_name: str, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest improvements for Python frameworks."""
-        improvements = []
-        
-        if framework_name == 'django':
-            improvements.extend(self._suggest_django_improvements(patterns))
-        elif framework_name == 'flask':
-            improvements.extend(self._suggest_flask_improvements(patterns))
-        elif framework_name == 'fastapi':
-            improvements.extend(self._suggest_fastapi_improvements(patterns))
-        
-        return improvements
-
-    def _suggest_django_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest Django-specific improvements."""
-        improvements = []
-        
-        # Check for missing migrations
-        model_patterns = [p for p in patterns if 'models.py' in p.file_path]
-        if model_patterns and not any('migrations' in p.file_path for p in patterns):
-            improvements.append(Improvement(
-                category='Database',
-                description='Consider creating database migrations for your models',
-                priority='medium',
-                effort='low'
-            ))
-        
-        return improvements
-
-    def _suggest_flask_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest Flask-specific improvements."""
-        improvements = []
-        
-        # Check for blueprint usage
-        route_patterns = [p for p in patterns if '@app.route' in p.pattern]
-        blueprint_patterns = [p for p in patterns if 'Blueprint' in p.pattern]
-        
-        if len(route_patterns) > 5 and not blueprint_patterns:
-            improvements.append(Improvement(
-                category='Architecture',
-                description='Consider using Flask Blueprints to organize your routes',
-                priority='medium',
-                effort='medium'
-            ))
-        
-        return improvements
-
-    def _suggest_fastapi_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest FastAPI-specific improvements."""
-        improvements = []
-        
-        # Check for dependency injection usage
-        route_patterns = [p for p in patterns if any(method in p.pattern for method in ['get', 'post', 'put', 'delete'])]
-        dependency_patterns = [p for p in patterns if 'Depends' in p.pattern]
-        
-        if len(route_patterns) > 3 and not dependency_patterns:
-            improvements.append(Improvement(
-                category='Architecture',
-                description='Consider using FastAPI dependency injection for better code organization',
-                priority='low',
-                effort='medium'
-            ))
-        
-        return improvements
+        return dependencies
 
 
 class JavaScriptFrameworkDetector(FrameworkDetector):
-    """Detector for JavaScript frameworks."""
+    """Detector for JavaScript/TypeScript frameworks."""
 
-    def __init__(self):
-        """Initialize JavaScript framework detector."""
-        self.framework_indicators = {
-            'react': {
-                'imports': ['react', 'React'],
-                'files': ['package.json'],
-                'patterns': [r'import.*React', r'from [\'"]react[\'"]', r'React\.', r'jsx?']
-            },
-            'vue': {
-                'imports': ['vue', 'Vue'],
-                'files': ['package.json', 'vue.config.js'],
-                'patterns': [r'import.*Vue', r'from [\'"]vue[\'"]', r'Vue\.', r'<template>']
-            },
-            'angular': {
-                'imports': ['@angular', 'angular'],
-                'files': ['angular.json', 'package.json'],
-                'patterns': [r'from [\'"]@angular', r'@Component', r'@Injectable', r'ng ']
-            },
-            'express': {
-                'imports': ['express'],
-                'files': ['package.json', 'server.js', 'app.js'],
-                'patterns': [r'require\([\'"]express[\'"]\)', r'express\(\)', r'app\.(get|post|put|delete)']
-            },
-            'nodejs': {
-                'imports': ['fs', 'path', 'http', 'https'],
-                'files': ['package.json', 'server.js'],
-                'patterns': [r'require\([\'"]fs[\'"]\)', r'require\([\'"]path[\'"]\)', r'process\.']
-            },
-            'webpack': {
-                'imports': ['webpack'],
-                'files': ['webpack.config.js', 'package.json'],
-                'patterns': [r'module\.exports', r'webpack', r'entry:', r'output:']
-            },
-            'babel': {
-                'imports': ['@babel'],
-                'files': ['.babelrc', 'babel.config.js', 'package.json'],
-                'patterns': [r'@babel', r'babel-', r'presets:', r'plugins:']
-            },
-            'jest': {
-                'imports': ['jest'],
-                'files': ['jest.config.js', 'package.json'],
-                'patterns': [r'describe\(', r'test\(', r'it\(', r'expect\(']
-            },
-            'eslint': {
-                'imports': ['eslint'],
-                'files': ['.eslintrc.js', '.eslintrc.json', 'package.json'],
-                'patterns': [r'eslint', r'rules:', r'extends:']
-            }
-        }
-
-    def detect_frameworks(self, files: list[str]) -> list[str]:
-        """Detect JavaScript frameworks."""
-        detected = set()
+    def detect_frameworks(self, project_path: Path, files: list[Path]) -> list[FrameworkType]:
+        """Detect JavaScript/TypeScript frameworks."""
+        frameworks = []
         
-        # First check package.json for dependencies
-        package_json_frameworks = self._detect_from_package_json(files)
-        detected.update(package_json_frameworks)
-        
-        # Then check source files
-        for file_path in files:
+        # Check package.json
+        package_json_path = project_path / "package.json"
+        if package_json_path.exists():
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(package_json_path, encoding="utf-8") as f:
+                    package_data = json.loads(f.read())
+                
+                all_deps = {}
+                all_deps.update(package_data.get("dependencies", {}))
+                all_deps.update(package_data.get("devDependencies", {}))
+                
+                # Framework detection patterns
+                framework_patterns = {
+                    FrameworkType.REACT: ["react"],
+                    FrameworkType.VUE: ["vue"],
+                    FrameworkType.ANGULAR: ["@angular/core", "angular"],
+                    FrameworkType.EXPRESS: ["express"],
+                    FrameworkType.NODEJS: ["node"],
+                    FrameworkType.WEBPACK: ["webpack"],
+                    FrameworkType.BABEL: ["@babel/core", "babel"],
+                    FrameworkType.JEST: ["jest"],
+                    FrameworkType.ESLINT: ["eslint"],
+                    FrameworkType.NESTJS: ["@nestjs/core"],
+                }
+                
+                for framework, patterns in framework_patterns.items():
+                    if any(pattern in dep for dep in all_deps.keys() for pattern in patterns):
+                        frameworks.append(framework)
+                        
+            except (json.JSONDecodeError, FileNotFoundError):
+                pass
+        
+        # Check import statements in files
+        for file_path in files[:20]:  # Limit to avoid performance issues
+            try:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read()
                 
-                file_name = Path(file_path).name
+                # Look for framework imports
+                if "import React" in content or "from 'react'" in content:
+                    if FrameworkType.REACT not in frameworks:
+                        frameworks.append(FrameworkType.REACT)
                 
-                for framework, indicators in self.framework_indicators.items():
-                    # Check file names
-                    if file_name in indicators['files']:
-                        detected.add(framework)
-                        continue
-                    
-                    # Check import patterns
-                    for import_name in indicators['imports']:
-                        if re.search(rf'\b{re.escape(import_name)}\b', content):
-                            detected.add(framework)
-                            break
-                    
-                    # Check code patterns
-                    for pattern in indicators['patterns']:
-                        if re.search(pattern, content):
-                            detected.add(framework)
-                            break
-                            
-            except (UnicodeDecodeError, IOError):
+                if "import Vue" in content or "from 'vue'" in content:
+                    if FrameworkType.VUE not in frameworks:
+                        frameworks.append(FrameworkType.VUE)
+                
+                if "from '@angular/" in content:
+                    if FrameworkType.ANGULAR not in frameworks:
+                        frameworks.append(FrameworkType.ANGULAR)
+                
+                if "import express" in content or "require('express')" in content:
+                    if FrameworkType.EXPRESS not in frameworks:
+                        frameworks.append(FrameworkType.EXPRESS)
+                        
+            except Exception:
                 continue
         
-        return list(detected)
+        return frameworks
 
-    def analyze_framework(self, framework_name: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze JavaScript framework usage."""
-        if framework_name not in self.framework_indicators:
-            return None
-        
-        indicators = self.framework_indicators[framework_name]
-        usage_patterns = []
-        config_files = []
-        version = None
-        
-        # Analyze usage patterns
-        for file_path in files:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                file_name = Path(file_path).name
-                
-                # Check for configuration files
-                if file_name in indicators['files']:
-                    config_files.append(file_path)
-                
-                # Analyze patterns
-                for pattern in indicators['patterns']:
-                    matches = re.findall(pattern, content)
-                    if matches:
-                        usage_patterns.append(UsagePattern(
-                            pattern=pattern,
-                            file_path=file_path,
-                            occurrences=len(matches),
-                            examples=matches[:3]
-                        ))
-                        
-            except (UnicodeDecodeError, IOError):
-                continue
-        
-        # Try to detect version from package.json
-        version = self._detect_js_framework_version(framework_name, files)
-        
-        # Calculate compliance score
-        compliance_score = self._calculate_js_compliance(framework_name, usage_patterns)
-        
-        # Generate improvements
-        improvements = self._suggest_js_improvements(framework_name, usage_patterns)
-        
-        return FrameworkInfo(
-            name=framework_name,
-            version=version or 'unknown',
-            usage_patterns=usage_patterns,
-            configuration_files=config_files,
-            best_practices_compliance=compliance_score,
-            suggested_improvements=improvements
-        )
-
-    def _detect_from_package_json(self, files: list[str]) -> list[str]:
-        """Detect frameworks from package.json."""
-        detected = []
-        
-        for file_path in files:
-            if Path(file_path).name == 'package.json':
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    
-                    dependencies = {}
-                    dependencies.update(data.get('dependencies', {}))
-                    dependencies.update(data.get('devDependencies', {}))
-                    
-                    for dep_name in dependencies:
-                        if 'react' in dep_name.lower():
-                            detected.append('react')
-                        elif 'vue' in dep_name.lower():
-                            detected.append('vue')
-                        elif 'angular' in dep_name.lower() or '@angular' in dep_name:
-                            detected.append('angular')
-                        elif dep_name == 'express':
-                            detected.append('express')
-                        elif 'webpack' in dep_name.lower():
-                            detected.append('webpack')
-                        elif 'babel' in dep_name.lower() or '@babel' in dep_name:
-                            detected.append('babel')
-                        elif 'jest' in dep_name.lower():
-                            detected.append('jest')
-                        elif 'eslint' in dep_name.lower():
-                            detected.append('eslint')
-                    
-                    # Check for Node.js indicators
-                    if 'main' in data or 'scripts' in data:
-                        detected.append('nodejs')
-                        
-                except (json.JSONDecodeError, UnicodeDecodeError, IOError):
-                    continue
-        
-        return list(set(detected))
-
-    def _detect_js_framework_version(self, framework_name: str, files: list[str]) -> str | None:
-        """Detect framework version from package.json."""
-        for file_path in files:
-            if Path(file_path).name == 'package.json':
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    
-                    dependencies = {}
-                    dependencies.update(data.get('dependencies', {}))
-                    dependencies.update(data.get('devDependencies', {}))
-                    
-                    # Direct framework name match
-                    if framework_name in dependencies:
-                        return dependencies[framework_name]
-                    
-                    # Check for framework-specific packages
-                    framework_packages = {
-                        'react': ['react'],
-                        'vue': ['vue'],
-                        'angular': ['@angular/core'],
-                        'express': ['express'],
-                        'webpack': ['webpack'],
-                        'babel': ['@babel/core'],
-                        'jest': ['jest'],
-                        'eslint': ['eslint']
-                    }
-                    
-                    if framework_name in framework_packages:
-                        for package in framework_packages[framework_name]:
-                            if package in dependencies:
-                                return dependencies[package]
-                                
-                except (json.JSONDecodeError, UnicodeDecodeError, IOError):
-                    continue
-        
+    def analyze_usage(self, project_path: Path) -> FrameworkInfo | None:
+        """Analyze JavaScript framework usage (generic implementation)."""
+        # This is a generic implementation - specific frameworks would override this
         return None
-
-    def _calculate_js_compliance(self, framework_name: str, patterns: list[UsagePattern]) -> float:
-        """Calculate JavaScript framework compliance score."""
-        base_score = 0.5
-        
-        if framework_name == 'react':
-            return self._calculate_react_compliance(patterns)
-        elif framework_name == 'vue':
-            return self._calculate_vue_compliance(patterns)
-        elif framework_name == 'angular':
-            return self._calculate_angular_compliance(patterns)
-        elif framework_name == 'express':
-            return self._calculate_express_compliance(patterns)
-        
-        return base_score
-
-    def _calculate_react_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate React best practices compliance."""
-        score = 0.5
-        
-        # Check for proper component structure
-        component_patterns = [p for p in patterns if any(keyword in p.pattern for keyword in ['Component', 'function', 'const'])]
-        if component_patterns:
-            score += 0.2
-        
-        # Check for hooks usage (modern React)
-        hook_patterns = [p for p in patterns if any(hook in p.pattern for hook in ['useState', 'useEffect', 'useContext'])]
-        if hook_patterns:
-            score += 0.2
-        
-        return min(score, 1.0)
-
-    def _calculate_vue_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate Vue.js best practices compliance."""
-        score = 0.5
-        
-        # Check for single file components
-        sfc_patterns = [p for p in patterns if '<template>' in p.pattern]
-        if sfc_patterns:
-            score += 0.3
-        
-        return min(score, 1.0)
-
-    def _calculate_angular_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate Angular best practices compliance."""
-        score = 0.5
-        
-        # Check for proper decorators
-        decorator_patterns = [p for p in patterns if any(dec in p.pattern for dec in ['@Component', '@Injectable', '@NgModule'])]
-        if decorator_patterns:
-            score += 0.3
-        
-        return min(score, 1.0)
-
-    def _calculate_express_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate Express.js best practices compliance."""
-        score = 0.5
-        
-        # Check for proper route handling
-        route_patterns = [p for p in patterns if 'app.' in p.pattern and any(method in p.pattern for method in ['get', 'post', 'put', 'delete'])]
-        if route_patterns:
-            score += 0.2
-        
-        # Check for middleware usage
-        middleware_patterns = [p for p in patterns if 'use(' in p.pattern]
-        if middleware_patterns:
-            score += 0.2
-        
-        return min(score, 1.0)
-
-    def _suggest_js_improvements(self, framework_name: str, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest improvements for JavaScript frameworks."""
-        improvements = []
-        
-        if framework_name == 'react':
-            improvements.extend(self._suggest_react_improvements(patterns))
-        elif framework_name == 'vue':
-            improvements.extend(self._suggest_vue_improvements(patterns))
-        elif framework_name == 'angular':
-            improvements.extend(self._suggest_angular_improvements(patterns))
-        elif framework_name == 'express':
-            improvements.extend(self._suggest_express_improvements(patterns))
-        
-        return improvements
-
-    def _suggest_react_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest React-specific improvements."""
-        improvements = []
-        
-        # Check for modern hooks usage
-        hook_patterns = [p for p in patterns if any(hook in p.pattern for hook in ['useState', 'useEffect'])]
-        class_patterns = [p for p in patterns if 'class' in p.pattern and 'Component' in p.pattern]
-        
-        if class_patterns and not hook_patterns:
-            improvements.append(Improvement(
-                category='Modernization',
-                description='Consider migrating class components to functional components with hooks',
-                priority='medium',
-                effort='medium'
-            ))
-        
-        return improvements
-
-    def _suggest_vue_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest Vue.js-specific improvements."""
-        improvements = []
-        
-        # Check for Composition API usage (Vue 3)
-        composition_patterns = [p for p in patterns if any(api in p.pattern for api in ['setup()', 'ref(', 'reactive('])]
-        
-        if not composition_patterns:
-            improvements.append(Improvement(
-                category='Modernization',
-                description='Consider using Vue 3 Composition API for better code organization',
-                priority='low',
-                effort='high'
-            ))
-        
-        return improvements
-
-    def _suggest_angular_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest Angular-specific improvements."""
-        improvements = []
-        
-        # Check for proper service usage
-        service_patterns = [p for p in patterns if '@Injectable' in p.pattern]
-        component_patterns = [p for p in patterns if '@Component' in p.pattern]
-        
-        if len(component_patterns) > 3 and not service_patterns:
-            improvements.append(Improvement(
-                category='Architecture',
-                description='Consider creating services to share data and logic between components',
-                priority='medium',
-                effort='medium'
-            ))
-        
-        return improvements
-
-    def _suggest_express_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest Express.js-specific improvements."""
-        improvements = []
-        
-        # Check for error handling middleware
-        error_patterns = [p for p in patterns if 'error' in p.pattern.lower()]
-        route_patterns = [p for p in patterns if 'app.' in p.pattern]
-        
-        if len(route_patterns) > 5 and not error_patterns:
-            improvements.append(Improvement(
-                category='Error Handling',
-                description='Consider adding error handling middleware for better error management',
-                priority='high',
-                effort='low'
-            ))
-        
-        return improvements
-
-
-class TypeScriptFrameworkDetector(FrameworkDetector):
-    """Detector for TypeScript frameworks."""
-
-    def __init__(self):
-        """Initialize TypeScript framework detector."""
-        # TypeScript frameworks often overlap with JavaScript frameworks
-        self.js_detector = JavaScriptFrameworkDetector()
-        
-        self.ts_specific_indicators = {
-            'nestjs': {
-                'imports': ['@nestjs'],
-                'files': ['nest-cli.json', 'package.json'],
-                'patterns': [r'@Controller', r'@Injectable', r'@Module', r'from [\'"]@nestjs']
-            },
-            'angular': {
-                'imports': ['@angular'],
-                'files': ['angular.json', 'tsconfig.json'],
-                'patterns': [r'@Component', r'@Injectable', r'@NgModule']
-            }
-        }
-
-    def detect_frameworks(self, files: list[str]) -> list[str]:
-        """Detect TypeScript frameworks."""
-        # Start with JavaScript framework detection
-        detected = set(self.js_detector.detect_frameworks(files))
-        
-        # Add TypeScript-specific frameworks
-        for file_path in files:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                file_name = Path(file_path).name
-                
-                for framework, indicators in self.ts_specific_indicators.items():
-                    # Check file names
-                    if file_name in indicators['files']:
-                        detected.add(framework)
-                        continue
-                    
-                    # Check import patterns
-                    for import_name in indicators['imports']:
-                        if re.search(rf'\b{re.escape(import_name)}\b', content):
-                            detected.add(framework)
-                            break
-                    
-                    # Check code patterns
-                    for pattern in indicators['patterns']:
-                        if re.search(pattern, content):
-                            detected.add(framework)
-                            break
-                            
-            except (UnicodeDecodeError, IOError):
-                continue
-        
-        return list(detected)
-
-    def analyze_framework(self, framework_name: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze TypeScript framework usage."""
-        # For TypeScript-specific frameworks
-        if framework_name in self.ts_specific_indicators:
-            return self._analyze_ts_framework(framework_name, files)
-        
-        # For JavaScript frameworks used in TypeScript
-        return self.js_detector.analyze_framework(framework_name, files)
-
-    def _analyze_ts_framework(self, framework_name: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze TypeScript-specific framework."""
-        if framework_name not in self.ts_specific_indicators:
-            return None
-        
-        indicators = self.ts_specific_indicators[framework_name]
-        usage_patterns = []
-        config_files = []
-        
-        for file_path in files:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                file_name = Path(file_path).name
-                
-                if file_name in indicators['files']:
-                    config_files.append(file_path)
-                
-                for pattern in indicators['patterns']:
-                    matches = re.findall(pattern, content)
-                    if matches:
-                        usage_patterns.append(UsagePattern(
-                            pattern=pattern,
-                            file_path=file_path,
-                            occurrences=len(matches),
-                            examples=matches[:3]
-                        ))
-                        
-            except (UnicodeDecodeError, IOError):
-                continue
-        
-        return FrameworkInfo(
-            name=framework_name,
-            version='unknown',
-            usage_patterns=usage_patterns,
-            configuration_files=config_files,
-            best_practices_compliance=0.7,  # Default score
-            suggested_improvements=[]
-        )
 
 
 class JavaFrameworkDetector(FrameworkDetector):
     """Detector for Java frameworks."""
 
-    def __init__(self):
-        """Initialize Java framework detector."""
-        self.framework_indicators = {
-            'spring_boot': {
-                'imports': ['org.springframework.boot', 'SpringBootApplication'],
-                'files': ['pom.xml', 'build.gradle', 'application.properties'],
-                'patterns': [r'@SpringBootApplication', r'@RestController', r'@Service', r'@Repository']
-            },
-            'spring': {
-                'imports': ['org.springframework', 'springframework'],
-                'files': ['applicationContext.xml', 'pom.xml'],
-                'patterns': [r'@Component', r'@Autowired', r'@Configuration', r'ApplicationContext']
-            },
-            'hibernate': {
-                'imports': ['org.hibernate', 'hibernate'],
-                'files': ['hibernate.cfg.xml', 'pom.xml'],
-                'patterns': [r'@Entity', r'@Table', r'@Column', r'SessionFactory']
-            },
-            'junit': {
-                'imports': ['org.junit', 'junit'],
-                'files': ['pom.xml', 'build.gradle'],
-                'patterns': [r'@Test', r'@Before', r'@After', r'Assert\.']
-            },
-            'maven': {
-                'imports': [],
-                'files': ['pom.xml'],
-                'patterns': [r'<groupId>', r'<artifactId>', r'<version>']
-            },
-            'gradle': {
-                'imports': [],
-                'files': ['build.gradle', 'settings.gradle'],
-                'patterns': [r'dependencies \{', r'apply plugin:', r'implementation ']
-            }
-        }
-
-    def detect_frameworks(self, files: list[str]) -> list[str]:
+    def detect_frameworks(self, project_path: Path, files: list[Path]) -> list[FrameworkType]:
         """Detect Java frameworks."""
-        detected = set()
+        frameworks = []
         
-        for file_path in files:
+        # Check pom.xml for Maven projects
+        pom_path = project_path / "pom.xml"
+        if pom_path.exists():
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(pom_path, encoding="utf-8") as f:
                     content = f.read()
                 
-                file_name = Path(file_path).name
+                framework_patterns = {
+                    FrameworkType.SPRING_BOOT: ["spring-boot"],
+                    FrameworkType.SPRING: ["springframework"],
+                    FrameworkType.HIBERNATE: ["hibernate"],
+                    FrameworkType.JUNIT: ["junit"],
+                    FrameworkType.MAVEN: ["maven"],
+                }
                 
-                for framework, indicators in self.framework_indicators.items():
-                    # Check file names
-                    if file_name in indicators['files']:
-                        detected.add(framework)
-                        continue
-                    
-                    # Check import patterns
-                    for import_name in indicators['imports']:
-                        if re.search(rf'\b{re.escape(import_name)}\b', content):
-                            detected.add(framework)
-                            break
-                    
-                    # Check code patterns
-                    for pattern in indicators['patterns']:
-                        if re.search(pattern, content):
-                            detected.add(framework)
-                            break
-                            
-            except (UnicodeDecodeError, IOError):
-                continue
-        
-        return list(detected)
-
-    def analyze_framework(self, framework_name: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze Java framework usage."""
-        if framework_name not in self.framework_indicators:
-            return None
-        
-        indicators = self.framework_indicators[framework_name]
-        usage_patterns = []
-        config_files = []
-        
-        for file_path in files:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                file_name = Path(file_path).name
-                
-                if file_name in indicators['files']:
-                    config_files.append(file_path)
-                
-                for pattern in indicators['patterns']:
-                    matches = re.findall(pattern, content)
-                    if matches:
-                        usage_patterns.append(UsagePattern(
-                            pattern=pattern,
-                            file_path=file_path,
-                            occurrences=len(matches),
-                            examples=matches[:3]
-                        ))
+                for framework, patterns in framework_patterns.items():
+                    if any(pattern in content for pattern in patterns):
+                        frameworks.append(framework)
                         
-            except (UnicodeDecodeError, IOError):
+            except Exception:
+                pass
+        
+        # Check build.gradle for Gradle projects
+        gradle_path = project_path / "build.gradle"
+        if gradle_path.exists():
+            try:
+                with open(gradle_path, encoding="utf-8") as f:
+                    content = f.read()
+                
+                if "gradle" not in [f.value for f in frameworks]:
+                    frameworks.append(FrameworkType.GRADLE)
+                
+                # Check for other frameworks in Gradle dependencies
+                if "spring-boot" in content:
+                    frameworks.append(FrameworkType.SPRING_BOOT)
+                if "springframework" in content:
+                    frameworks.append(FrameworkType.SPRING)
+                if "hibernate" in content:
+                    frameworks.append(FrameworkType.HIBERNATE)
+                if "junit" in content:
+                    frameworks.append(FrameworkType.JUNIT)
+                    
+            except Exception:
+                pass
+        
+        # Check import statements in Java files
+        for file_path in files[:20]:  # Limit to avoid performance issues
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    content = f.read()
+                
+                if "import org.springframework" in content:
+                    if FrameworkType.SPRING not in frameworks:
+                        frameworks.append(FrameworkType.SPRING)
+                
+                if "import org.hibernate" in content:
+                    if FrameworkType.HIBERNATE not in frameworks:
+                        frameworks.append(FrameworkType.HIBERNATE)
+                
+                if "import org.junit" in content:
+                    if FrameworkType.JUNIT not in frameworks:
+                        frameworks.append(FrameworkType.JUNIT)
+                        
+            except Exception:
                 continue
         
-        # Calculate compliance score
-        compliance_score = self._calculate_java_compliance(framework_name, usage_patterns)
-        
-        # Generate improvements
-        improvements = self._suggest_java_improvements(framework_name, usage_patterns)
-        
-        return FrameworkInfo(
-            name=framework_name,
-            version='unknown',
-            usage_patterns=usage_patterns,
-            configuration_files=config_files,
-            best_practices_compliance=compliance_score,
-            suggested_improvements=improvements
-        )
+        return frameworks
 
-    def _calculate_java_compliance(self, framework_name: str, patterns: list[UsagePattern]) -> float:
-        """Calculate Java framework compliance score."""
-        base_score = 0.5
-        
-        if framework_name == 'spring_boot':
-            return self._calculate_spring_boot_compliance(patterns)
-        elif framework_name == 'spring':
-            return self._calculate_spring_compliance(patterns)
-        
-        return base_score
-
-    def _calculate_spring_boot_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate Spring Boot compliance score."""
-        score = 0.5
-        
-        # Check for proper annotations
-        annotation_patterns = [p for p in patterns if any(ann in p.pattern for ann in ['@RestController', '@Service', '@Repository'])]
-        if annotation_patterns:
-            score += 0.3
-        
-        return min(score, 1.0)
-
-    def _calculate_spring_compliance(self, patterns: list[UsagePattern]) -> float:
-        """Calculate Spring framework compliance score."""
-        score = 0.5
-        
-        # Check for dependency injection
-        di_patterns = [p for p in patterns if '@Autowired' in p.pattern]
-        if di_patterns:
-            score += 0.2
-        
-        # Check for configuration
-        config_patterns = [p for p in patterns if '@Configuration' in p.pattern]
-        if config_patterns:
-            score += 0.2
-        
-        return min(score, 1.0)
-
-    def _suggest_java_improvements(self, framework_name: str, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest improvements for Java frameworks."""
-        improvements = []
-        
-        if framework_name == 'spring_boot':
-            improvements.extend(self._suggest_spring_boot_improvements(patterns))
-        elif framework_name == 'spring':
-            improvements.extend(self._suggest_spring_improvements(patterns))
-        
-        return improvements
-
-    def _suggest_spring_boot_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest Spring Boot improvements."""
-        improvements = []
-        
-        # Check for proper layered architecture
-        controller_patterns = [p for p in patterns if '@RestController' in p.pattern]
-        service_patterns = [p for p in patterns if '@Service' in p.pattern]
-        repository_patterns = [p for p in patterns if '@Repository' in p.pattern]
-        
-        if controller_patterns and not service_patterns:
-            improvements.append(Improvement(
-                category='Architecture',
-                description='Consider adding service layer for business logic separation',
-                priority='medium',
-                effort='medium'
-            ))
-        
-        if service_patterns and not repository_patterns:
-            improvements.append(Improvement(
-                category='Architecture',
-                description='Consider adding repository layer for data access separation',
-                priority='medium',
-                effort='medium'
-            ))
-        
-        return improvements
-
-    def _suggest_spring_improvements(self, patterns: list[UsagePattern]) -> list[Improvement]:
-        """Suggest Spring framework improvements."""
-        improvements = []
-        
-        # Check for modern annotation usage
-        autowired_patterns = [p for p in patterns if '@Autowired' in p.pattern]
-        component_patterns = [p for p in patterns if '@Component' in p.pattern]
-        
-        if len(component_patterns) > 5 and not autowired_patterns:
-            improvements.append(Improvement(
-                category='Dependency Injection',
-                description='Consider using @Autowired for dependency injection',
-                priority='medium',
-                effort='low'
-            ))
-        
-        return improvements
+    def analyze_usage(self, project_path: Path) -> FrameworkInfo | None:
+        """Analyze Java framework usage (generic implementation)."""
+        # This is a generic implementation - specific frameworks would override this
+        return None
 
 
 class WebFrameworkDetector(FrameworkDetector):
-    """Detector for web-specific frameworks and technologies."""
+    """Detector for web frameworks and libraries."""
 
-    def __init__(self):
-        """Initialize web framework detector."""
-        self.framework_indicators = {
-            'bootstrap': {
-                'imports': ['bootstrap'],
-                'files': ['package.json'],
-                'patterns': [r'bootstrap', r'btn-', r'col-', r'container-']
-            },
-            'tailwind': {
-                'imports': ['tailwindcss'],
-                'files': ['tailwind.config.js', 'package.json'],
-                'patterns': [r'@tailwind', r'bg-', r'text-', r'p-\d', r'm-\d']
-            },
-            'jquery': {
-                'imports': ['jquery'],
-                'files': ['package.json'],
-                'patterns': [r'\$\(', r'jQuery', r'\.click\(', r'\.ready\(']
-            },
-            'sass': {
-                'imports': ['sass', 'node-sass'],
-                'files': ['package.json'],
-                'patterns': [r'\$\w+:', r'@mixin', r'@include', r'@extend']
-            }
-        }
-
-    def detect_frameworks(self, files: list[str]) -> list[str]:
+    def detect_frameworks(self, project_path: Path, files: list[Path]) -> list[FrameworkType]:
         """Detect web frameworks."""
-        detected = set()
+        frameworks = []
         
-        for file_path in files:
+        # Check package.json for web frameworks
+        package_json_path = project_path / "package.json"
+        if package_json_path.exists():
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(package_json_path, encoding="utf-8") as f:
+                    package_data = json.loads(f.read())
+                
+                all_deps = {}
+                all_deps.update(package_data.get("dependencies", {}))
+                all_deps.update(package_data.get("devDependencies", {}))
+                
+                framework_patterns = {
+                    FrameworkType.BOOTSTRAP: ["bootstrap"],
+                    FrameworkType.TAILWIND: ["tailwindcss"],
+                    FrameworkType.JQUERY: ["jquery"],
+                    FrameworkType.SASS: ["sass", "node-sass"],
+                }
+                
+                for framework, patterns in framework_patterns.items():
+                    if any(pattern in dep for dep in all_deps.keys() for pattern in patterns):
+                        frameworks.append(framework)
+                        
+            except (json.JSONDecodeError, FileNotFoundError):
+                pass
+        
+        # Check HTML and CSS files for framework usage
+        html_files = [f for f in files if f.suffix.lower() in [".html", ".htm"]]
+        css_files = [f for f in files if f.suffix.lower() in [".css", ".scss", ".sass"]]
+        
+        for file_path in html_files + css_files:
+            try:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read()
                 
-                file_name = Path(file_path).name
+                # Check for Bootstrap
+                if "bootstrap" in content.lower():
+                    if FrameworkType.BOOTSTRAP not in frameworks:
+                        frameworks.append(FrameworkType.BOOTSTRAP)
                 
-                for framework, indicators in self.framework_indicators.items():
-                    # Check file names
-                    if file_name in indicators['files']:
-                        # For package.json, check dependencies
-                        if file_name == 'package.json':
-                            try:
-                                data = json.loads(content)
-                                dependencies = {}
-                                dependencies.update(data.get('dependencies', {}))
-                                dependencies.update(data.get('devDependencies', {}))
-                                
-                                for import_name in indicators['imports']:
-                                    if import_name in dependencies:
-                                        detected.add(framework)
-                                        break
-                            except json.JSONDecodeError:
-                                pass
-                        else:
-                            detected.add(framework)
-                        continue
-                    
-                    # Check code patterns
-                    for pattern in indicators['patterns']:
-                        if re.search(pattern, content):
-                            detected.add(framework)
-                            break
-                            
-            except (UnicodeDecodeError, IOError):
+                # Check for Tailwind
+                if "tailwind" in content.lower() or "tw-" in content:
+                    if FrameworkType.TAILWIND not in frameworks:
+                        frameworks.append(FrameworkType.TAILWIND)
+                
+                # Check for jQuery
+                if "jquery" in content.lower() or "$(document)" in content:
+                    if FrameworkType.JQUERY not in frameworks:
+                        frameworks.append(FrameworkType.JQUERY)
+                        
+            except Exception:
                 continue
         
-        return list(detected)
+        return frameworks
 
-    def analyze_framework(self, framework_name: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze web framework usage."""
-        if framework_name not in self.framework_indicators:
+    def analyze_usage(self, project_path: Path) -> FrameworkInfo | None:
+        """Analyze web framework usage (generic implementation)."""
+        # This is a generic implementation - specific frameworks would override this
+        return None
+
+
+class ReactFrameworkDetector(FrameworkDetector):
+    """Specific detector for React framework."""
+
+    def detect_frameworks(self, project_path: Path, files: list[Path]) -> list[FrameworkType]:
+        """Detect React framework."""
+        # This would be called by JavaScriptFrameworkDetector
+        return []
+
+    def analyze_usage(self, project_path: Path) -> FrameworkInfo | None:
+        """Analyze React usage in detail."""
+        package_json_path = project_path / "package.json"
+        if not package_json_path.exists():
             return None
         
-        indicators = self.framework_indicators[framework_name]
-        usage_patterns = []
-        config_files = []
+        try:
+            with open(package_json_path, encoding="utf-8") as f:
+                package_data = json.loads(f.read())
+            
+            all_deps = {}
+            all_deps.update(package_data.get("dependencies", {}))
+            all_deps.update(package_data.get("devDependencies", {}))
+            
+            if "react" not in all_deps:
+                return None
+            
+            version = all_deps["react"]
+            
+            # Analyze usage patterns
+            usage_patterns = self._analyze_react_patterns(project_path)
+            
+            # Find configuration files
+            config_files = []
+            for config_file in ["package.json", "webpack.config.js", ".babelrc", "tsconfig.json"]:
+                if (project_path / config_file).exists():
+                    config_files.append(config_file)
+            
+            # Calculate best practices compliance
+            compliance = self._calculate_react_compliance(project_path)
+            
+            # Generate improvement suggestions
+            improvements = self._suggest_react_improvements(project_path, compliance)
+            
+            return FrameworkInfo(
+                name="React",
+                version=version,
+                usage_patterns=usage_patterns,
+                configuration_files=config_files,
+                best_practices_compliance=compliance,
+                suggested_improvements=improvements,
+            )
+            
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+
+    def _analyze_react_patterns(self, project_path: Path) -> list[UsagePattern]:
+        """Analyze React usage patterns."""
+        patterns = []
         
-        for file_path in files:
+        # Find React component files
+        react_files = []
+        for file_path in project_path.rglob("*.jsx"):
+            react_files.append(file_path)
+        for file_path in project_path.rglob("*.tsx"):
+            react_files.append(file_path)
+        for file_path in project_path.rglob("*.js"):
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read()
-                
-                file_name = Path(file_path).name
-                
-                if file_name in indicators['files']:
-                    config_files.append(file_path)
-                
-                for pattern in indicators['patterns']:
-                    matches = re.findall(pattern, content)
-                    if matches:
-                        usage_patterns.append(UsagePattern(
-                            pattern=pattern,
-                            file_path=file_path,
-                            occurrences=len(matches),
-                            examples=matches[:3]
-                        ))
-                        
-            except (UnicodeDecodeError, IOError):
+                if "import React" in content or "from 'react'" in content:
+                    react_files.append(file_path)
+            except Exception:
                 continue
         
-        return FrameworkInfo(
-            name=framework_name,
-            version='unknown',
-            usage_patterns=usage_patterns,
-            configuration_files=config_files,
-            best_practices_compliance=0.7,  # Default score
-            suggested_improvements=[]
-        )
+        # Analyze component patterns
+        functional_components = 0
+        class_components = 0
+        hooks_usage = 0
+        
+        for file_path in react_files[:20]:  # Limit analysis
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Count functional vs class components
+                if re.search(r'const\s+\w+\s*=\s*\([^)]*\)\s*=>', content):
+                    functional_components += 1
+                if re.search(r'class\s+\w+\s+extends\s+React\.Component', content):
+                    class_components += 1
+                
+                # Count hooks usage
+                hooks_usage += len(re.findall(r'use\w+\(', content))
+                
+            except Exception:
+                continue
+        
+        if functional_components > 0:
+            patterns.append(UsagePattern(
+                pattern="Functional Components",
+                file_path="Multiple files",
+                occurrences=functional_components,
+                examples=[f"Found {functional_components} functional components"],
+            ))
+        
+        if class_components > 0:
+            patterns.append(UsagePattern(
+                pattern="Class Components",
+                file_path="Multiple files",
+                occurrences=class_components,
+                examples=[f"Found {class_components} class components"],
+            ))
+        
+        if hooks_usage > 0:
+            patterns.append(UsagePattern(
+                pattern="React Hooks",
+                file_path="Multiple files",
+                occurrences=hooks_usage,
+                examples=[f"Found {hooks_usage} hook usages"],
+            ))
+        
+        return patterns
+
+    def _calculate_react_compliance(self, project_path: Path) -> float:
+        """Calculate React best practices compliance."""
+        score = 0.0
+        total_checks = 0
+        
+        # Check for TypeScript usage
+        total_checks += 1
+        if (project_path / "tsconfig.json").exists():
+            score += 0.2
+        
+        # Check for ESLint configuration
+        total_checks += 1
+        eslint_configs = [".eslintrc.js", ".eslintrc.json", ".eslintrc.yml"]
+        if any((project_path / config).exists() for config in eslint_configs):
+            score += 0.2
+        
+        # Check for testing setup
+        total_checks += 1
+        package_json_path = project_path / "package.json"
+        if package_json_path.exists():
+            try:
+                with open(package_json_path, encoding="utf-8") as f:
+                    package_data = json.loads(f.read())
+                all_deps = {}
+                all_deps.update(package_data.get("dependencies", {}))
+                all_deps.update(package_data.get("devDependencies", {}))
+                
+                if any("test" in dep for dep in all_deps.keys()):
+                    score += 0.2
+            except Exception:
+                pass
+        
+        # Check for proper project structure
+        total_checks += 1
+        if (project_path / "src").exists():
+            score += 0.2
+        
+        # Check for component organization
+        total_checks += 1
+        components_dir = project_path / "src" / "components"
+        if components_dir.exists():
+            score += 0.2
+        
+        return score
+
+    def _suggest_react_improvements(self, project_path: Path, compliance: float) -> list[Improvement]:
+        """Suggest React improvements."""
+        improvements = []
+        
+        if compliance < 0.8:
+            if not (project_path / "tsconfig.json").exists():
+                improvements.append(Improvement(
+                    category="Type Safety",
+                    description="Consider migrating to TypeScript for better type safety",
+                    priority="medium",
+                    effort="high",
+                ))
+            
+            eslint_configs = [".eslintrc.js", ".eslintrc.json", ".eslintrc.yml"]
+            if not any((project_path / config).exists() for config in eslint_configs):
+                improvements.append(Improvement(
+                    category="Code Quality",
+                    description="Add ESLint configuration for consistent code style",
+                    priority="medium",
+                    effort="low",
+                ))
+            
+            if not (project_path / "src" / "components").exists():
+                improvements.append(Improvement(
+                    category="Project Structure",
+                    description="Organize components in a dedicated components directory",
+                    priority="low",
+                    effort="low",
+                ))
+        
+        return improvements
+
+
+class FrameworkDetectorRegistry:
+    """Registry for framework detectors."""
+
+    def __init__(self):
+        """Initialize the framework detector registry."""
+        self._language_detectors: dict[LanguageType, FrameworkDetector] = {
+            LanguageType.PYTHON: PythonFrameworkDetector(),
+            LanguageType.JAVASCRIPT: JavaScriptFrameworkDetector(),
+            LanguageType.TYPESCRIPT: JavaScriptFrameworkDetector(),
+            LanguageType.JAVA: JavaFrameworkDetector(),
+            LanguageType.HTML: WebFrameworkDetector(),
+            LanguageType.CSS: WebFrameworkDetector(),
+        }
+        
+        self._framework_detectors: dict[FrameworkType, FrameworkDetector] = {
+            FrameworkType.REACT: ReactFrameworkDetector(),
+            # Add more specific framework detectors here
+        }
+
+    def get_detector(self, language: LanguageType) -> FrameworkDetector | None:
+        """Get framework detector for a language.
+
+        Args:
+            language: The programming language
+
+        Returns:
+            FrameworkDetector instance or None
+        """
+        return self._language_detectors.get(language)
+
+    def get_framework_detector(self, framework: FrameworkType) -> FrameworkDetector | None:
+        """Get specific framework detector.
+
+        Args:
+            framework: The framework type
+
+        Returns:
+            FrameworkDetector instance or None
+        """
+        return self._framework_detectors.get(framework)
+
+    def register_detector(self, language: LanguageType, detector: FrameworkDetector) -> None:
+        """Register a new framework detector for a language.
+
+        Args:
+            language: The programming language
+            detector: The framework detector instance
+        """
+        self._language_detectors[language] = detector
+
+    def register_framework_detector(self, framework: FrameworkType, detector: FrameworkDetector) -> None:
+        """Register a specific framework detector.
+
+        Args:
+            framework: The framework type
+            detector: The framework detector instance
+        """
+        self._framework_detectors[framework] = detector

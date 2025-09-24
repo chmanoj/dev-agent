@@ -1,0 +1,10 @@
+{
+  "id": "react_web_app",
+  "name": "React Web Application",
+  "description": "A modern React web application with TypeScript and best practices",
+  "version": "1.0.0",
+  "supported_languages": ["typescript", "javascript"],
+  "supported_frameworks": ["react", "webpack", "babel", "jest", "eslint"],
+  "project_types": ["web_application"],
+  "team_sizes": ["solo", "small", "medium", "large"]
+}

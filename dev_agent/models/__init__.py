@@ -65,6 +65,45 @@ try:
 except ImportError:
     _CONTEXT_AVAILABLE = False
 
+try:
+    from .visualization import (
+        ArchitectureVisualization,
+        ComponentVisualization,
+        DataFlowVisualization,
+        DependencyVisualization,
+        DiagramExportOptions,
+        DiagramMetadata,
+        DiagramTemplate,
+        DiagramType,
+        DiagramValidationResult,
+        ExportFormat,
+        FilterCriteria,
+        InteractiveDiagram,
+        MultiLanguageVisualization,
+        VisualizationConfig,
+    )
+
+    _VISUALIZATION_AVAILABLE = True
+except ImportError:
+    _VISUALIZATION_AVAILABLE = False
+
+try:
+    from .templates import (
+        CustomizationPoint,
+        DirectoryTemplate,
+        FileTemplate,
+        ProjectSpec,
+        ProjectTemplate,
+        ScaffoldingResult,
+        TemplateContext,
+        TemplateRegistry,
+        TemplateValidationResult,
+    )
+
+    _TEMPLATES_AVAILABLE = True
+except ImportError:
+    _TEMPLATES_AVAILABLE = False
+
 # Base exports that are always available
 __all__ = [
     # Enums
@@ -125,5 +164,40 @@ if _CONTEXT_AVAILABLE:
             "ProjectContext",
             "SpecificationAnalysis",
             "TaskProgress",
+        ]
+    )
+
+if _VISUALIZATION_AVAILABLE:
+    __all__.extend(
+        [
+            "ArchitectureVisualization",
+            "ComponentVisualization",
+            "DataFlowVisualization", 
+            "DependencyVisualization",
+            "DiagramExportOptions",
+            "DiagramMetadata",
+            "DiagramTemplate",
+            "DiagramType",
+            "DiagramValidationResult",
+            "ExportFormat",
+            "FilterCriteria",
+            "InteractiveDiagram",
+            "MultiLanguageVisualization",
+            "VisualizationConfig",
+        ]
+    )
+
+if _TEMPLATES_AVAILABLE:
+    __all__.extend(
+        [
+            "CustomizationPoint",
+            "DirectoryTemplate",
+            "FileTemplate",
+            "ProjectSpec",
+            "ProjectTemplate",
+            "ScaffoldingResult",
+            "TemplateContext",
+            "TemplateRegistry",
+            "TemplateValidationResult",
         ]
     )

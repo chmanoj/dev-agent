@@ -64,7 +64,7 @@ class TestEnhancedCLI:
         """Test handling of status command."""
         result = enhanced_cli.handle_user_input("status")
 
-        assert "Current phase" in result
+        assert "Current Phase" in result
 
     def test_handle_user_input_run_command(self, enhanced_cli):
         """Test handling of run command."""
@@ -102,13 +102,13 @@ class TestEnhancedCLI:
         document_content = "# Test Document\nThis is a test document."
 
         with (
-            patch("rich.prompt.Prompt.ask", return_value="y") as mock_prompt,
+            patch("rich.prompt.Confirm.ask", return_value=True) as mock_confirm,
             patch.object(enhanced_cli.document_previewer, "show_document_preview") as mock_show,
         ):
             result = enhanced_cli.request_approval(document_content, "specification")
 
             mock_show.assert_called_once()
-            mock_prompt.assert_called()
+            mock_confirm.assert_called_once()
             assert result is True
 
     def test_display_progress(self, enhanced_cli):
@@ -191,6 +191,67 @@ class TestEnhancedCLI:
         assert context["session_active"] is False
         assert context["current_phase"] == PhaseType.INDEXING
 
+    def test_handle_architecture_command(self, enhanced_cli):
+        """Test handling of architecture command."""
+        result = enhanced_cli.handle_user_input("architecture")
+
+        # Should return empty string (output goes to console)
+        assert result == ""
+
+    def test_handle_workflow_command(self, enhanced_cli):
+        """Test handling of workflow diagram command."""
+        result = enhanced_cli.handle_user_input("workflow")
+
+        # Should return empty string (output goes to console)
+        assert result == ""
+
+    def test_handle_search_command_valid(self, enhanced_cli):
+        """Test handling of search command with valid arguments."""
+        # Mock project state with specification
+        mock_spec = Mock()
+        mock_spec.content = "This is a test specification with hello world"
+        
+        mock_project_state = Mock()
+        mock_project_state.specification = mock_spec
+        mock_project_state.design = None
+        mock_project_state.tasks = None
+        
+        enhanced_cli.workflow_manager.project_state = mock_project_state
+
+        result = enhanced_cli.handle_user_input("search hello specification")
+
+        # Should return empty string (output goes to console)
+        assert result == ""
+
+    def test_handle_search_command_invalid_args(self, enhanced_cli):
+        """Test handling of search command with invalid arguments."""
+        result = enhanced_cli.handle_user_input("search hello")
+
+        assert "Usage: search" in result
+
+    def test_handle_filter_command_valid(self, enhanced_cli, temp_project_dir):
+        """Test handling of filter command with valid arguments."""
+        enhanced_cli.current_project_path = temp_project_dir
+
+        result = enhanced_cli.handle_user_input("filter --ext .py")
+
+        # Should return empty string (output goes to console)
+        assert result == ""
+
+    def test_handle_filter_command_no_project(self, enhanced_cli):
+        """Test handling of filter command with no active project."""
+        result = enhanced_cli.handle_user_input("filter --ext .py")
+
+        assert "No active project" in result
+
+    def test_handle_filter_command_invalid_args(self, enhanced_cli, temp_project_dir):
+        """Test handling of filter command with invalid arguments."""
+        enhanced_cli.current_project_path = temp_project_dir
+
+        result = enhanced_cli.handle_user_input("filter")
+
+        assert "Usage: filter" in result
+
 
 class TestProgressManager:
     """Test cases for the ProgressManager class."""
@@ -233,9 +294,11 @@ class TestProgressManager:
 
     def test_complete_phase(self, progress_manager):
         """Test completing a phase."""
+        from datetime import datetime
+        
         phase = PhaseType.INDEXING
         progress_manager.current_task = "task_id"
-        progress_manager.phase_start_times[phase] = progress_manager.phase_start_times.get(phase, progress_manager.phase_start_times.setdefault(phase, Mock()))
+        progress_manager.phase_start_times[phase] = datetime.now()
         
         with patch.object(progress_manager.progress, "update") as mock_update:
             progress_manager.complete_phase(phase)
@@ -382,7 +445,8 @@ class TestContextualHelpSystem:
         with patch.object(help_system.console, "print") as mock_print:
             help_system.display_full_help(context)
 
-            mock_print.assert_called_once()
+            # Should print two tables and a newline
+            assert mock_print.call_count >= 2
 
     def test_show_command_suggestions(self, help_system):
         """Test showing command suggestions."""
@@ -392,6 +456,178 @@ class TestContextualHelpSystem:
             help_system.show_command_suggestions("unknow", context)
 
             mock_print.assert_called_once()
+
+
+class TestVisualizationEngine:
+    """Test cases for the VisualizationEngine class."""
+
+    @pytest.fixture
+    def console(self):
+        """Create a Rich console instance."""
+        return Console()
+
+    @pytest.fixture
+    def visualization_engine(self, console):
+        """Create a VisualizationEngine instance."""
+        from dev_agent.cli.enhanced_cli import VisualizationEngine
+        return VisualizationEngine(console)
+
+    def test_initialization(self, visualization_engine, console):
+        """Test VisualizationEngine initialization."""
+        assert visualization_engine.console == console
+
+    def test_generate_architecture_diagram(self, visualization_engine):
+        """Test architecture diagram generation."""
+        project_analysis = {
+            "components": [
+                {"name": "CLI", "type": "interface"},
+                {"name": "Service", "type": "service"},
+            ],
+            "dependencies": {"CLI": ["Service"]},
+        }
+
+        diagram = visualization_engine.generate_architecture_diagram(project_analysis)
+
+        assert "graph TD" in diagram
+        assert "CLI" in diagram
+        assert "Service" in diagram
+
+    def test_generate_workflow_diagram(self, visualization_engine):
+        """Test workflow diagram generation."""
+        phases = [PhaseType.INDEXING, PhaseType.SPECIFICATION]
+
+        diagram = visualization_engine.generate_workflow_diagram(phases)
+
+        assert "flowchart LR" in diagram
+        assert "Indexing" in diagram
+        assert "Specification" in diagram
+
+    def test_show_architecture_diagram(self, visualization_engine):
+        """Test showing architecture diagram."""
+        project_analysis = {
+            "components": [{"name": "Test", "type": "service"}],
+            "dependencies": {},
+        }
+
+        with patch.object(visualization_engine.console, "print") as mock_print:
+            visualization_engine.show_architecture_diagram(project_analysis)
+            assert mock_print.call_count >= 2  # Diagram + instructions
+
+    def test_show_workflow_diagram(self, visualization_engine):
+        """Test showing workflow diagram."""
+        phases = [PhaseType.INDEXING]
+
+        with patch.object(visualization_engine.console, "print") as mock_print:
+            visualization_engine.show_workflow_diagram(phases)
+            mock_print.assert_called_once()
+
+
+class TestSearchAndFilterEngine:
+    """Test cases for the SearchAndFilterEngine class."""
+
+    @pytest.fixture
+    def console(self):
+        """Create a Rich console instance."""
+        return Console()
+
+    @pytest.fixture
+    def search_engine(self, console):
+        """Create a SearchAndFilterEngine instance."""
+        from dev_agent.cli.enhanced_cli import SearchAndFilterEngine
+        return SearchAndFilterEngine(console)
+
+    @pytest.fixture
+    def temp_project_dir(self):
+        """Create a temporary project directory with test files."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Create test files
+            (temp_path / "test.py").write_text("def hello():\n    print('Hello, World!')")
+            (temp_path / "test.js").write_text("console.log('Hello, World!');")
+            (temp_path / "README.md").write_text("# Test Project\n\nThis is a test.")
+            
+            # Create subdirectory
+            sub_dir = temp_path / "src"
+            sub_dir.mkdir()
+            (sub_dir / "main.py").write_text("import os\nprint('Main')")
+            
+            yield temp_dir
+
+    def test_initialization(self, search_engine, console):
+        """Test SearchAndFilterEngine initialization."""
+        assert search_engine.console == console
+
+    def test_search_in_document(self, search_engine):
+        """Test searching within document content."""
+        content = "Line 1\nHello World\nLine 3\nAnother Hello\nLine 5"
+        query = "Hello"
+
+        results = search_engine.search_in_document(content, query)
+
+        assert len(results) == 2
+        assert results[0]["line_number"] == 2
+        assert results[1]["line_number"] == 4
+        assert "Hello" in results[0]["line_content"]
+
+    def test_search_in_document_no_matches(self, search_engine):
+        """Test searching with no matches."""
+        content = "Line 1\nLine 2\nLine 3"
+        query = "NotFound"
+
+        results = search_engine.search_in_document(content, query)
+
+        assert len(results) == 0
+
+    def test_filter_project_files_by_extension(self, search_engine, temp_project_dir):
+        """Test filtering files by extension."""
+        filters = {"extensions": [".py"]}
+
+        filtered_files = search_engine.filter_project_files(temp_project_dir, filters)
+
+        py_files = [f for f in filtered_files if f.suffix == ".py"]
+        assert len(py_files) == 2  # test.py and src/main.py
+        assert all(f.suffix == ".py" for f in py_files)
+
+    def test_filter_project_files_by_name_pattern(self, search_engine, temp_project_dir):
+        """Test filtering files by name pattern."""
+        filters = {"name_pattern": "test.*"}
+
+        filtered_files = search_engine.filter_project_files(temp_project_dir, filters)
+
+        test_files = [f for f in filtered_files if "test" in f.name.lower()]
+        assert len(test_files) >= 1
+
+    def test_show_search_results(self, search_engine):
+        """Test displaying search results."""
+        results = [
+            {
+                "line_number": 1,
+                "line_content": "Hello World",
+                "context": [{"line_number": 1, "content": "Hello World", "is_match": True}],
+            }
+        ]
+
+        with patch.object(search_engine.console, "print") as mock_print:
+            search_engine.show_search_results(results, "Hello", "test")
+            mock_print.assert_called()
+
+    def test_show_search_results_no_matches(self, search_engine):
+        """Test displaying no search results."""
+        results = []
+
+        with patch.object(search_engine.console, "print") as mock_print:
+            search_engine.show_search_results(results, "NotFound", "test")
+            mock_print.assert_called_once()
+
+    def test_show_filtered_files(self, search_engine, temp_project_dir):
+        """Test displaying filtered files."""
+        files = [Path(temp_project_dir) / "test.py"]
+        filters = {"extensions": [".py"]}
+
+        with patch.object(search_engine.console, "print") as mock_print:
+            search_engine.show_filtered_files(files, filters, temp_project_dir)
+            assert mock_print.call_count >= 2  # Filter panel + tree panel
 
 
 class TestEnhancedCLIIntegration:
@@ -415,7 +651,7 @@ class TestEnhancedCLIIntegration:
 
         # Test status command
         status_result = enhanced_cli.handle_user_input("status")
-        assert "Current phase" in status_result
+        assert "Current Phase" in status_result
 
         # Test run command
         with patch.object(enhanced_cli.progress_manager, "progress") as mock_progress:
@@ -428,7 +664,7 @@ class TestEnhancedCLIIntegration:
         """Test document approval workflow."""
         document_content = "# Test Specification\n\nThis is a test specification document."
 
-        with patch("rich.prompt.Prompt.ask", return_value="y"):
+        with patch("rich.prompt.Confirm.ask", return_value=True):
             result = enhanced_cli.request_approval(document_content, "specification")
             assert result is True
 

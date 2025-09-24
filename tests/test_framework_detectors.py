@@ -1,4 +1,4 @@
-"""Tests for framework detection functionality."""
+"""Tests for framework detection components."""
 
 import json
 import tempfile
@@ -7,595 +7,276 @@ from pathlib import Path
 import pytest
 
 from dev_agent.analysis.framework_detectors import (
-    PythonFrameworkDetector,
-    JavaScriptFrameworkDetector,
-    TypeScriptFrameworkDetector,
+    FrameworkDetectorRegistry,
     JavaFrameworkDetector,
-    WebFrameworkDetector
+    JavaScriptFrameworkDetector,
+    PythonFrameworkDetector,
+    ReactFrameworkDetector,
+    WebFrameworkDetector,
 )
-from dev_agent.models.analysis import FrameworkInfo, UsagePattern
+from dev_agent.models.enums import FrameworkType, LanguageType
 
 
 class TestPythonFrameworkDetector:
     """Test suite for PythonFrameworkDetector."""
 
     @pytest.fixture
-    def detector(self):
-        """Create a PythonFrameworkDetector instance."""
-        return PythonFrameworkDetector()
-
-    @pytest.fixture
-    def sample_flask_files(self):
-        """Create sample Flask application files."""
-        files = []
-        
+    def temp_python_project(self):
+        """Create a temporary Python project."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            project_path = Path(temp_dir)
             
-            # Flask app file
-            app_file = temp_path / "app.py"
-            app_file.write_text('''
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
+            # Create requirements.txt
+            (project_path / "requirements.txt").write_text("""
+flask==2.0.1
+pytest==7.1.0
+sqlalchemy==1.4.0
+celery==5.2.0
+""")
+            
+            # Create Python files with imports
+            (project_path / "app.py").write_text("""
+from flask import Flask, request
+import sqlalchemy
+from celery import Celery
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
-db = SQLAlchemy(app)
+celery = Celery('app')
 
-@app.route('/api/users', methods=['GET'])
-def get_users():
-    return jsonify({'users': []})
-
-@app.route('/api/users', methods=['POST'])
-def create_user():
-    data = request.get_json()
-    return jsonify({'message': 'User created'})
-
-if __name__ == '__main__':
-    app.run(debug=True)
-''')
-            files.append(str(app_file))
+@app.route('/')
+def hello():
+    return 'Hello World!'
+""")
             
-            # Requirements file
-            req_file = temp_path / "requirements.txt"
-            req_file.write_text('''
-Flask==2.3.0
-Flask-SQLAlchemy==3.0.0
-pytest==7.4.0
-pandas==2.0.0
-''')
-            files.append(str(req_file))
-            
-            yield files
-
-    @pytest.fixture
-    def sample_django_files(self):
-        """Create sample Django application files."""
-        files = []
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            
-            # Django settings
-            settings_file = temp_path / "settings.py"
-            settings_file.write_text('''
-import os
-from django.conf import settings
-
-DEBUG = True
-ALLOWED_HOSTS = []
-
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'myapp',
+            # Create pyproject.toml
+            (project_path / "pyproject.toml").write_text("""
+[project]
+dependencies = [
+    "django>=4.0",
+    "fastapi>=0.70.0",
+    "pandas>=1.3.0"
 ]
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
-}
-''')
-            files.append(str(settings_file))
+""")
             
-            # Django models
-            models_file = temp_path / "models.py"
-            models_file.write_text('''
-from django.db import models
-from django.contrib.auth.models import User
+            yield project_path
 
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    bio = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    def __str__(self):
-        return f"{self.user.username}'s profile"
-''')
-            files.append(str(models_file))
+    def test_detect_frameworks_from_requirements(self, temp_python_project):
+        """Test framework detection from requirements.txt."""
+        detector = PythonFrameworkDetector()
+        files = list(temp_python_project.glob("*.py"))
+        
+        frameworks = detector.detect_frameworks(temp_python_project, files)
+        
+        assert FrameworkType.FLASK in frameworks
+        assert FrameworkType.PYTEST in frameworks
+        assert FrameworkType.SQLALCHEMY in frameworks
+        assert FrameworkType.CELERY in frameworks
+
+    def test_detect_frameworks_from_imports(self, temp_python_project):
+        """Test framework detection from import statements."""
+        detector = PythonFrameworkDetector()
+        files = list(temp_python_project.glob("*.py"))
+        
+        frameworks = detector.detect_frameworks(temp_python_project, files)
+        
+        # Should detect Flask from import statement
+        assert FrameworkType.FLASK in frameworks
+        assert FrameworkType.SQLALCHEMY in frameworks
+        assert FrameworkType.CELERY in frameworks
+
+    def test_detect_frameworks_from_pyproject_toml(self, temp_python_project):
+        """Test framework detection from pyproject.toml."""
+        # Remove requirements.txt to test pyproject.toml only
+        (temp_python_project / "requirements.txt").unlink()
+        
+        detector = PythonFrameworkDetector()
+        files = list(temp_python_project.glob("*.py"))
+        
+        frameworks = detector.detect_frameworks(temp_python_project, files)
+        
+        # Should detect frameworks from pyproject.toml
+        assert FrameworkType.DJANGO in frameworks
+        assert FrameworkType.FASTAPI in frameworks
+        assert FrameworkType.PANDAS in frameworks
+
+    def test_no_frameworks_detected(self):
+        """Test behavior when no frameworks are detected."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
             
-            # Django views
-            views_file = temp_path / "views.py"
-            views_file.write_text('''
-from django.shortcuts import render
-from django.http import JsonResponse
-from django.views import View
-from .models import UserProfile
+            # Create a simple Python file without framework imports
+            (project_path / "simple.py").write_text("""
+def add(a, b):
+    return a + b
 
-class UserListView(View):
-    def get(self, request):
-        profiles = UserProfile.objects.all()
-        return JsonResponse({'users': list(profiles.values())})
-''')
-            files.append(str(views_file))
+if __name__ == "__main__":
+    print(add(2, 3))
+""")
             
-            yield files
-
-    def test_detect_flask_framework(self, detector, sample_flask_files):
-        """Test Flask framework detection."""
-        frameworks = detector.detect_frameworks(sample_flask_files)
-        
-        assert 'flask' in frameworks
-        assert 'sqlalchemy' in frameworks
-        assert 'pytest' in frameworks
-        assert 'pandas' in frameworks
-
-    def test_detect_django_framework(self, detector, sample_django_files):
-        """Test Django framework detection."""
-        frameworks = detector.detect_frameworks(sample_django_files)
-        
-        assert 'django' in frameworks
-
-    def test_analyze_flask_framework(self, detector, sample_flask_files):
-        """Test Flask framework analysis."""
-        framework_info = detector.analyze_framework('flask', sample_flask_files)
-        
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'flask'
-        assert len(framework_info.usage_patterns) > 0
-        assert 0.0 <= framework_info.best_practices_compliance <= 1.0
-        
-        # Check for Flask-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('@app.route' in pattern for pattern in pattern_names)
-
-    def test_analyze_django_framework(self, detector, sample_django_files):
-        """Test Django framework analysis."""
-        framework_info = detector.analyze_framework('django', sample_django_files)
-        
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'django'
-        assert len(framework_info.usage_patterns) > 0
-        
-        # Check for Django-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('django' in pattern for pattern in pattern_names)
-
-    def test_detect_python_framework_version(self, detector, sample_flask_files):
-        """Test Python framework version detection."""
-        version = detector._detect_python_framework_version('flask', sample_flask_files)
-        
-        assert version == '==2.3.0'
-
-    def test_calculate_flask_compliance(self, detector):
-        """Test Flask compliance calculation."""
-        patterns = [
-            UsagePattern(pattern='@app.route', file_path='app.py', occurrences=2, examples=[]),
-            UsagePattern(pattern='Flask(__name__)', file_path='app.py', occurrences=1, examples=[])
-        ]
-        
-        compliance = detector._calculate_flask_compliance(patterns)
-        
-        assert 0.0 <= compliance <= 1.0
-        assert compliance > 0.5  # Should be higher due to route patterns
-
-    def test_suggest_flask_improvements(self, detector):
-        """Test Flask improvement suggestions."""
-        patterns = [
-            UsagePattern(pattern='@app.route', file_path='app.py', occurrences=10, examples=[])
-        ]
-        
-        improvements = detector._suggest_flask_improvements(patterns)
-        
-        # Should suggest blueprints for many routes
-        assert len(improvements) > 0
-        assert any('Blueprint' in imp.description for imp in improvements)
-
-    def test_unknown_framework(self, detector, sample_flask_files):
-        """Test handling of unknown framework."""
-        framework_info = detector.analyze_framework('unknown_framework', sample_flask_files)
-        
-        assert framework_info is None
+            detector = PythonFrameworkDetector()
+            files = list(project_path.glob("*.py"))
+            
+            frameworks = detector.detect_frameworks(project_path, files)
+            
+            assert len(frameworks) == 0
 
 
 class TestJavaScriptFrameworkDetector:
     """Test suite for JavaScriptFrameworkDetector."""
 
     @pytest.fixture
-    def detector(self):
-        """Create a JavaScriptFrameworkDetector instance."""
-        return JavaScriptFrameworkDetector()
-
-    @pytest.fixture
-    def sample_react_files(self):
-        """Create sample React application files."""
-        files = []
-        
+    def temp_js_project(self):
+        """Create a temporary JavaScript project."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            project_path = Path(temp_dir)
             
-            # Package.json
-            package_file = temp_path / "package.json"
-            package_data = {
-                "name": "react-app",
+            # Create package.json
+            package_json = {
+                "name": "test-project",
                 "version": "1.0.0",
                 "dependencies": {
-                    "react": "^18.2.0",
-                    "react-dom": "^18.2.0",
-                    "axios": "^1.3.0"
-                },
-                "devDependencies": {
-                    "webpack": "^5.75.0",
-                    "babel-loader": "^9.1.0",
-                    "@babel/core": "^7.20.0",
-                    "jest": "^29.3.0",
-                    "eslint": "^8.30.0"
-                }
-            }
-            package_file.write_text(json.dumps(package_data, indent=2))
-            files.append(str(package_file))
-            
-            # React component
-            component_file = temp_path / "UserList.jsx"
-            component_file.write_text('''
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-
-function UserList() {
-    const [users, setUsers] = useState([]);
-    const [loading, setLoading] = useState(false);
-    
-    useEffect(() => {
-        const fetchUsers = async () => {
-            setLoading(true);
-            try {
-                const response = await axios.get('/api/users');
-                setUsers(response.data.users);
-            } catch (error) {
-                console.error('Failed to fetch users:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        
-        fetchUsers();
-    }, []);
-    
-    if (loading) {
-        return <div>Loading...</div>;
-    }
-    
-    return (
-        <div className="user-list">
-            <h2>Users</h2>
-            {users.map(user => (
-                <div key={user.id} className="user-item">
-                    <h3>{user.name}</h3>
-                    <p>{user.email}</p>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-export default UserList;
-''')
-            files.append(str(component_file))
-            
-            yield files
-
-    @pytest.fixture
-    def sample_express_files(self):
-        """Create sample Express application files."""
-        files = []
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            
-            # Express server
-            server_file = temp_path / "server.js"
-            server_file.write_text('''
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static('public'));
-
-// Routes
-app.get('/api/users', (req, res) => {
-    res.json({ users: [] });
-});
-
-app.post('/api/users', (req, res) => {
-    const userData = req.body;
-    // Process user data
-    res.status(201).json({ message: 'User created', user: userData });
-});
-
-app.put('/api/users/:id', (req, res) => {
-    const userId = req.params.id;
-    const userData = req.body;
-    res.json({ message: 'User updated', id: userId });
-});
-
-app.delete('/api/users/:id', (req, res) => {
-    const userId = req.params.id;
-    res.json({ message: 'User deleted', id: userId });
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-''')
-            files.append(str(server_file))
-            
-            # Package.json for Express
-            package_file = temp_path / "package.json"
-            package_data = {
-                "name": "express-api",
-                "version": "1.0.0",
-                "main": "server.js",
-                "dependencies": {
+                    "react": "^18.0.0",
                     "express": "^4.18.0",
-                    "cors": "^2.8.5",
-                    "body-parser": "^1.20.0"
+                    "@nestjs/core": "^9.0.0"
                 },
                 "devDependencies": {
-                    "jest": "^29.3.0",
-                    "supertest": "^6.3.0"
-                },
-                "scripts": {
-                    "start": "node server.js",
-                    "test": "jest"
+                    "jest": "^28.0.0",
+                    "eslint": "^8.0.0",
+                    "webpack": "^5.0.0",
+                    "@babel/core": "^7.0.0"
                 }
             }
-            package_file.write_text(json.dumps(package_data, indent=2))
-            files.append(str(package_file))
+            (project_path / "package.json").write_text(json.dumps(package_json))
             
-            yield files
+            # Create JavaScript files with imports
+            (project_path / "app.js").write_text("""
+const express = require('express');
+const app = express();
 
-    def test_detect_react_framework(self, detector, sample_react_files):
-        """Test React framework detection."""
-        frameworks = detector.detect_frameworks(sample_react_files)
-        
-        assert 'react' in frameworks
-        assert 'webpack' in frameworks
-        assert 'babel' in frameworks
-        assert 'jest' in frameworks
-        assert 'eslint' in frameworks
-        assert 'nodejs' in frameworks
+app.get('/', (req, res) => {
+    res.send('Hello World!');
+});
 
-    def test_detect_express_framework(self, detector, sample_express_files):
-        """Test Express framework detection."""
-        frameworks = detector.detect_frameworks(sample_express_files)
-        
-        assert 'express' in frameworks
-        assert 'nodejs' in frameworks
-        assert 'jest' in frameworks
+app.listen(3000);
+""")
+            
+            (project_path / "component.jsx").write_text("""
+import React from 'react';
 
-    def test_analyze_react_framework(self, detector, sample_react_files):
-        """Test React framework analysis."""
-        framework_info = detector.analyze_framework('react', sample_react_files)
-        
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'react'
-        assert framework_info.version == '^18.2.0'
-        assert len(framework_info.usage_patterns) > 0
-        
-        # Check for React-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('React' in pattern for pattern in pattern_names)
+function MyComponent() {
+    return <div>Hello React!</div>;
+}
 
-    def test_analyze_express_framework(self, detector, sample_express_files):
-        """Test Express framework analysis."""
-        framework_info = detector.analyze_framework('express', sample_express_files)
-        
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'express'
-        assert len(framework_info.usage_patterns) > 0
-        
-        # Check for Express-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('app.' in pattern for pattern in pattern_names)
+export default MyComponent;
+""")
+            
+            yield project_path
 
-    def test_detect_from_package_json(self, detector, sample_react_files):
+    def test_detect_frameworks_from_package_json(self, temp_js_project):
         """Test framework detection from package.json."""
-        frameworks = detector._detect_from_package_json(sample_react_files)
+        detector = JavaScriptFrameworkDetector()
+        files = list(temp_js_project.glob("*.js")) + list(temp_js_project.glob("*.jsx"))
         
-        assert 'react' in frameworks
-        assert 'webpack' in frameworks
-        assert 'babel' in frameworks
-        assert 'jest' in frameworks
-        assert 'eslint' in frameworks
-        assert 'nodejs' in frameworks
-
-    def test_detect_js_framework_version(self, detector, sample_react_files):
-        """Test JavaScript framework version detection."""
-        version = detector._detect_js_framework_version('react', sample_react_files)
+        frameworks = detector.detect_frameworks(temp_js_project, files)
         
-        assert version == '^18.2.0'
+        assert FrameworkType.REACT in frameworks
+        assert FrameworkType.EXPRESS in frameworks
+        assert FrameworkType.NESTJS in frameworks
+        assert FrameworkType.JEST in frameworks
+        assert FrameworkType.ESLINT in frameworks
+        assert FrameworkType.WEBPACK in frameworks
+        assert FrameworkType.BABEL in frameworks
 
-    def test_calculate_react_compliance(self, detector):
-        """Test React compliance calculation."""
-        patterns = [
-            UsagePattern(pattern='useState', file_path='component.jsx', occurrences=2, examples=[]),
-            UsagePattern(pattern='useEffect', file_path='component.jsx', occurrences=1, examples=[])
-        ]
+    def test_detect_frameworks_from_imports(self, temp_js_project):
+        """Test framework detection from import statements."""
+        # Remove package.json to test import detection only
+        (temp_js_project / "package.json").unlink()
         
-        compliance = detector._calculate_react_compliance(patterns)
+        detector = JavaScriptFrameworkDetector()
+        files = list(temp_js_project.glob("*.js")) + list(temp_js_project.glob("*.jsx"))
         
-        assert 0.0 <= compliance <= 1.0
-        assert compliance > 0.5  # Should be higher due to hooks usage
-
-    def test_suggest_react_improvements(self, detector):
-        """Test React improvement suggestions."""
-        patterns = [
-            UsagePattern(pattern='class', file_path='component.jsx', occurrences=5, examples=[])
-        ]
+        frameworks = detector.detect_frameworks(temp_js_project, files)
         
-        improvements = detector._suggest_react_improvements(patterns)
-        
-        # Should suggest migrating to hooks
-        assert len(improvements) > 0
-        assert any('hooks' in imp.description.lower() for imp in improvements)
+        # Should detect React and Express from imports
+        assert FrameworkType.REACT in frameworks
+        assert FrameworkType.EXPRESS in frameworks
 
+    def test_typescript_detection(self, temp_js_project):
+        """Test TypeScript framework detection."""
+        # Create TypeScript files
+        (temp_js_project / "app.ts").write_text("""
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
 
-class TestTypeScriptFrameworkDetector:
-    """Test suite for TypeScriptFrameworkDetector."""
-
-    @pytest.fixture
-    def detector(self):
-        """Create a TypeScriptFrameworkDetector instance."""
-        return TypeScriptFrameworkDetector()
-
-    @pytest.fixture
-    def sample_nestjs_files(self):
-        """Create sample NestJS application files."""
-        files = []
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            
-            # NestJS controller
-            controller_file = temp_path / "user.controller.ts"
-            controller_file.write_text('''
-import { Controller, Get, Post, Body, Param, Injectable } from '@nestjs/common';
-import { UserService } from './user.service';
-
-@Controller('users')
-export class UserController {
-    constructor(private readonly userService: UserService) {}
-    
-    @Get()
-    async findAll() {
-        return this.userService.findAll();
-    }
-    
-    @Get(':id')
-    async findOne(@Param('id') id: string) {
-        return this.userService.findOne(+id);
-    }
-    
-    @Post()
-    async create(@Body() createUserDto: any) {
-        return this.userService.create(createUserDto);
-    }
+async function bootstrap() {
+    const app = await NestFactory.create(AppModule);
+    await app.listen(3000);
 }
-''')
-            files.append(str(controller_file))
-            
-            # NestJS service
-            service_file = temp_path / "user.service.ts"
-            service_file.write_text('''
-import { Injectable } from '@nestjs/common';
-
-@Injectable()
-export class UserService {
-    private users = [];
-    
-    findAll() {
-        return this.users;
-    }
-    
-    findOne(id: number) {
-        return this.users.find(user => user.id === id);
-    }
-    
-    create(userData: any) {
-        const user = { id: Date.now(), ...userData };
-        this.users.push(user);
-        return user;
-    }
-}
-''')
-            files.append(str(service_file))
-            
-            # NestJS module
-            module_file = temp_path / "user.module.ts"
-            module_file.write_text('''
-import { Module } from '@nestjs/common';
-import { UserController } from './user.controller';
-import { UserService } from './user.service';
-
-@Module({
-    controllers: [UserController],
-    providers: [UserService],
-    exports: [UserService],
-})
-export class UserModule {}
-''')
-            files.append(str(module_file))
-            
-            yield files
-
-    def test_detect_nestjs_framework(self, detector, sample_nestjs_files):
-        """Test NestJS framework detection."""
-        frameworks = detector.detect_frameworks(sample_nestjs_files)
+bootstrap();
+""")
         
-        assert 'nestjs' in frameworks
-
-    def test_analyze_nestjs_framework(self, detector, sample_nestjs_files):
-        """Test NestJS framework analysis."""
-        framework_info = detector._analyze_ts_framework('nestjs', sample_nestjs_files)
+        detector = JavaScriptFrameworkDetector()
+        files = list(temp_js_project.glob("*.ts"))
         
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'nestjs'
-        assert len(framework_info.usage_patterns) > 0
+        frameworks = detector.detect_frameworks(temp_js_project, files)
         
-        # Check for NestJS-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('@Controller' in pattern for pattern in pattern_names)
-        assert any('@Injectable' in pattern for pattern in pattern_names)
+        # Should detect NestJS from TypeScript imports
+        assert FrameworkType.NESTJS in frameworks
 
 
 class TestJavaFrameworkDetector:
     """Test suite for JavaFrameworkDetector."""
 
     @pytest.fixture
-    def detector(self):
-        """Create a JavaFrameworkDetector instance."""
-        return JavaFrameworkDetector()
-
-    @pytest.fixture
-    def sample_spring_boot_files(self):
-        """Create sample Spring Boot application files."""
-        files = []
-        
+    def temp_java_project(self):
+        """Create a temporary Java project."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            project_path = Path(temp_dir)
             
-            # Spring Boot main class
-            main_file = temp_path / "Application.java"
-            main_file.write_text('''
-package com.example.demo;
+            # Create pom.xml
+            (project_path / "pom.xml").write_text("""
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <groupId>com.example</groupId>
+    <artifactId>test-project</artifactId>
+    <version>1.0.0</version>
+    
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <version>2.7.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>5.3.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate</groupId>
+            <artifactId>hibernate-core</artifactId>
+            <version>5.6.0</version>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.13.2</version>
+        </dependency>
+    </dependencies>
+</project>
+""")
+            
+            # Create Java files
+            java_dir = project_path / "src" / "main" / "java" / "com" / "example"
+            java_dir.mkdir(parents=True)
+            
+            (java_dir / "Application.java").write_text("""
+package com.example;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.stereotype.Service;
+import org.hibernate.Session;
 
 @SpringBootApplication
 public class Application {
@@ -603,361 +284,369 @@ public class Application {
         SpringApplication.run(Application.class, args);
     }
 }
-''')
-            files.append(str(main_file))
+""")
             
-            # Spring Boot controller
-            controller_file = temp_path / "UserController.java"
-            controller_file.write_text('''
-package com.example.demo.controller;
+            yield project_path
 
-import org.springframework.web.bind.annotation.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import com.example.demo.service.UserService;
+    def test_detect_frameworks_from_pom_xml(self, temp_java_project):
+        """Test framework detection from pom.xml."""
+        detector = JavaFrameworkDetector()
+        files = list(temp_java_project.rglob("*.java"))
+        
+        frameworks = detector.detect_frameworks(temp_java_project, files)
+        
+        assert FrameworkType.SPRING_BOOT in frameworks
+        assert FrameworkType.SPRING in frameworks
+        assert FrameworkType.HIBERNATE in frameworks
+        assert FrameworkType.JUNIT in frameworks
+        assert FrameworkType.MAVEN in frameworks
 
-@RestController
-@RequestMapping("/api/users")
-public class UserController {
-    
-    @Autowired
-    private UserService userService;
-    
-    @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        return ResponseEntity.ok(userService.findAll());
-    }
-    
-    @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        User savedUser = userService.save(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedUser);
-    }
-    
-    @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
-        return userService.findById(id)
-            .map(user -> ResponseEntity.ok(user))
-            .orElse(ResponseEntity.notFound().build());
-    }
+    def test_detect_frameworks_from_imports(self, temp_java_project):
+        """Test framework detection from import statements."""
+        detector = JavaFrameworkDetector()
+        files = list(temp_java_project.rglob("*.java"))
+        
+        frameworks = detector.detect_frameworks(temp_java_project, files)
+        
+        # Should detect Spring and Hibernate from imports
+        assert FrameworkType.SPRING in frameworks
+        assert FrameworkType.HIBERNATE in frameworks
+
+    def test_gradle_project_detection(self, temp_java_project):
+        """Test Gradle project detection."""
+        # Remove pom.xml and create build.gradle
+        (temp_java_project / "pom.xml").unlink()
+        
+        (temp_java_project / "build.gradle").write_text("""
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '2.7.0'
 }
-''')
-            files.append(str(controller_file))
-            
-            # Spring Boot service
-            service_file = temp_path / "UserService.java"
-            service_file.write_text('''
-package com.example.demo.service;
 
-import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
-import com.example.demo.repository.UserRepository;
-
-@Service
-public class UserService {
-    
-    @Autowired
-    private UserRepository userRepository;
-    
-    public List<User> findAll() {
-        return userRepository.findAll();
-    }
-    
-    public Optional<User> findById(Long id) {
-        return userRepository.findById(id);
-    }
-    
-    public User save(User user) {
-        return userRepository.save(user);
-    }
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.hibernate:hibernate-core:5.6.0'
+    testImplementation 'junit:junit:4.13.2'
 }
-''')
-            files.append(str(service_file))
-            
-            # Spring Boot repository
-            repository_file = temp_path / "UserRepository.java"
-            repository_file.write_text('''
-package com.example.demo.repository;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-import com.example.demo.model.User;
-
-@Repository
-public interface UserRepository extends JpaRepository<User, Long> {
-    List<User> findByEmail(String email);
-    Optional<User> findByUsername(String username);
-}
-''')
-            files.append(str(repository_file))
-            
-            # Maven POM file
-            pom_file = temp_path / "pom.xml"
-            pom_file.write_text('''
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0">
-    <modelVersion>4.0.0</modelVersion>
-    
-    <groupId>com.example</groupId>
-    <artifactId>demo</artifactId>
-    <version>1.0.0</version>
-    <packaging>jar</packaging>
-    
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.1.0</version>
-    </parent>
-    
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-</project>
-''')
-            files.append(str(pom_file))
-            
-            yield files
-
-    def test_detect_spring_boot_framework(self, detector, sample_spring_boot_files):
-        """Test Spring Boot framework detection."""
-        frameworks = detector.detect_frameworks(sample_spring_boot_files)
+""")
         
-        assert 'spring_boot' in frameworks
-        assert 'spring' in frameworks
-        assert 'junit' in frameworks
-        assert 'maven' in frameworks
-
-    def test_analyze_spring_boot_framework(self, detector, sample_spring_boot_files):
-        """Test Spring Boot framework analysis."""
-        framework_info = detector.analyze_framework('spring_boot', sample_spring_boot_files)
+        detector = JavaFrameworkDetector()
+        files = list(temp_java_project.rglob("*.java"))
         
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'spring_boot'
-        assert len(framework_info.usage_patterns) > 0
+        frameworks = detector.detect_frameworks(temp_java_project, files)
         
-        # Check for Spring Boot-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('@SpringBootApplication' in pattern for pattern in pattern_names)
-        assert any('@RestController' in pattern for pattern in pattern_names)
-        assert any('@Service' in pattern for pattern in pattern_names)
-        assert any('@Repository' in pattern for pattern in pattern_names)
-
-    def test_calculate_spring_boot_compliance(self, detector):
-        """Test Spring Boot compliance calculation."""
-        patterns = [
-            UsagePattern(pattern='@RestController', file_path='controller.java', occurrences=1, examples=[]),
-            UsagePattern(pattern='@Service', file_path='service.java', occurrences=1, examples=[]),
-            UsagePattern(pattern='@Repository', file_path='repository.java', occurrences=1, examples=[])
-        ]
-        
-        compliance = detector._calculate_spring_boot_compliance(patterns)
-        
-        assert 0.0 <= compliance <= 1.0
-        assert compliance > 0.5  # Should be higher due to proper annotations
-
-    def test_suggest_spring_boot_improvements(self, detector):
-        """Test Spring Boot improvement suggestions."""
-        patterns = [
-            UsagePattern(pattern='@RestController', file_path='controller.java', occurrences=1, examples=[])
-        ]
-        
-        improvements = detector._suggest_spring_boot_improvements(patterns)
-        
-        # Should suggest adding service layer
-        assert len(improvements) > 0
-        assert any('service' in imp.description.lower() for imp in improvements)
+        assert FrameworkType.GRADLE in frameworks
+        assert FrameworkType.SPRING_BOOT in frameworks
+        assert FrameworkType.HIBERNATE in frameworks
+        assert FrameworkType.JUNIT in frameworks
 
 
 class TestWebFrameworkDetector:
     """Test suite for WebFrameworkDetector."""
 
     @pytest.fixture
-    def detector(self):
-        """Create a WebFrameworkDetector instance."""
-        return WebFrameworkDetector()
-
-    @pytest.fixture
-    def sample_bootstrap_files(self):
-        """Create sample Bootstrap files."""
-        files = []
-        
+    def temp_web_project(self):
+        """Create a temporary web project."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            project_path = Path(temp_dir)
             
-            # HTML with Bootstrap classes
-            html_file = temp_path / "index.html"
-            html_file.write_text('''
+            # Create package.json with web frameworks
+            package_json = {
+                "name": "web-project",
+                "dependencies": {
+                    "bootstrap": "^5.1.0",
+                    "tailwindcss": "^3.0.0",
+                    "jquery": "^3.6.0"
+                },
+                "devDependencies": {
+                    "sass": "^1.50.0"
+                }
+            }
+            (project_path / "package.json").write_text(json.dumps(package_json))
+            
+            # Create HTML file
+            (project_path / "index.html").write_text("""
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bootstrap Example</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Test</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="row">
-            <div class="col-md-6">
-                <h1 class="text-primary">Welcome</h1>
-                <button class="btn btn-primary">Click me</button>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Card title</h5>
-                        <p class="card-text">Some quick example text.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <h1 class="text-primary">Hello Bootstrap!</h1>
+        <div class="bg-blue-500 text-white p-4">Tailwind CSS</div>
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            console.log("jQuery loaded");
+        });
+    </script>
 </body>
 </html>
-''')
-            files.append(str(html_file))
+""")
             
-            # Package.json with Bootstrap
-            package_file = temp_path / "package.json"
-            package_data = {
-                "name": "bootstrap-app",
-                "version": "1.0.0",
-                "dependencies": {
-                    "bootstrap": "^5.3.0",
-                    "jquery": "^3.6.0"
-                }
-            }
-            package_file.write_text(json.dumps(package_data, indent=2))
-            files.append(str(package_file))
+            # Create CSS file
+            (project_path / "styles.css").write_text("""
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+.custom-class {
+    @apply bg-blue-500 text-white;
+}
+""")
             
-            yield files
+            yield project_path
+
+    def test_detect_frameworks_from_package_json(self, temp_web_project):
+        """Test web framework detection from package.json."""
+        detector = WebFrameworkDetector()
+        files = list(temp_web_project.glob("*.html")) + list(temp_web_project.glob("*.css"))
+        
+        frameworks = detector.detect_frameworks(temp_web_project, files)
+        
+        assert FrameworkType.BOOTSTRAP in frameworks
+        assert FrameworkType.TAILWIND in frameworks
+        assert FrameworkType.JQUERY in frameworks
+        assert FrameworkType.SASS in frameworks
+
+    def test_detect_frameworks_from_html_content(self, temp_web_project):
+        """Test web framework detection from HTML content."""
+        # Remove package.json to test content detection only
+        (temp_web_project / "package.json").unlink()
+        
+        detector = WebFrameworkDetector()
+        files = list(temp_web_project.glob("*.html")) + list(temp_web_project.glob("*.css"))
+        
+        frameworks = detector.detect_frameworks(temp_web_project, files)
+        
+        # Should detect Bootstrap, Tailwind, and jQuery from content
+        assert FrameworkType.BOOTSTRAP in frameworks
+        assert FrameworkType.TAILWIND in frameworks
+        assert FrameworkType.JQUERY in frameworks
+
+    def test_detect_frameworks_from_css_content(self, temp_web_project):
+        """Test web framework detection from CSS content."""
+        detector = WebFrameworkDetector()
+        files = list(temp_web_project.glob("*.css"))
+        
+        frameworks = detector.detect_frameworks(temp_web_project, files)
+        
+        # Should detect Bootstrap and Tailwind from CSS imports
+        assert FrameworkType.BOOTSTRAP in frameworks
+        assert FrameworkType.TAILWIND in frameworks
+
+
+class TestReactFrameworkDetector:
+    """Test suite for ReactFrameworkDetector."""
 
     @pytest.fixture
-    def sample_tailwind_files(self):
-        """Create sample Tailwind CSS files."""
-        files = []
-        
+    def temp_react_project(self):
+        """Create a temporary React project."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            project_path = Path(temp_dir)
             
-            # HTML with Tailwind classes
-            html_file = temp_path / "index.html"
-            html_file.write_text('''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tailwind Example</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h1 class="text-3xl font-bold text-blue-600 mb-4">Welcome</h1>
-                <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                    Click me
-                </button>
-            </div>
-            <div class="bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-xl font-semibold mb-2">Card Title</h2>
-                <p class="text-gray-600">Some quick example text.</p>
-            </div>
+            # Create package.json
+            package_json = {
+                "name": "react-project",
+                "version": "1.0.0",
+                "dependencies": {
+                    "react": "^18.0.0",
+                    "react-dom": "^18.0.0"
+                },
+                "devDependencies": {
+                    "@testing-library/react": "^13.0.0",
+                    "eslint": "^8.0.0"
+                },
+                "scripts": {
+                    "start": "react-scripts start",
+                    "test": "react-scripts test"
+                }
+            }
+            (project_path / "package.json").write_text(json.dumps(package_json))
+            
+            # Create TypeScript config
+            (project_path / "tsconfig.json").write_text(json.dumps({
+                "compilerOptions": {
+                    "target": "es5",
+                    "lib": ["dom", "dom.iterable"],
+                    "allowJs": true,
+                    "skipLibCheck": true,
+                    "esModuleInterop": true,
+                    "allowSyntheticDefaultImports": true,
+                    "strict": true,
+                    "forceConsistentCasingInFileNames": true,
+                    "moduleResolution": "node",
+                    "resolveJsonModule": true,
+                    "isolatedModules": true,
+                    "noEmit": true,
+                    "jsx": "react-jsx"
+                },
+                "include": ["src"]
+            }))
+            
+            # Create ESLint config
+            (project_path / ".eslintrc.json").write_text(json.dumps({
+                "extends": [
+                    "react-app",
+                    "react-app/jest"
+                ]
+            }))
+            
+            # Create src directory with components
+            src_dir = project_path / "src"
+            src_dir.mkdir()
+            
+            (src_dir / "App.jsx").write_text("""
+import React, { useState, useEffect } from 'react';
+
+function App() {
+    const [count, setCount] = useState(0);
+    
+    useEffect(() => {
+        document.title = `Count: ${count}`;
+    }, [count]);
+    
+    return (
+        <div className="App">
+            <h1>React App</h1>
+            <p>Count: {count}</p>
+            <button onClick={() => setCount(count + 1)}>
+                Increment
+            </button>
         </div>
-    </div>
-</body>
-</html>
-''')
-            files.append(str(html_file))
-            
-            # Tailwind config
-            config_file = temp_path / "tailwind.config.js"
-            config_file.write_text('''
-module.exports = {
-    content: ["./src/**/*.{html,js}"],
-    theme: {
-        extend: {},
-    },
-    plugins: [],
+    );
 }
-''')
-            files.append(str(config_file))
-            
-            # CSS with Tailwind directives
-            css_file = temp_path / "styles.css"
-            css_file.write_text('''
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
-.custom-button {
-    @apply bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded;
+export default App;
+""")
+            
+            (src_dir / "components" / "Header.tsx").write_text("""
+import React from 'react';
+
+interface HeaderProps {
+    title: string;
 }
-''')
-            files.append(str(css_file))
+
+const Header: React.FC<HeaderProps> = ({ title }) => {
+    return (
+        <header>
+            <h1>{title}</h1>
+        </header>
+    );
+};
+
+export default Header;
+""")
             
-            yield files
+            yield project_path
 
-    def test_detect_bootstrap_framework(self, detector, sample_bootstrap_files):
-        """Test Bootstrap framework detection."""
-        frameworks = detector.detect_frameworks(sample_bootstrap_files)
+    def test_analyze_react_usage(self, temp_react_project):
+        """Test detailed React usage analysis."""
+        detector = ReactFrameworkDetector()
+        framework_info = detector.analyze_usage(temp_react_project)
         
-        assert 'bootstrap' in frameworks
-        assert 'jquery' in frameworks
-
-    def test_detect_tailwind_framework(self, detector, sample_tailwind_files):
-        """Test Tailwind CSS framework detection."""
-        frameworks = detector.detect_frameworks(sample_tailwind_files)
+        assert framework_info is not None
+        assert framework_info.name == "React"
+        assert framework_info.version == "^18.0.0"
         
-        assert 'tailwind' in frameworks
-
-    def test_analyze_bootstrap_framework(self, detector, sample_bootstrap_files):
-        """Test Bootstrap framework analysis."""
-        framework_info = detector.analyze_framework('bootstrap', sample_bootstrap_files)
-        
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'bootstrap'
+        # Should have usage patterns
         assert len(framework_info.usage_patterns) > 0
         
-        # Check for Bootstrap-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('btn-' in pattern for pattern in pattern_names)
-        assert any('col-' in pattern for pattern in pattern_names)
+        # Should have configuration files
+        assert "package.json" in framework_info.configuration_files
+        assert "tsconfig.json" in framework_info.configuration_files
+        
+        # Should have compliance score
+        assert 0.0 <= framework_info.best_practices_compliance <= 1.0
+        
+        # Should have improvement suggestions
+        assert isinstance(framework_info.suggested_improvements, list)
 
-    def test_analyze_tailwind_framework(self, detector, sample_tailwind_files):
-        """Test Tailwind CSS framework analysis."""
-        framework_info = detector.analyze_framework('tailwind', sample_tailwind_files)
+    def test_react_patterns_analysis(self, temp_react_project):
+        """Test React pattern analysis."""
+        detector = ReactFrameworkDetector()
+        framework_info = detector.analyze_usage(temp_react_project)
         
-        assert isinstance(framework_info, FrameworkInfo)
-        assert framework_info.name == 'tailwind'
-        assert len(framework_info.usage_patterns) > 0
-        
-        # Check for Tailwind-specific patterns
-        pattern_names = [p.pattern for p in framework_info.usage_patterns]
-        assert any('bg-' in pattern for pattern in pattern_names)
-        assert any('text-' in pattern for pattern in pattern_names)
+        # Should detect functional components and hooks
+        pattern_names = [pattern.pattern for pattern in framework_info.usage_patterns]
+        assert "Functional Components" in pattern_names
+        assert "React Hooks" in pattern_names
 
-    def test_unknown_web_framework(self, detector, sample_bootstrap_files):
-        """Test handling of unknown web framework."""
-        framework_info = detector.analyze_framework('unknown_framework', sample_bootstrap_files)
+    def test_react_compliance_calculation(self, temp_react_project):
+        """Test React best practices compliance calculation."""
+        detector = ReactFrameworkDetector()
+        framework_info = detector.analyze_usage(temp_react_project)
         
-        assert framework_info is None
+        # Should have high compliance due to TypeScript, ESLint, etc.
+        assert framework_info.best_practices_compliance > 0.5
+
+    def test_react_without_typescript(self, temp_react_project):
+        """Test React analysis without TypeScript."""
+        # Remove TypeScript config
+        (temp_react_project / "tsconfig.json").unlink()
+        
+        detector = ReactFrameworkDetector()
+        framework_info = detector.analyze_usage(temp_react_project)
+        
+        assert framework_info is not None
+        # Compliance should be lower without TypeScript
+        assert framework_info.best_practices_compliance < 1.0
+        
+        # Should suggest TypeScript migration
+        improvement_descriptions = [imp.description for imp in framework_info.suggested_improvements]
+        typescript_suggestion = any("TypeScript" in desc for desc in improvement_descriptions)
+        assert typescript_suggestion
+
+
+class TestFrameworkDetectorRegistry:
+    """Test suite for FrameworkDetectorRegistry."""
+
+    def test_registry_initialization(self):
+        """Test registry initialization."""
+        registry = FrameworkDetectorRegistry()
+        
+        # Should have detectors for major languages
+        assert registry.get_detector(LanguageType.PYTHON) is not None
+        assert registry.get_detector(LanguageType.JAVASCRIPT) is not None
+        assert registry.get_detector(LanguageType.TYPESCRIPT) is not None
+        assert registry.get_detector(LanguageType.JAVA) is not None
+        assert registry.get_detector(LanguageType.HTML) is not None
+        assert registry.get_detector(LanguageType.CSS) is not None
+
+    def test_framework_detector_registration(self):
+        """Test framework-specific detector registration."""
+        registry = FrameworkDetectorRegistry()
+        
+        # Should have React detector
+        react_detector = registry.get_framework_detector(FrameworkType.REACT)
+        assert react_detector is not None
+        assert isinstance(react_detector, ReactFrameworkDetector)
+
+    def test_custom_detector_registration(self):
+        """Test custom detector registration."""
+        registry = FrameworkDetectorRegistry()
+        
+        # Register a custom detector
+        custom_detector = PythonFrameworkDetector()
+        registry.register_detector(LanguageType.PYTHON, custom_detector)
+        
+        # Should return the custom detector
+        assert registry.get_detector(LanguageType.PYTHON) is custom_detector
+
+    def test_unsupported_language(self):
+        """Test behavior with unsupported language."""
+        registry = FrameworkDetectorRegistry()
+        
+        # Should return None for unsupported language
+        assert registry.get_detector(LanguageType.SQL) is None
+
+    def test_unsupported_framework(self):
+        """Test behavior with unsupported framework."""
+        registry = FrameworkDetectorRegistry()
+        
+        # Should return None for unsupported framework
+        assert registry.get_framework_detector(FrameworkType.DJANGO) is None

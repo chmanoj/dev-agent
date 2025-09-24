@@ -15,7 +15,7 @@ from ..config import (
     log_system_info,
     setup_logging,
 )
-# from .enhanced_cli import EnhancedCLI
+from .enhanced_cli import EnhancedCLI
 from .interactive_cli import InteractiveCLI
 from .session_manager import SessionManager
 
@@ -102,7 +102,7 @@ def init(
         # Initialize workflow manager
         from ..workflow.workflow_manager import WorkflowManager
 
-        cli = InteractiveCLI()
+        cli = EnhancedCLI()
         workflow_manager = WorkflowManager(cli)
         cli.workflow_manager = workflow_manager
 
@@ -174,7 +174,7 @@ def resume(
         # Initialize workflow manager
         from ..workflow.workflow_manager import WorkflowManager
 
-        cli = InteractiveCLI()
+        cli = EnhancedCLI()
         workflow_manager = WorkflowManager(cli)
         cli.workflow_manager = workflow_manager
 
@@ -231,7 +231,7 @@ def interactive(
         setup_cli_logging(verbose, debug, project_path)
 
         session_manager = SessionManager(project_path)
-        cli = InteractiveCLI()
+        cli = EnhancedCLI()
 
         _start_interactive_mode(project_path, session_manager, cli)
 
@@ -276,6 +276,10 @@ app.add_typer(config_app, name="config")
 from .azure_config import app as azure_app
 
 app.add_typer(azure_app, name="azure")
+
+# Scaffold command group
+scaffold_app = typer.Typer(name="scaffold", help="Project scaffolding and templates")
+app.add_typer(scaffold_app, name="scaffold")
 
 
 @config_app.command("show")
@@ -367,6 +371,375 @@ def _convert_config_value(value: str):
 
     # Return as string
     return value
+
+
+@scaffold_app.command("list")
+def scaffold_list(
+    language: Annotated[
+        str | None, typer.Option("--language", "-l", help="Filter by programming language")
+    ] = None,
+    project_type: Annotated[
+        str | None, typer.Option("--type", "-t", help="Filter by project type")
+    ] = None,
+    framework: Annotated[
+        str | None, typer.Option("--framework", "-f", help="Filter by framework")
+    ] = None,
+) -> None:
+    """List available project templates."""
+    try:
+        from ..generation.template_system import TemplateSystem
+        from ..models.enums import FrameworkType, LanguageType, ProjectType
+
+        template_system = TemplateSystem()
+
+        # Convert string filters to enums if provided
+        language_filter = None
+        if language:
+            try:
+                language_filter = LanguageType(language.lower())
+            except ValueError:
+                console.print(f"[red]Invalid language: {language}[/red]")
+                console.print(f"Available languages: {', '.join([l.value for l in LanguageType])}")
+                raise typer.Exit(1)
+
+        project_type_filter = None
+        if project_type:
+            try:
+                project_type_filter = ProjectType(project_type.lower().replace('-', '_'))
+            except ValueError:
+                console.print(f"[red]Invalid project type: {project_type}[/red]")
+                console.print(f"Available types: {', '.join([t.value for t in ProjectType])}")
+                raise typer.Exit(1)
+
+        framework_filter = None
+        if framework:
+            try:
+                framework_filter = FrameworkType(framework.lower())
+            except ValueError:
+                console.print(f"[red]Invalid framework: {framework}[/red]")
+                console.print(f"Available frameworks: {', '.join([f.value for f in FrameworkType])}")
+                raise typer.Exit(1)
+
+        # Get filtered templates
+        templates = template_system.list_available_templates(
+            language=language_filter,
+            project_type=project_type_filter,
+            framework=framework_filter,
+        )
+
+        if not templates:
+            console.print("[yellow]No templates found matching the specified criteria.[/yellow]")
+            return
+
+        console.print(f"[bold blue]Available Templates ({len(templates)} found):[/bold blue]")
+        console.print("=" * 60)
+
+        for template in templates:
+            console.print(f"[bold green]{template.name}[/bold green] ({template.id})")
+            console.print(f"  Description: {template.description}")
+            console.print(f"  Languages: {', '.join([l.value for l in template.supported_languages])}")
+            console.print(f"  Project Types: {', '.join([t.value for t in template.project_types])}")
+            if template.supported_frameworks:
+                console.print(f"  Frameworks: {', '.join([f.value for f in template.supported_frameworks])}")
+            console.print()
+
+    except Exception as e:
+        console.print(f"[red]Error listing templates: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@scaffold_app.command("create")
+def scaffold_create(
+    name: Annotated[str, typer.Argument(help="Project name")],
+    template_id: Annotated[
+        str | None, typer.Option("--template", "-t", help="Template ID to use")
+    ] = None,
+    output_path: Annotated[
+        str | None, typer.Option("--output", "-o", help="Output directory path")
+    ] = None,
+    description: Annotated[
+        str | None, typer.Option("--description", "-d", help="Project description")
+    ] = None,
+    language: Annotated[
+        str | None, typer.Option("--language", "-l", help="Primary programming language")
+    ] = None,
+    project_type: Annotated[
+        str | None, typer.Option("--type", help="Project type")
+    ] = None,
+    author_name: Annotated[
+        str | None, typer.Option("--author", help="Author name")
+    ] = None,
+    author_email: Annotated[
+        str | None, typer.Option("--email", help="Author email")
+    ] = None,
+    include_ci_cd: Annotated[
+        bool, typer.Option("--ci-cd/--no-ci-cd", help="Include CI/CD configuration")
+    ] = True,
+    include_docker: Annotated[
+        bool, typer.Option("--docker/--no-docker", help="Include Docker configuration")
+    ] = False,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Create a new project from a template."""
+    try:
+        from pathlib import Path
+        from ..generation.template_system import TemplateSystem
+        from ..models.enums import CICDPlatform, LanguageType, ProjectType
+        from ..models.templates import ProjectSpec
+
+        setup_cli_logging(verbose, False)
+
+        template_system = TemplateSystem()
+
+        # Set default output path
+        if output_path is None:
+            output_path = os.path.join(os.getcwd(), name)
+
+        output_path = Path(output_path).resolve()
+
+        # Interactive template selection if not provided
+        if template_id is None:
+            templates = template_system.list_available_templates()
+            if not templates:
+                console.print("[red]No templates available.[/red]")
+                raise typer.Exit(1)
+
+            console.print("[bold blue]Available Templates:[/bold blue]")
+            for i, template in enumerate(templates, 1):
+                console.print(f"  {i}. {template.name} ({template.id})")
+                console.print(f"     {template.description}")
+
+            while True:
+                try:
+                    choice = typer.prompt("Select template number")
+                    template_index = int(choice) - 1
+                    if 0 <= template_index < len(templates):
+                        template_id = templates[template_index].id
+                        break
+                    else:
+                        console.print("[red]Invalid selection. Please try again.[/red]")
+                except ValueError:
+                    console.print("[red]Please enter a valid number.[/red]")
+
+        # Get the selected template
+        template = template_system.get_template_by_id(template_id)
+        if not template:
+            console.print(f"[red]Template not found: {template_id}[/red]")
+            raise typer.Exit(1)
+
+        # Interactive project configuration
+        if description is None:
+            description = typer.prompt("Project description", default=f"A {template.name} project")
+
+        if language is None and len(template.supported_languages) > 1:
+            console.print("Available languages:")
+            for i, lang in enumerate(template.supported_languages, 1):
+                console.print(f"  {i}. {lang.value}")
+            
+            while True:
+                try:
+                    choice = typer.prompt("Select language number", default="1")
+                    lang_index = int(choice) - 1
+                    if 0 <= lang_index < len(template.supported_languages):
+                        language = template.supported_languages[lang_index].value
+                        break
+                    else:
+                        console.print("[red]Invalid selection. Please try again.[/red]")
+                except ValueError:
+                    console.print("[red]Please enter a valid number.[/red]")
+        elif language is None:
+            language = template.supported_languages[0].value
+
+        if project_type is None and len(template.project_types) > 1:
+            console.print("Available project types:")
+            for i, ptype in enumerate(template.project_types, 1):
+                console.print(f"  {i}. {ptype.value}")
+            
+            while True:
+                try:
+                    choice = typer.prompt("Select project type number", default="1")
+                    type_index = int(choice) - 1
+                    if 0 <= type_index < len(template.project_types):
+                        project_type = template.project_types[type_index].value
+                        break
+                    else:
+                        console.print("[red]Invalid selection. Please try again.[/red]")
+                except ValueError:
+                    console.print("[red]Please enter a valid number.[/red]")
+        elif project_type is None:
+            project_type = template.project_types[0].value
+
+        # Create project specification
+        project_spec = ProjectSpec(
+            name=name,
+            description=description,
+            project_type=ProjectType(project_type.replace('-', '_')),
+            primary_language=LanguageType(language),
+            frameworks=template.supported_frameworks[:3],  # Use first 3 frameworks
+            include_ci_cd=include_ci_cd,
+            ci_cd_platform=CICDPlatform.GITHUB_ACTIONS if include_ci_cd else None,
+            include_docker=include_docker,
+            author_name=author_name,
+            author_email=author_email,
+        )
+
+        # Create the project
+        console.print(f"[blue]Creating project '{name}' using template '{template.name}'...[/blue]")
+        
+        result = template_system.create_project_scaffold(project_spec, output_path)
+
+        if result.success:
+            console.print(f"[green]✓ Project created successfully at: {result.project_path}[/green]")
+            console.print(f"[green]✓ Created {len(result.created_files)} files[/green]")
+            console.print(f"[green]✓ Created {len(result.created_directories)} directories[/green]")
+
+            if result.warnings:
+                console.print("[yellow]Warnings:[/yellow]")
+                for warning in result.warnings:
+                    console.print(f"  [yellow]⚠ {warning}[/yellow]")
+
+            if result.next_steps:
+                console.print("\n[bold blue]Next Steps:[/bold blue]")
+                for i, step in enumerate(result.next_steps, 1):
+                    console.print(f"  {i}. {step}")
+
+        else:
+            console.print(f"[red]✗ Project creation failed[/red]")
+            for error in result.errors:
+                console.print(f"  [red]✗ {error}[/red]")
+            raise typer.Exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error creating project: {e}[/red]")
+        if verbose and logger:
+            logger.error("Project creation failed", exc_info=True)
+        raise typer.Exit(1)
+
+
+@scaffold_app.command("microservices")
+def scaffold_microservices(
+    name: Annotated[str, typer.Argument(help="Architecture name")],
+    output_path: Annotated[
+        str | None, typer.Option("--output", "-o", help="Output directory path")
+    ] = None,
+    services: Annotated[
+        str | None, typer.Option("--services", help="Comma-separated list of service names")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Create a microservices architecture."""
+    try:
+        from pathlib import Path
+        from ..generation.microservices_scaffolder import (
+            MicroserviceSpec,
+            MicroservicesArchitecture,
+            MicroservicesScaffolder,
+        )
+        from ..generation.template_system import TemplateSystem
+        from ..models.enums import FrameworkType, LanguageType
+
+        setup_cli_logging(verbose, False)
+
+        # Set default output path
+        if output_path is None:
+            output_path = os.path.join(os.getcwd(), name)
+
+        output_path = Path(output_path).resolve()
+
+        # Parse services or use interactive mode
+        service_specs = []
+        if services:
+            service_names = [s.strip() for s in services.split(",")]
+            for i, service_name in enumerate(service_names):
+                service_specs.append(
+                    MicroserviceSpec(
+                        name=service_name,
+                        description=f"{service_name.replace('-', ' ').title()} service",
+                        port=8000 + i,
+                        language=LanguageType.PYTHON,
+                        framework=FrameworkType.FASTAPI,
+                    )
+                )
+        else:
+            # Interactive service configuration
+            console.print("[bold blue]Configure Microservices:[/bold blue]")
+            
+            while True:
+                service_name = typer.prompt("Service name (or 'done' to finish)")
+                if service_name.lower() == "done":
+                    break
+                
+                service_description = typer.prompt(
+                    "Service description",
+                    default=f"{service_name.replace('-', ' ').title()} service"
+                )
+                
+                port = typer.prompt("Service port", default=str(8000 + len(service_specs)))
+                
+                service_specs.append(
+                    MicroserviceSpec(
+                        name=service_name,
+                        description=service_description,
+                        port=int(port),
+                        language=LanguageType.PYTHON,
+                        framework=FrameworkType.FASTAPI,
+                    )
+                )
+
+        if not service_specs:
+            console.print("[red]At least one service is required.[/red]")
+            raise typer.Exit(1)
+
+        # Create microservices architecture
+        architecture = MicroservicesArchitecture(
+            name=name,
+            description=f"{name.replace('-', ' ').title()} microservices platform",
+            services=service_specs,
+            api_gateway=True,
+            service_discovery="consul",
+            monitoring=True,
+            logging=True,
+        )
+
+        # Create the scaffolder and generate the architecture
+        template_system = TemplateSystem()
+        scaffolder = MicroservicesScaffolder(template_system)
+
+        console.print(f"[blue]Creating microservices architecture '{name}'...[/blue]")
+        
+        result = scaffolder.scaffold_microservices_architecture(architecture, output_path)
+
+        if result.success:
+            console.print(f"[green]✓ Microservices architecture created successfully at: {result.project_path}[/green]")
+            console.print(f"[green]✓ Created {len(result.created_files)} files[/green]")
+            console.print(f"[green]✓ Created {len(result.created_directories)} directories[/green]")
+            console.print(f"[green]✓ Configured {len(service_specs)} services[/green]")
+
+            if result.warnings:
+                console.print("[yellow]Warnings:[/yellow]")
+                for warning in result.warnings:
+                    console.print(f"  [yellow]⚠ {warning}[/yellow]")
+
+            if result.next_steps:
+                console.print("\n[bold blue]Next Steps:[/bold blue]")
+                for i, step in enumerate(result.next_steps, 1):
+                    console.print(f"  {i}. {step}")
+
+        else:
+            console.print(f"[red]✗ Architecture creation failed[/red]")
+            for error in result.errors:
+                console.print(f"  [red]✗ {error}[/red]")
+            raise typer.Exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error creating microservices architecture: {e}[/red]")
+        if verbose and logger:
+            logger.error("Microservices architecture creation failed", exc_info=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

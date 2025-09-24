@@ -168,16 +168,6 @@ class SpecificationAnalysis:
 
 
 @dataclass
-class ComponentAnalysis:
-    """Analysis of a system component."""
-
-    name: str
-    purpose: str
-    interfaces: list[str]
-    dependencies: list[str]
-
-
-@dataclass
 class DesignAnalysis:
     """Analysis results for design generation."""
 
@@ -188,6 +178,7 @@ class DesignAnalysis:
     api_interfaces: list[dict[str, Any]]
     quality_metrics: dict[str, float]
     technical_debt: list[str]
+    recommendations: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -278,3 +269,133 @@ class LanguageConventions:
     documentation_style: dict[str, Any]
     error_handling_style: dict[str, Any]
     consistency_score: float
+
+
+@dataclass
+class CodeSmell:
+    """Represents a code smell or anti-pattern."""
+
+    name: str
+    description: str
+    file_path: str
+    line_number: int
+    severity: str  # 'low', 'medium', 'high', 'critical'
+    category: str  # 'maintainability', 'readability', 'performance', 'design'
+    suggestion: str
+    code_snippet: str
+    confidence: float
+
+
+@dataclass
+class SecurityIssue:
+    """Represents a security vulnerability or issue."""
+
+    vulnerability_type: str
+    description: str
+    file_path: str
+    line_number: int
+    severity: str  # 'low', 'medium', 'high', 'critical'
+    cwe_id: str | None  # Common Weakness Enumeration ID
+    suggestion: str
+    code_snippet: str
+    confidence: float
+
+
+@dataclass
+class PerformanceIssue:
+    """Represents a performance bottleneck or optimization opportunity."""
+
+    issue_type: str
+    description: str
+    file_path: str
+    line_number: int
+    impact: str  # 'low', 'medium', 'high'
+    category: str  # 'algorithm', 'memory', 'io', 'database', 'network'
+    suggestion: str
+    code_snippet: str
+    estimated_improvement: str | None
+    confidence: float
+
+
+@dataclass
+class ArchitecturalViolation:
+    """Represents an architectural rule violation."""
+
+    rule_name: str
+    description: str
+    file_path: str
+    violation_type: str  # 'dependency', 'layer', 'coupling', 'cohesion'
+    severity: str  # 'low', 'medium', 'high'
+    suggestion: str
+    affected_components: list[str]
+    confidence: float
+
+
+@dataclass
+class QualityAnalysisResult:
+    """Results from code quality analysis."""
+
+    overall_score: float
+    code_smells: list[CodeSmell]
+    maintainability_index: float
+    cyclomatic_complexity: dict[str, float]
+    duplication_percentage: float
+    test_coverage_estimate: float
+    documentation_coverage: float
+    summary: str
+    recommendations: list[str]
+
+
+@dataclass
+class SecurityAnalysisResult:
+    """Results from security analysis."""
+
+    overall_security_score: float
+    security_issues: list[SecurityIssue]
+    vulnerability_count_by_severity: dict[str, int]
+    security_hotspots: list[str]
+    compliance_issues: list[str]
+    summary: str
+    recommendations: list[str]
+
+
+@dataclass
+class PerformanceAnalysisResult:
+    """Results from performance analysis."""
+
+    overall_performance_score: float
+    performance_issues: list[PerformanceIssue]
+    bottlenecks: list[str]
+    optimization_opportunities: list[str]
+    resource_usage_patterns: dict[str, Any]
+    summary: str
+    recommendations: list[str]
+
+
+@dataclass
+class ArchitecturalAnalysisResult:
+    """Results from architectural analysis."""
+
+    overall_architecture_score: float
+    violations: list[ArchitecturalViolation]
+    coupling_metrics: dict[str, float]
+    cohesion_metrics: dict[str, float]
+    dependency_issues: list[str]
+    design_pattern_violations: list[str]
+    summary: str
+    recommendations: list[str]
+
+
+@dataclass
+class ComprehensiveAnalysisResult:
+    """Comprehensive analysis results from all analyzers."""
+
+    quality_analysis: QualityAnalysisResult
+    security_analysis: SecurityAnalysisResult
+    performance_analysis: PerformanceAnalysisResult
+    architectural_analysis: ArchitecturalAnalysisResult
+    overall_health_score: float
+    critical_issues: list[str]
+    priority_recommendations: list[str]
+    analysis_timestamp: str
+    analysis_duration: float

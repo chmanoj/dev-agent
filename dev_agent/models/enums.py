@@ -126,3 +126,51 @@ class PatternType(Enum):
     DOCUMENTATION = "documentation"
     IMPORT_STYLE = "import_style"
     FORMATTING = "formatting"
+
+
+class ProjectType(Enum):
+    """Types of projects that can be scaffolded."""
+
+    WEB_APPLICATION = "web_application"
+    API_SERVICE = "api_service"
+    MICROSERVICE = "microservice"
+    CLI_TOOL = "cli_tool"
+    LIBRARY = "library"
+    DATA_SCIENCE = "data_science"
+    MACHINE_LEARNING = "machine_learning"
+    DESKTOP_APPLICATION = "desktop_application"
+    MOBILE_BACKEND = "mobile_backend"
+    BATCH_PROCESSING = "batch_processing"
+
+
+class TemplateType(Enum):
+    """Types of templates available for scaffolding."""
+
+    PROJECT_STRUCTURE = "project_structure"
+    BUILD_CONFIGURATION = "build_configuration"
+    CI_CD_PIPELINE = "ci_cd_pipeline"
+    DOCUMENTATION = "documentation"
+    TESTING_FRAMEWORK = "testing_framework"
+    LINTING_CONFIGURATION = "linting_configuration"
+    CONTAINERIZATION = "containerization"
+    DEPLOYMENT = "deployment"
+
+
+class TeamSize(Enum):
+    """Team size categories for template customization."""
+
+    SOLO = "solo"
+    SMALL = "small"  # 2-5 developers
+    MEDIUM = "medium"  # 6-15 developers
+    LARGE = "large"  # 16+ developers
+
+
+class CICDPlatform(Enum):
+    """Supported CI/CD platforms."""
+
+    GITHUB_ACTIONS = "github_actions"
+    GITLAB_CI = "gitlab_ci"
+    JENKINS = "jenkins"
+    AZURE_DEVOPS = "azure_devops"
+    CIRCLECI = "circleci"
+    TRAVIS_CI = "travis_ci"

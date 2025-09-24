@@ -1,0 +1,194 @@
+{
+  "name": "dev-agent-vscode",
+  "displayName": "Dev-Agent",
+  "description": "AI-powered development workflow assistant for VS Code",
+  "version": "1.0.0",
+  "publisher": "dev-agent",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "ai",
+    "development",
+    "workflow",
+    "assistant",
+    "python"
+  ],
+  "activationEvents": [
+    "onLanguage:python",
+    "onCommand:dev-agent.analyzeProject",
+    "workspaceContains:**/*.py"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dev-agent.analyzeProject",
+        "title": "Analyze Project",
+        "category": "Dev-Agent"
+      },
+      {
+        "command": "dev-agent.generateSpecification",
+        "title": "Generate Specification",
+        "category": "Dev-Agent"
+      },
+      {
+        "command": "dev-agent.generateDesign",
+        "title": "Generate Design Document",
+        "category": "Dev-Agent"
+      },
+      {
+        "command": "dev-agent.generateTasks",
+        "title": "Generate Implementation Tasks",
+        "category": "Dev-Agent"
+      },
+      {
+        "command": "dev-agent.suggestImprovements",
+        "title": "Suggest Code Improvements",
+        "category": "Dev-Agent"
+      },
+      {
+        "command": "dev-agent.openPanel",
+        "title": "Open Dev-Agent Panel",
+        "category": "Dev-Agent"
+      },
+      {
+        "command": "dev-agent.startWorkflow",
+        "title": "Start Dev-Agent Workflow",
+        "category": "Dev-Agent"
+      },
+      {
+        "command": "dev-agent.resumeWorkflow",
+        "title": "Resume Dev-Agent Workflow",
+        "category": "Dev-Agent"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "dev-agent.analyzeProject",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "dev-agent.generateSpecification",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "dev-agent.generateDesign",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "dev-agent.generateTasks",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "dev-agent.analyzeProject",
+          "when": "explorerResourceIsFolder",
+          "group": "dev-agent"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "dev-agent.suggestImprovements",
+          "when": "editorHasSelection && resourceLangId == python",
+          "group": "dev-agent"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "dev-agent.analyzeProject",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "dev-agent.generateSpecification",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "dev-agent.generateDesign",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "dev-agent.generateTasks",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "dev-agent-panel",
+          "name": "Dev-Agent",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dev-agent",
+          "title": "Dev-Agent",
+          "icon": "$(robot)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Dev-Agent",
+      "properties": {
+        "dev-agent.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Dev-Agent extension"
+        },
+        "dev-agent.autoAnalyze": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically analyze projects when opened"
+        },
+        "dev-agent.suggestionLevel": {
+          "type": "string",
+          "enum": ["minimal", "moderate", "aggressive"],
+          "default": "moderate",
+          "description": "Level of inline suggestions"
+        },
+        "dev-agent.serverPort": {
+          "type": "number",
+          "default": 8765,
+          "description": "Port for dev-agent communication server"
+        },
+        "dev-agent.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to Python executable for dev-agent"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4"
+  },
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}

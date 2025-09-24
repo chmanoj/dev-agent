@@ -8,22 +8,17 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from ..interfaces.analysis_interface import ICodebaseAnalyzer
-from ..models.analysis import LanguageInfo, FrameworkInfo, CrossLanguageMappings
-from ..models.enums import LanguageType, FrameworkType
-from .language_parsers import (
-    PythonParser, JavaScriptParser, TypeScriptParser, JavaParser,
-    HTMLParser, CSSParser, JSONParser, YAMLParser, XMLParser,
-    SQLParser, DockerfileParser, ShellParser
+from ..models.analysis import (
+    CrossLanguageMappings,
+    FrameworkInfo,
+    Improvement,
+    LanguageConventions,
+    LanguageInfo,
+    UsagePattern,
 )
-from .framework_detectors import (
-    PythonFrameworkDetector, JavaScriptFrameworkDetector,
-    TypeScriptFrameworkDetector, JavaFrameworkDetector, WebFrameworkDetector
-)
-from .pattern_analyzers import (
-    PythonPatternAnalyzer, JavaScriptPatternAnalyzer,
-    TypeScriptPatternAnalyzer, JavaPatternAnalyzer, WebPatternAnalyzer
-)
+from ..models.enums import FrameworkType, LanguageType
+from .framework_detectors import FrameworkDetectorRegistry
+from .language_parsers import LanguageParserRegistry
 
 
 class MultiLanguageAnalyzer:
@@ -36,114 +31,110 @@ class MultiLanguageAnalyzer:
             project_path: Path to the project root directory
         """
         self.project_path = Path(project_path)
-        self.language_parsers: dict[str, LanguageParser] = {}
-        self.framework_detectors: dict[str, FrameworkDetector] = {}
-        self.pattern_analyzers: dict[str, PatternAnalyzer] = {}
-        
-        # Initialize language-specific components
-        self._initialize_language_support()
-        self._initialize_framework_detection()
-        self._initialize_pattern_analysis()
+        self.language_parsers = LanguageParserRegistry()
+        self.framework_detectors = FrameworkDetectorRegistry()
+        self._file_cache: dict[str, str] = {}
+        self._language_files: dict[LanguageType, list[Path]] = defaultdict(list)
 
     def detect_project_languages(self) -> list[LanguageInfo]:
         """Detect all programming languages used in the project.
 
         Returns:
-            List of LanguageInfo objects with detected languages and metadata
+            List of LanguageInfo objects for detected languages
         """
-        language_stats = defaultdict(lambda: {
-            'file_count': 0,
-            'line_count': 0,
-            'files': [],
-            'frameworks': set(),
-            'conventions': {}
-        })
+        self._scan_project_files()
+        languages = []
 
-        # Scan all files in the project
-        for file_path in self._get_source_files():
-            language = self._detect_file_language(file_path)
-            if language:
-                stats = language_stats[language]
-                stats['file_count'] += 1
-                stats['files'].append(str(file_path))
-                
-                # Count lines of code
+        for language_type, files in self._language_files.items():
+            if not files:
+                continue
+
+            # Calculate metrics for this language
+            total_lines = 0
+            for file_path in files:
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        lines = len([line for line in f if line.strip()])
-                        stats['line_count'] += lines
-                except (UnicodeDecodeError, IOError):
+                    content = self._get_file_content(file_path)
+                    total_lines += len(content.splitlines())
+                except Exception:
                     continue
 
-        # Convert to LanguageInfo objects
-        languages = []
-        for lang, stats in language_stats.items():
-            if stats['file_count'] > 0:
-                # Detect frameworks for this language
-                frameworks = self._detect_language_frameworks(lang, stats['files'])
-                
-                # Analyze conventions
-                conventions = self._analyze_language_conventions(lang, stats['files'])
-                
-                # Calculate quality score
-                quality_score = self._calculate_language_quality(lang, stats)
-                
-                language_info = LanguageInfo(
-                    language=lang,
-                    version=self._detect_language_version(lang, stats['files']),
-                    file_count=stats['file_count'],
-                    line_count=stats['line_count'],
-                    frameworks=frameworks,
-                    conventions=conventions,
-                    quality_score=quality_score
-                )
-                languages.append(language_info)
+            # Detect version if possible
+            version = self._detect_language_version(language_type, files)
+
+            # Detect frameworks for this language
+            frameworks = self._detect_language_frameworks(language_type, files)
+
+            # Analyze conventions
+            conventions = self._analyze_language_conventions(language_type, files)
+
+            # Calculate quality score
+            quality_score = self._calculate_language_quality(language_type, files)
+
+            language_info = LanguageInfo(
+                language=language_type.value,
+                version=version,
+                file_count=len(files),
+                line_count=total_lines,
+                frameworks=[f.value for f in frameworks],
+                conventions=conventions.__dict__,
+                quality_score=quality_score,
+            )
+            languages.append(language_info)
 
         return sorted(languages, key=lambda x: x.line_count, reverse=True)
 
     def analyze_framework_usage(self) -> list[FrameworkInfo]:
-        """Analyze framework usage across all detected languages.
+        """Analyze framework usage across the project.
 
         Returns:
-            List of FrameworkInfo objects with framework details
+            List of FrameworkInfo objects for detected frameworks
         """
         frameworks = []
-        
-        # Get all source files grouped by language
-        language_files = defaultdict(list)
-        for file_path in self._get_source_files():
-            language = self._detect_file_language(file_path)
-            if language:
-                language_files[language].append(file_path)
+        detected_frameworks = set()
 
-        # Analyze frameworks for each language
-        for language, files in language_files.items():
-            lang_frameworks = self._detect_language_frameworks(language, files)
-            
-            for framework_name in lang_frameworks:
-                framework_info = self._analyze_framework_details(
-                    framework_name, language, files
-                )
-                if framework_info:
-                    frameworks.append(framework_info)
+        # Detect frameworks for each language
+        for language_type, files in self._language_files.items():
+            if not files:
+                continue
+
+            language_frameworks = self._detect_language_frameworks(language_type, files)
+            detected_frameworks.update(language_frameworks)
+
+        # Analyze each detected framework
+        for framework in detected_frameworks:
+            framework_info = self._analyze_framework(framework)
+            if framework_info:
+                frameworks.append(framework_info)
 
         return frameworks
 
-    def extract_language_patterns(self, language: str, files: list[str]) -> dict[str, Any]:
-        """Extract language-specific patterns from source files.
+    def extract_language_patterns(self, language: LanguageType) -> dict[str, Any]:
+        """Extract patterns specific to a programming language.
 
         Args:
-            language: Programming language name
-            files: List of file paths for the language
+            language: The programming language to analyze
 
         Returns:
-            Dictionary containing extracted patterns
+            Dictionary containing language-specific patterns
         """
-        if language not in self.pattern_analyzers:
+        if language not in self._language_files:
             return {}
 
-        analyzer = self.pattern_analyzers[language]
-        return analyzer.extract_patterns(files)
+        files = self._language_files[language]
+        parser = self.language_parsers.get_parser(language)
+
+        patterns = {
+            "naming_patterns": self._extract_naming_patterns(language, files),
+            "structural_patterns": self._extract_structural_patterns(language, files),
+            "import_patterns": self._extract_import_patterns(language, files),
+            "error_handling_patterns": self._extract_error_handling_patterns(language, files),
+            "documentation_patterns": self._extract_documentation_patterns(language, files),
+        }
+
+        if parser:
+            patterns.update(parser.extract_language_specific_patterns(files))
+
+        return patterns
 
     def generate_cross_language_mappings(self) -> CrossLanguageMappings:
         """Generate mappings between different languages in the project.
@@ -151,447 +142,616 @@ class MultiLanguageAnalyzer:
         Returns:
             CrossLanguageMappings object with interaction analysis
         """
-        languages = self.detect_project_languages()
-        
-        # Analyze API interactions
-        api_interactions = self._analyze_api_interactions(languages)
-        
-        # Analyze data flow between languages
-        data_flow = self._analyze_cross_language_data_flow(languages)
-        
-        # Analyze shared configurations
-        shared_configs = self._analyze_shared_configurations(languages)
-        
-        # Analyze build dependencies
-        build_dependencies = self._analyze_build_dependencies(languages)
+        api_interactions = self._analyze_api_interactions()
+        data_flow = self._analyze_cross_language_data_flow()
+        shared_configurations = self._analyze_shared_configurations()
+        build_dependencies = self._analyze_build_dependencies()
+        integration_patterns = self._identify_integration_patterns()
 
         return CrossLanguageMappings(
             api_interactions=api_interactions,
             data_flow=data_flow,
-            shared_configurations=shared_configs,
+            shared_configurations=shared_configurations,
             build_dependencies=build_dependencies,
-            integration_patterns=self._identify_integration_patterns(languages)
+            integration_patterns=integration_patterns,
         )
 
-    def _initialize_language_support(self) -> None:
-        """Initialize language-specific parsers."""
-        self.language_parsers = {
-            'python': PythonParser(),
-            'javascript': JavaScriptParser(),
-            'typescript': TypeScriptParser(),
-            'java': JavaParser(),
-            'html': HTMLParser(),
-            'css': CSSParser(),
-            'json': JSONParser(),
-            'yaml': YAMLParser(),
-            'xml': XMLParser(),
-            'sql': SQLParser(),
-            'dockerfile': DockerfileParser(),
-            'shell': ShellParser()
+    def _scan_project_files(self) -> None:
+        """Scan project directory and categorize files by language."""
+        self._language_files.clear()
+
+        # Define file extensions for each language
+        language_extensions = {
+            LanguageType.PYTHON: {".py", ".pyx", ".pyi"},
+            LanguageType.JAVASCRIPT: {".js", ".mjs", ".cjs"},
+            LanguageType.TYPESCRIPT: {".ts", ".tsx"},
+            LanguageType.JAVA: {".java"},
+            LanguageType.HTML: {".html", ".htm"},
+            LanguageType.CSS: {".css", ".scss", ".sass", ".less"},
+            LanguageType.JSON: {".json"},
+            LanguageType.YAML: {".yaml", ".yml"},
+            LanguageType.XML: {".xml"},
+            LanguageType.SQL: {".sql"},
+            LanguageType.DOCKERFILE: {"Dockerfile", ".dockerfile"},
+            LanguageType.SHELL: {".sh", ".bash", ".zsh"},
+            LanguageType.MAKEFILE: {"Makefile", ".mk"},
         }
 
-    def _initialize_framework_detection(self) -> None:
-        """Initialize framework detection capabilities."""
-        self.framework_detectors = {
-            'python': PythonFrameworkDetector(),
-            'javascript': JavaScriptFrameworkDetector(),
-            'typescript': TypeScriptFrameworkDetector(),
-            'java': JavaFrameworkDetector(),
-            'web': WebFrameworkDetector()
-        }
-
-    def _initialize_pattern_analysis(self) -> None:
-        """Initialize pattern analysis for each language."""
-        self.pattern_analyzers = {
-            'python': PythonPatternAnalyzer(),
-            'javascript': JavaScriptPatternAnalyzer(),
-            'typescript': TypeScriptPatternAnalyzer(),
-            'java': JavaPatternAnalyzer(),
-            'web': WebPatternAnalyzer()
-        }
-
-    def _get_source_files(self) -> list[Path]:
-        """Get all source files in the project."""
-        source_files = []
-        
-        # Define file extensions for different languages
-        extensions = {
-            '.py': 'python',
-            '.js': 'javascript',
-            '.jsx': 'javascript',
-            '.ts': 'typescript',
-            '.tsx': 'typescript',
-            '.java': 'java',
-            '.html': 'html',
-            '.htm': 'html',
-            '.css': 'css',
-            '.scss': 'css',
-            '.sass': 'css',
-            '.less': 'css',
-            '.json': 'json',
-            '.yaml': 'yaml',
-            '.yml': 'yaml',
-            '.xml': 'xml',
-            '.sql': 'sql',
-            '.sh': 'shell',
-            '.bash': 'shell',
-            '.zsh': 'shell'
-        }
-
-        # Exclude common non-source directories
-        exclude_dirs = {
-            '.git', '.svn', '.hg',
-            'node_modules', '__pycache__', '.pytest_cache',
-            'build', 'dist', 'target', 'out',
-            '.venv', 'venv', 'env',
-            '.idea', '.vscode'
-        }
-
-        for file_path in self.project_path.rglob('*'):
-            if file_path.is_file():
-                # Skip files in excluded directories
-                if any(excluded in file_path.parts for excluded in exclude_dirs):
-                    continue
-                
-                # Check if file has a supported extension
-                if file_path.suffix.lower() in extensions:
-                    source_files.append(file_path)
-                elif file_path.name.lower() in ['dockerfile', 'makefile', 'rakefile']:
-                    source_files.append(file_path)
-
-        return source_files
-
-    def _detect_file_language(self, file_path: Path) -> str | None:
-        """Detect the programming language of a file."""
-        extension = file_path.suffix.lower()
-        name = file_path.name.lower()
-
-        # Extension-based detection
-        extension_map = {
-            '.py': 'python',
-            '.js': 'javascript',
-            '.jsx': 'javascript',
-            '.ts': 'typescript',
-            '.tsx': 'typescript',
-            '.java': 'java',
-            '.html': 'html',
-            '.htm': 'html',
-            '.css': 'css',
-            '.scss': 'css',
-            '.sass': 'css',
-            '.less': 'css',
-            '.json': 'json',
-            '.yaml': 'yaml',
-            '.yml': 'yaml',
-            '.xml': 'xml',
-            '.sql': 'sql',
-            '.sh': 'shell',
-            '.bash': 'shell',
-            '.zsh': 'shell'
-        }
-
-        if extension in extension_map:
-            return extension_map[extension]
-
-        # Name-based detection for files without extensions
-        if name in ['dockerfile']:
-            return 'dockerfile'
-        elif name in ['makefile', 'rakefile']:
-            return 'makefile'
-
-        return None
-
-    def _detect_language_frameworks(self, language: str, files: list[str]) -> list[str]:
-        """Detect frameworks used for a specific language."""
-        if language not in self.framework_detectors:
-            return []
-
-        detector = self.framework_detectors[language]
-        return detector.detect_frameworks(files)
-
-    def _analyze_language_conventions(self, language: str, files: list[str]) -> dict[str, Any]:
-        """Analyze coding conventions for a language."""
-        if language not in self.pattern_analyzers:
-            return {}
-
-        analyzer = self.pattern_analyzers[language]
-        return analyzer.analyze_conventions(files)
-
-    def _calculate_language_quality(self, language: str, stats: dict[str, Any]) -> float:
-        """Calculate a quality score for language usage."""
-        base_score = 0.5
-        
-        # Factor in file count (more files = more established)
-        file_factor = min(stats['file_count'] / 10, 1.0) * 0.2
-        
-        # Factor in line count (more code = more established)
-        line_factor = min(stats['line_count'] / 1000, 1.0) * 0.2
-        
-        # Factor in framework usage (frameworks indicate mature usage)
-        framework_factor = min(len(stats['frameworks']) / 3, 1.0) * 0.1
-        
-        return base_score + file_factor + line_factor + framework_factor
-
-    def _detect_language_version(self, language: str, files: list[str]) -> str | None:
-        """Detect the version of a programming language."""
-        if language == 'python':
-            return self._detect_python_version(files)
-        elif language in ['javascript', 'typescript']:
-            return self._detect_js_version(files)
-        elif language == 'java':
-            return self._detect_java_version(files)
-        
-        return None
-
-    def _detect_python_version(self, files: list[str]) -> str | None:
-        """Detect Python version from source files."""
-        version_indicators = {
-            'f"': '3.6+',
-            ':=': '3.8+',
-            'match ': '3.10+',
-            'from __future__ import annotations': '3.7+'
-        }
-
-        for file_path in files[:10]:  # Check first 10 files
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    for indicator, version in version_indicators.items():
-                        if indicator in content:
-                            return version
-            except (UnicodeDecodeError, IOError):
+        # Scan all files in the project
+        for file_path in self.project_path.rglob("*"):
+            if not file_path.is_file():
                 continue
 
-        return '3.x'
+            # Skip hidden files and common ignore patterns
+            if self._should_ignore_file(file_path):
+                continue
 
-    def _detect_js_version(self, files: list[str]) -> str | None:
-        """Detect JavaScript/TypeScript version."""
-        # Look for package.json to determine version
-        package_json = self.project_path / 'package.json'
-        if package_json.exists():
+            # Determine language based on extension
+            for language, extensions in language_extensions.items():
+                if (
+                    file_path.suffix.lower() in extensions
+                    or file_path.name in extensions
+                ):
+                    self._language_files[language].append(file_path)
+                    break
+
+    def _should_ignore_file(self, file_path: Path) -> bool:
+        """Check if a file should be ignored during analysis."""
+        ignore_patterns = {
+            # Hidden files and directories
+            ".*",
+            # Build and dependency directories
+            "node_modules",
+            "__pycache__",
+            ".pytest_cache",
+            "build",
+            "dist",
+            "target",
+            ".gradle",
+            ".mvn",
+            # IDE files
+            ".vscode",
+            ".idea",
+            "*.iml",
+            # Log files
+            "*.log",
+            # Binary files
+            "*.pyc",
+            "*.class",
+            "*.jar",
+            "*.war",
+            # Package files
+            "package-lock.json",
+            "yarn.lock",
+            "Pipfile.lock",
+            "poetry.lock",
+        }
+
+        # Check if any part of the path matches ignore patterns
+        for part in file_path.parts:
+            for pattern in ignore_patterns:
+                if pattern.startswith("*") and part.endswith(pattern[1:]):
+                    return True
+                elif part == pattern or part.startswith(pattern):
+                    return True
+
+        return False
+
+    def _get_file_content(self, file_path: Path) -> str:
+        """Get file content with caching."""
+        file_key = str(file_path)
+        if file_key not in self._file_cache:
             try:
-                with open(package_json, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if 'engines' in data and 'node' in data['engines']:
-                        return data['engines']['node']
-            except (json.JSONDecodeError, IOError):
+                with open(file_path, encoding="utf-8") as f:
+                    self._file_cache[file_key] = f.read()
+            except Exception:
+                self._file_cache[file_key] = ""
+        return self._file_cache[file_key]
+
+    def _detect_language_version(self, language: LanguageType, files: list[Path]) -> str | None:
+        """Detect the version of a programming language."""
+        if language == LanguageType.PYTHON:
+            return self._detect_python_version(files)
+        elif language == LanguageType.JAVASCRIPT:
+            return self._detect_javascript_version(files)
+        elif language == LanguageType.TYPESCRIPT:
+            return self._detect_typescript_version(files)
+        elif language == LanguageType.JAVA:
+            return self._detect_java_version(files)
+        return None
+
+    def _detect_python_version(self, files: list[Path]) -> str | None:
+        """Detect Python version from project files."""
+        # Check pyproject.toml
+        pyproject_path = self.project_path / "pyproject.toml"
+        if pyproject_path.exists():
+            content = self._get_file_content(pyproject_path)
+            # Look for requires-python
+            match = re.search(r'requires-python\s*=\s*["\']([^"\']+)["\']', content)
+            if match:
+                return match.group(1)
+
+        # Check setup.py
+        setup_path = self.project_path / "setup.py"
+        if setup_path.exists():
+            content = self._get_file_content(setup_path)
+            match = re.search(r'python_requires\s*=\s*["\']([^"\']+)["\']', content)
+            if match:
+                return match.group(1)
+
+        # Check .python-version
+        python_version_path = self.project_path / ".python-version"
+        if python_version_path.exists():
+            return self._get_file_content(python_version_path).strip()
+
+        return None
+
+    def _detect_javascript_version(self, files: list[Path]) -> str | None:
+        """Detect JavaScript version from project files."""
+        package_json_path = self.project_path / "package.json"
+        if package_json_path.exists():
+            try:
+                content = self._get_file_content(package_json_path)
+                package_data = json.loads(content)
+                
+                # Check engines.node
+                if "engines" in package_data and "node" in package_data["engines"]:
+                    return package_data["engines"]["node"]
+                    
+                # Check for ES version indicators
+                if "type" in package_data and package_data["type"] == "module":
+                    return "ES2015+"
+                    
+            except json.JSONDecodeError:
                 pass
 
-        return 'ES6+'
+        return None
 
-    def _detect_java_version(self, files: list[str]) -> str | None:
-        """Detect Java version from source files."""
-        version_indicators = {
-            'var ': '10+',
-            'record ': '14+',
-            'sealed ': '17+',
-            'switch.*->': '14+'
-        }
-
-        for file_path in files[:10]:
+    def _detect_typescript_version(self, files: list[Path]) -> str | None:
+        """Detect TypeScript version from project files."""
+        package_json_path = self.project_path / "package.json"
+        if package_json_path.exists():
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    for pattern, version in version_indicators.items():
-                        if re.search(pattern, content):
-                            return version
-            except (UnicodeDecodeError, IOError):
-                continue
+                content = self._get_file_content(package_json_path)
+                package_data = json.loads(content)
+                
+                # Check devDependencies for typescript
+                for deps in ["dependencies", "devDependencies"]:
+                    if deps in package_data and "typescript" in package_data[deps]:
+                        return package_data[deps]["typescript"]
+                        
+            except json.JSONDecodeError:
+                pass
 
-        return '8+'
+        return None
 
-    def _analyze_framework_details(self, framework_name: str, language: str, files: list[str]) -> FrameworkInfo | None:
-        """Analyze detailed information about a framework."""
-        if language not in self.framework_detectors:
-            return None
+    def _detect_java_version(self, files: list[Path]) -> str | None:
+        """Detect Java version from project files."""
+        # Check pom.xml for Maven projects
+        pom_path = self.project_path / "pom.xml"
+        if pom_path.exists():
+            content = self._get_file_content(pom_path)
+            match = re.search(r'<maven\.compiler\.source>([^<]+)</maven\.compiler\.source>', content)
+            if match:
+                return match.group(1)
 
-        detector = self.framework_detectors[language]
-        return detector.analyze_framework(framework_name, files)
+        # Check build.gradle for Gradle projects
+        gradle_path = self.project_path / "build.gradle"
+        if gradle_path.exists():
+            content = self._get_file_content(gradle_path)
+            match = re.search(r'sourceCompatibility\s*=\s*["\']?([^"\']+)["\']?', content)
+            if match:
+                return match.group(1)
 
-    def _analyze_api_interactions(self, languages: list[LanguageInfo]) -> dict[str, Any]:
+        return None
+
+    def _detect_language_frameworks(self, language: LanguageType, files: list[Path]) -> list[FrameworkType]:
+        """Detect frameworks for a specific language."""
+        detector = self.framework_detectors.get_detector(language)
+        if detector:
+            return detector.detect_frameworks(self.project_path, files)
+        return []
+
+    def _analyze_language_conventions(self, language: LanguageType, files: list[Path]) -> LanguageConventions:
+        """Analyze coding conventions for a specific language."""
+        parser = self.language_parsers.get_parser(language)
+        if parser:
+            return parser.analyze_conventions(files)
+        
+        # Default conventions analysis
+        return LanguageConventions(
+            naming_style={},
+            formatting_style={},
+            documentation_style={},
+            error_handling_style={},
+            consistency_score=0.0,
+        )
+
+    def _calculate_language_quality(self, language: LanguageType, files: list[Path]) -> float:
+        """Calculate quality score for a language's codebase."""
+        parser = self.language_parsers.get_parser(language)
+        if parser:
+            return parser.calculate_quality_score(files)
+        return 0.5  # Default neutral score
+
+    def _analyze_framework(self, framework: FrameworkType) -> FrameworkInfo | None:
+        """Analyze usage of a specific framework."""
+        detector = self.framework_detectors.get_framework_detector(framework)
+        if detector:
+            return detector.analyze_usage(self.project_path)
+        
+        # Create a basic framework info if no specific detector
+        return FrameworkInfo(
+            name=framework.value,
+            version="unknown",
+            usage_patterns=[],
+            configuration_files=[],
+            best_practices_compliance=0.5,
+            suggested_improvements=[],
+        )
+
+    def _extract_naming_patterns(self, language: LanguageType, files: list[Path]) -> dict[str, Any]:
+        """Extract naming patterns for a language."""
+        patterns = defaultdict(list)
+        
+        for file_path in files[:10]:  # Limit analysis to avoid performance issues
+            content = self._get_file_content(file_path)
+            
+            if language == LanguageType.PYTHON:
+                # Extract Python naming patterns
+                patterns["functions"].extend(re.findall(r'def\s+([a-zA-Z_][a-zA-Z0-9_]*)', content))
+                patterns["classes"].extend(re.findall(r'class\s+([a-zA-Z_][a-zA-Z0-9_]*)', content))
+                patterns["variables"].extend(re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*=', content))
+            elif language == LanguageType.JAVASCRIPT or language == LanguageType.TYPESCRIPT:
+                # Extract JS/TS naming patterns
+                patterns["functions"].extend(re.findall(r'function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)', content))
+                patterns["functions"].extend(re.findall(r'([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*function', content))
+                patterns["classes"].extend(re.findall(r'class\s+([a-zA-Z_$][a-zA-Z0-9_$]*)', content))
+            elif language == LanguageType.JAVA:
+                # Extract Java naming patterns
+                patterns["methods"].extend(re.findall(r'public\s+\w+\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(', content))
+                patterns["classes"].extend(re.findall(r'class\s+([a-zA-Z_][a-zA-Z0-9_]*)', content))
+
+        return dict(patterns)
+
+    def _extract_structural_patterns(self, language: LanguageType, files: list[Path]) -> dict[str, Any]:
+        """Extract structural patterns for a language."""
+        patterns = {}
+        
+        # Analyze directory structure
+        directories = set()
+        for file_path in files:
+            directories.update(file_path.relative_to(self.project_path).parts[:-1])
+        
+        patterns["directory_structure"] = list(directories)
+        patterns["file_organization"] = self._analyze_file_organization(language, files)
+        
+        return patterns
+
+    def _extract_import_patterns(self, language: LanguageType, files: list[Path]) -> dict[str, Any]:
+        """Extract import patterns for a language."""
+        patterns = defaultdict(list)
+        
+        for file_path in files[:10]:  # Limit analysis
+            content = self._get_file_content(file_path)
+            
+            if language == LanguageType.PYTHON:
+                patterns["imports"].extend(re.findall(r'import\s+([a-zA-Z_][a-zA-Z0-9_.]*)', content))
+                patterns["from_imports"].extend(re.findall(r'from\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s+import', content))
+            elif language == LanguageType.JAVASCRIPT or language == LanguageType.TYPESCRIPT:
+                patterns["imports"].extend(re.findall(r'import\s+.*?from\s+["\']([^"\']+)["\']', content))
+                patterns["requires"].extend(re.findall(r'require\(["\']([^"\']+)["\']\)', content))
+            elif language == LanguageType.JAVA:
+                patterns["imports"].extend(re.findall(r'import\s+([a-zA-Z_][a-zA-Z0-9_.]*)', content))
+
+        return dict(patterns)
+
+    def _extract_error_handling_patterns(self, language: LanguageType, files: list[Path]) -> dict[str, Any]:
+        """Extract error handling patterns for a language."""
+        patterns = defaultdict(int)
+        
+        for file_path in files[:10]:  # Limit analysis
+            content = self._get_file_content(file_path)
+            
+            if language == LanguageType.PYTHON:
+                patterns["try_except"] += len(re.findall(r'try:', content))
+                patterns["raise"] += len(re.findall(r'raise\s+', content))
+            elif language == LanguageType.JAVASCRIPT or language == LanguageType.TYPESCRIPT:
+                patterns["try_catch"] += len(re.findall(r'try\s*{', content))
+                patterns["throw"] += len(re.findall(r'throw\s+', content))
+            elif language == LanguageType.JAVA:
+                patterns["try_catch"] += len(re.findall(r'try\s*{', content))
+                patterns["throws"] += len(re.findall(r'throws\s+', content))
+
+        return dict(patterns)
+
+    def _extract_documentation_patterns(self, language: LanguageType, files: list[Path]) -> dict[str, Any]:
+        """Extract documentation patterns for a language."""
+        patterns = defaultdict(int)
+        
+        for file_path in files[:10]:  # Limit analysis
+            content = self._get_file_content(file_path)
+            
+            if language == LanguageType.PYTHON:
+                patterns["docstrings"] += len(re.findall(r'""".*?"""', content, re.DOTALL))
+                patterns["comments"] += len(re.findall(r'#.*', content))
+            elif language == LanguageType.JAVASCRIPT or language == LanguageType.TYPESCRIPT:
+                patterns["jsdoc"] += len(re.findall(r'/\*\*.*?\*/', content, re.DOTALL))
+                patterns["comments"] += len(re.findall(r'//.*', content))
+            elif language == LanguageType.JAVA:
+                patterns["javadoc"] += len(re.findall(r'/\*\*.*?\*/', content, re.DOTALL))
+                patterns["comments"] += len(re.findall(r'//.*', content))
+
+        return dict(patterns)
+
+    def _analyze_file_organization(self, language: LanguageType, files: list[Path]) -> dict[str, Any]:
+        """Analyze how files are organized for a language."""
+        organization = {
+            "total_files": len(files),
+            "average_file_size": 0,
+            "directory_depth": 0,
+        }
+        
+        total_size = 0
+        max_depth = 0
+        
+        for file_path in files:
+            content = self._get_file_content(file_path)
+            total_size += len(content.splitlines())
+            
+            relative_path = file_path.relative_to(self.project_path)
+            depth = len(relative_path.parts) - 1
+            max_depth = max(max_depth, depth)
+        
+        if files:
+            organization["average_file_size"] = total_size / len(files)
+        organization["directory_depth"] = max_depth
+        
+        return organization
+
+    def _analyze_api_interactions(self) -> dict[str, Any]:
         """Analyze API interactions between different languages."""
         interactions = {}
         
-        # Look for REST API patterns
-        rest_patterns = self._find_rest_api_patterns(languages)
-        if rest_patterns:
-            interactions['rest_apis'] = rest_patterns
-
-        # Look for GraphQL patterns
-        graphql_patterns = self._find_graphql_patterns(languages)
-        if graphql_patterns:
-            interactions['graphql'] = graphql_patterns
-
-        # Look for RPC patterns
-        rpc_patterns = self._find_rpc_patterns(languages)
-        if rpc_patterns:
-            interactions['rpc'] = rpc_patterns
-
+        # Look for REST API endpoints
+        if LanguageType.PYTHON in self._language_files:
+            interactions["python_apis"] = self._find_python_apis()
+        
+        if LanguageType.JAVASCRIPT in self._language_files or LanguageType.TYPESCRIPT in self._language_files:
+            interactions["js_api_calls"] = self._find_js_api_calls()
+        
         return interactions
 
-    def _analyze_cross_language_data_flow(self, languages: list[LanguageInfo]) -> dict[str, Any]:
+    def _analyze_cross_language_data_flow(self) -> dict[str, Any]:
         """Analyze data flow between different languages."""
         data_flow = {}
         
         # Look for shared data formats
-        shared_formats = self._find_shared_data_formats(languages)
-        if shared_formats:
-            data_flow['shared_formats'] = shared_formats
-
-        # Look for database interactions
-        db_interactions = self._find_database_interactions(languages)
-        if db_interactions:
-            data_flow['database'] = db_interactions
-
+        if LanguageType.JSON in self._language_files:
+            data_flow["json_schemas"] = self._analyze_json_schemas()
+        
+        if LanguageType.SQL in self._language_files:
+            data_flow["database_schemas"] = self._analyze_sql_schemas()
+        
         return data_flow
 
-    def _analyze_shared_configurations(self, languages: list[LanguageInfo]) -> dict[str, Any]:
+    def _analyze_shared_configurations(self) -> dict[str, Any]:
         """Analyze shared configuration files."""
         configs = {}
         
-        # Look for common config files
-        config_files = [
-            'docker-compose.yml', 'Dockerfile',
-            '.env', '.env.example',
-            'nginx.conf', 'apache.conf',
-            'kubernetes.yaml', 'k8s.yaml'
-        ]
-
-        for config_file in config_files:
-            config_path = self.project_path / config_file
-            if config_path.exists():
-                configs[config_file] = str(config_path)
-
+        # Docker configurations
+        if LanguageType.DOCKERFILE in self._language_files:
+            configs["docker"] = self._analyze_docker_configs()
+        
+        # Package configurations
+        configs["package_managers"] = self._analyze_package_managers()
+        
         return configs
 
-    def _analyze_build_dependencies(self, languages: list[LanguageInfo]) -> dict[str, Any]:
+    def _analyze_build_dependencies(self) -> dict[str, Any]:
         """Analyze build system dependencies."""
         dependencies = {}
         
-        # Look for build files
-        build_files = {
-            'package.json': 'npm/yarn',
-            'requirements.txt': 'pip',
-            'pyproject.toml': 'pip/poetry',
-            'pom.xml': 'maven',
-            'build.gradle': 'gradle',
-            'Makefile': 'make',
-            'CMakeLists.txt': 'cmake'
-        }
-
-        for build_file, build_system in build_files.items():
-            build_path = self.project_path / build_file
-            if build_path.exists():
-                dependencies[build_system] = str(build_path)
-
+        # Check for various build systems
+        if (self.project_path / "package.json").exists():
+            dependencies["npm"] = self._analyze_npm_dependencies()
+        
+        if (self.project_path / "pyproject.toml").exists():
+            dependencies["python"] = self._analyze_python_dependencies()
+        
+        if (self.project_path / "pom.xml").exists():
+            dependencies["maven"] = self._analyze_maven_dependencies()
+        
         return dependencies
 
-    def _identify_integration_patterns(self, languages: list[LanguageInfo]) -> list[str]:
+    def _identify_integration_patterns(self) -> list[str]:
         """Identify common integration patterns."""
         patterns = []
         
-        lang_names = [lang.language for lang in languages]
+        # Check for microservices patterns
+        if self._has_microservices_structure():
+            patterns.append("microservices")
         
-        # Common patterns
-        if 'python' in lang_names and 'javascript' in lang_names:
-            patterns.append('Full-stack web application')
+        # Check for API Gateway patterns
+        if self._has_api_gateway():
+            patterns.append("api_gateway")
         
-        if 'java' in lang_names and 'javascript' in lang_names:
-            patterns.append('Enterprise web application')
+        # Check for event-driven patterns
+        if self._has_event_driven_architecture():
+            patterns.append("event_driven")
         
-        if 'python' in lang_names and 'sql' in lang_names:
-            patterns.append('Data-driven application')
-        
-        if 'dockerfile' in lang_names:
-            patterns.append('Containerized application')
-        
-        if len(lang_names) >= 3:
-            patterns.append('Polyglot architecture')
-
         return patterns
 
-    def _find_rest_api_patterns(self, languages: list[LanguageInfo]) -> dict[str, Any]:
-        """Find REST API patterns in the codebase."""
-        patterns = {}
+    def _find_python_apis(self) -> list[str]:
+        """Find Python API endpoints."""
+        apis = []
+        python_files = self._language_files.get(LanguageType.PYTHON, [])
         
-        # Look for common REST patterns in different languages
-        rest_indicators = {
-            'python': ['@app.route', 'FastAPI', 'flask', 'django'],
-            'javascript': ['express', 'app.get', 'app.post', 'router'],
-            'java': ['@RestController', '@RequestMapping', 'Spring']
+        for file_path in python_files:
+            content = self._get_file_content(file_path)
+            # Look for Flask/FastAPI/Django routes
+            apis.extend(re.findall(r'@app\.route\(["\']([^"\']+)["\']', content))
+            apis.extend(re.findall(r'@router\.\w+\(["\']([^"\']+)["\']', content))
+        
+        return apis
+
+    def _find_js_api_calls(self) -> list[str]:
+        """Find JavaScript/TypeScript API calls."""
+        api_calls = []
+        js_files = self._language_files.get(LanguageType.JAVASCRIPT, [])
+        ts_files = self._language_files.get(LanguageType.TYPESCRIPT, [])
+        
+        for file_path in js_files + ts_files:
+            content = self._get_file_content(file_path)
+            # Look for fetch/axios calls
+            api_calls.extend(re.findall(r'fetch\(["\']([^"\']+)["\']', content))
+            api_calls.extend(re.findall(r'axios\.\w+\(["\']([^"\']+)["\']', content))
+        
+        return api_calls
+
+    def _analyze_json_schemas(self) -> dict[str, Any]:
+        """Analyze JSON schema files."""
+        schemas = {}
+        json_files = self._language_files.get(LanguageType.JSON, [])
+        
+        for file_path in json_files:
+            if "schema" in file_path.name.lower():
+                try:
+                    content = self._get_file_content(file_path)
+                    schema_data = json.loads(content)
+                    schemas[file_path.name] = schema_data
+                except json.JSONDecodeError:
+                    continue
+        
+        return schemas
+
+    def _analyze_sql_schemas(self) -> dict[str, Any]:
+        """Analyze SQL schema files."""
+        schemas = {}
+        sql_files = self._language_files.get(LanguageType.SQL, [])
+        
+        for file_path in sql_files:
+            content = self._get_file_content(file_path)
+            # Extract table definitions
+            tables = re.findall(r'CREATE\s+TABLE\s+(\w+)', content, re.IGNORECASE)
+            if tables:
+                schemas[file_path.name] = tables
+        
+        return schemas
+
+    def _analyze_docker_configs(self) -> dict[str, Any]:
+        """Analyze Docker configurations."""
+        configs = {}
+        docker_files = self._language_files.get(LanguageType.DOCKERFILE, [])
+        
+        for file_path in docker_files:
+            content = self._get_file_content(file_path)
+            # Extract base images
+            base_images = re.findall(r'FROM\s+([^\s]+)', content)
+            if base_images:
+                configs[file_path.name] = {"base_images": base_images}
+        
+        return configs
+
+    def _analyze_package_managers(self) -> dict[str, Any]:
+        """Analyze package manager configurations."""
+        managers = {}
+        
+        # Check for various package managers
+        package_files = {
+            "npm": "package.json",
+            "pip": "requirements.txt",
+            "poetry": "pyproject.toml",
+            "maven": "pom.xml",
+            "gradle": "build.gradle",
         }
-
-        for lang_info in languages:
-            if lang_info.language in rest_indicators:
-                indicators = rest_indicators[lang_info.language]
-                # This would need actual file content analysis
-                patterns[lang_info.language] = indicators
-
-        return patterns
-
-    def _find_graphql_patterns(self, languages: list[LanguageInfo]) -> dict[str, Any]:
-        """Find GraphQL patterns in the codebase."""
-        patterns = {}
         
-        # Look for GraphQL files and patterns
-        graphql_files = list(self.project_path.rglob('*.graphql'))
-        graphql_files.extend(list(self.project_path.rglob('*.gql')))
+        for manager, filename in package_files.items():
+            if (self.project_path / filename).exists():
+                managers[manager] = filename
         
-        if graphql_files:
-            patterns['schema_files'] = [str(f) for f in graphql_files]
+        return managers
 
-        return patterns
+    def _analyze_npm_dependencies(self) -> dict[str, Any]:
+        """Analyze npm dependencies."""
+        package_json_path = self.project_path / "package.json"
+        try:
+            content = self._get_file_content(package_json_path)
+            package_data = json.loads(content)
+            return {
+                "dependencies": package_data.get("dependencies", {}),
+                "devDependencies": package_data.get("devDependencies", {}),
+            }
+        except json.JSONDecodeError:
+            return {}
 
-    def _find_rpc_patterns(self, languages: list[LanguageInfo]) -> dict[str, Any]:
-        """Find RPC patterns in the codebase."""
-        patterns = {}
+    def _analyze_python_dependencies(self) -> dict[str, Any]:
+        """Analyze Python dependencies."""
+        dependencies = {}
         
-        # Look for gRPC and other RPC patterns
-        proto_files = list(self.project_path.rglob('*.proto'))
-        if proto_files:
-            patterns['grpc'] = [str(f) for f in proto_files]
-
-        return patterns
-
-    def _find_shared_data_formats(self, languages: list[LanguageInfo]) -> dict[str, Any]:
-        """Find shared data formats between languages."""
-        formats = {}
+        # Check pyproject.toml
+        pyproject_path = self.project_path / "pyproject.toml"
+        if pyproject_path.exists():
+            content = self._get_file_content(pyproject_path)
+            # Simple extraction - could be enhanced with proper TOML parsing
+            deps = re.findall(r'dependencies\s*=\s*\[(.*?)\]', content, re.DOTALL)
+            if deps:
+                dependencies["pyproject"] = deps[0]
         
-        # Look for common data format files
-        json_files = list(self.project_path.rglob('*.json'))
-        if json_files:
-            formats['json'] = len(json_files)
-
-        yaml_files = list(self.project_path.rglob('*.yaml'))
-        yaml_files.extend(list(self.project_path.rglob('*.yml')))
-        if yaml_files:
-            formats['yaml'] = len(yaml_files)
-
-        xml_files = list(self.project_path.rglob('*.xml'))
-        if xml_files:
-            formats['xml'] = len(xml_files)
-
-        return formats
-
-    def _find_database_interactions(self, languages: list[LanguageInfo]) -> dict[str, Any]:
-        """Find database interaction patterns."""
-        interactions = {}
+        # Check requirements.txt
+        req_path = self.project_path / "requirements.txt"
+        if req_path.exists():
+            content = self._get_file_content(req_path)
+            dependencies["requirements"] = content.splitlines()
         
-        # Look for database-related files
-        sql_files = list(self.project_path.rglob('*.sql'))
-        if sql_files:
-            interactions['sql_files'] = len(sql_files)
+        return dependencies
 
-        # Look for migration directories
-        migration_dirs = [
-            'migrations', 'migrate', 'db/migrate',
-            'alembic/versions', 'flyway/sql'
-        ]
+    def _analyze_maven_dependencies(self) -> dict[str, Any]:
+        """Analyze Maven dependencies."""
+        pom_path = self.project_path / "pom.xml"
+        content = self._get_file_content(pom_path)
         
-        for migration_dir in migration_dirs:
-            migration_path = self.project_path / migration_dir
-            if migration_path.exists() and migration_path.is_dir():
-                interactions['migrations'] = str(migration_path)
-                break
+        # Extract dependencies (simplified)
+        dependencies = re.findall(r'<artifactId>([^<]+)</artifactId>', content)
+        return {"artifacts": dependencies}
 
-        return interactions
+    def _has_microservices_structure(self) -> bool:
+        """Check if project has microservices structure."""
+        # Look for multiple service directories
+        service_indicators = ["service", "api", "microservice", "ms-"]
+        service_count = 0
+        
+        for part in self.project_path.rglob("*"):
+            if part.is_dir():
+                for indicator in service_indicators:
+                    if indicator in part.name.lower():
+                        service_count += 1
+                        break
+        
+        return service_count >= 2
+
+    def _has_api_gateway(self) -> bool:
+        """Check if project has API gateway patterns."""
+        gateway_indicators = ["gateway", "proxy", "router", "nginx"]
+        
+        for file_path in self.project_path.rglob("*"):
+            if file_path.is_file():
+                for indicator in gateway_indicators:
+                    if indicator in file_path.name.lower():
+                        return True
+        
+        return False
+
+    def _has_event_driven_architecture(self) -> bool:
+        """Check if project uses event-driven architecture."""
+        event_indicators = ["event", "message", "queue", "kafka", "rabbitmq", "redis"]
+        
+        # Check configuration files
+        for file_path in self.project_path.rglob("*"):
+            if file_path.is_file():
+                content = self._get_file_content(file_path).lower()
+                for indicator in event_indicators:
+                    if indicator in content:
+                        return True
+        
+        return False

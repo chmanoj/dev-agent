@@ -1,0 +1,151 @@
+{
+  "id": "python_fastapi_api",
+  "name": "Python FastAPI API Service",
+  "description": "A modern Python API service using FastAPI with best practices",
+  "version": "1.0.0",
+  "supported_languages": ["python"],
+  "supported_frameworks": ["fastapi", "pytest", "sqlalchemy"],
+  "project_types": ["api_service", "microservice"],
+  "team_sizes": ["solo", "small", "medium", "large"],
+  "root_directory": {
+    "path": ".",
+    "files": [
+      {
+        "path": "main.py",
+        "content": "\"\"\"{{ project_description }}.\"\"\"\n\nfrom fastapi import FastAPI\nfrom fastapi.middleware.cors import CORSMiddleware\n\napp = FastAPI(\n    title=\"{{ project_name }}\",\n    description=\"{{ project_description }}\",\n    version=\"0.1.0\"\n)\n\n# Configure CORS\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"],\n    allow_credentials=True,\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n\n\n@app.get(\"/\")\nasync def root():\n    \"\"\"Root endpoint.\"\"\"\n    return {\"message\": \"Welcome to {{ project_name }}\"}\n\n\n@app.get(\"/health\")\nasync def health_check():\n    \"\"\"Health check endpoint.\"\"\"\n    return {\"status\": \"healthy\"}\n\n\nif __name__ == \"__main__\":\n    import uvicorn\n    uvicorn.run(app, host=\"0.0.0.0\", port=8000)\n",
+        "is_executable": false,
+        "encoding": "utf-8"
+      }
+    ],
+    "subdirectories": [
+      {
+        "path": "app",
+        "files": [
+          {
+            "path": "__init__.py",
+            "content": "\"\"\"{{ project_name }} application package.\"\"\"\n",
+            "is_executable": false,
+            "encoding": "utf-8"
+          },
+          {
+            "path": "models.py",
+            "content": "\"\"\"Data models for {{ project_name }}.\"\"\"\n\nfrom pydantic import BaseModel\n\n\nclass HealthResponse(BaseModel):\n    \"\"\"Health check response model.\"\"\"\n    status: str\n",
+            "is_executable": false,
+            "encoding": "utf-8"
+          },
+          {
+            "path": "routers.py",
+            "content": "\"\"\"API routers for {{ project_name }}.\"\"\"\n\nfrom fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/api/v1/example\")\nasync def example_endpoint():\n    \"\"\"Example API endpoint.\"\"\"\n    return {\"message\": \"This is an example endpoint\"}\n",
+            "is_executable": false,
+            "encoding": "utf-8"
+          }
+        ],
+        "subdirectories": []
+      },
+      {
+        "path": "tests",
+        "files": [
+          {
+            "path": "__init__.py",
+            "content": "",
+            "is_executable": false,
+            "encoding": "utf-8"
+          },
+          {
+            "path": "test_main.py",
+            "content": "\"\"\"Tests for main application.\"\"\"\n\nimport pytest\nfrom fastapi.testclient import TestClient\n\nfrom main import app\n\nclient = TestClient(app)\n\n\ndef test_root():\n    \"\"\"Test root endpoint.\"\"\"\n    response = client.get(\"/\")\n    assert response.status_code == 200\n    assert \"message\" in response.json()\n\n\ndef test_health_check():\n    \"\"\"Test health check endpoint.\"\"\"\n    response = client.get(\"/health\")\n    assert response.status_code == 200\n    assert response.json() == {\"status\": \"healthy\"}\n",
+            "is_executable": false,
+            "encoding": "utf-8"
+          }
+        ],
+        "subdirectories": []
+      }
+    ]
+  },
+  "build_configs": {
+    "pyproject": {
+      "path": "pyproject.toml",
+      "content": "[build-system]\nrequires = [\"hatchling\"]\nbuild-backend = \"hatchling.build\"\n\n[project]\nname = \"{{ project_name }}\"\nversion = \"0.1.0\"\ndescription = \"{{ project_description }}\"\nauthors = [\n    {name = \"{{ author_name }}\", email = \"{{ author_email }}\"},\n]\nreadme = \"README.md\"\nrequires-python = \">={{ python_version }}\"\nclassifiers = [\n    \"Development Status :: 4 - Beta\",\n    \"Intended Audience :: Developers\",\n    \"License :: OSI Approved :: {{ license_type }} License\",\n    \"Programming Language :: Python :: {{ python_version }}\",\n    \"Framework :: FastAPI\",\n]\ndependencies = [\n    \"fastapi>=0.115.0\",\n    \"uvicorn[standard]>=0.32.0\",\n    \"pydantic>=2.10.0\",\n]\n\n[project.optional-dependencies]\ndev = [\n    \"pytest>=8.3.0\",\n    \"pytest-asyncio>=0.24.0\",\n    \"httpx>=0.28.0\",\n    \"ruff>=0.8.0\",\n    \"mypy>=1.13.0\",\n    \"pre-commit>=4.0.0\",\n]\n\n[project.urls]\nHomepage = \"{{ repository_url }}\"\nRepository = \"{{ repository_url }}\"\nIssues = \"{{ repository_url }}/issues\"\n\n[tool.ruff]\ntarget-version = \"py{{ python_version | replace('.', '') }}\"\nline-length = 88\n\n[tool.ruff.lint]\nselect = [\n    \"E\", \"W\", \"F\", \"I\", \"B\", \"C4\", \"UP\", \"RUF\", \"N\", \"S\", \"T20\", \"PT\", \"Q\", \"SIM\", \"TID\", \"TCH\", \"ARG\", \"PTH\", \"ERA\", \"PL\", \"PERF\", \"FURB\", \"LOG\"\n]\n\n[tool.mypy]\nstrict = true\npython_version = \"{{ python_version }}\"\nwarn_return_any = true\nwarn_unused_configs = true\n\n[tool.pytest.ini_options]\nminversion = \"6.0\"\naddopts = \"-ra -q --strict-markers\"\ntestpaths = [\"tests\"]\npython_files = [\"test_*.py\", \"*_test.py\"]\npython_classes = [\"Test*\"]\npython_functions = [\"test_*\"]\n",
+      "is_executable": false,
+      "encoding": "utf-8"
+    },
+    "requirements": {
+      "path": "requirements.txt",
+      "content": "# Production dependencies\nfastapi>=0.115.0\nuvicorn[standard]>=0.32.0\npydantic>=2.10.0\n\n# Development dependencies (install with: pip install -r requirements-dev.txt)\n",
+      "is_executable": false,
+      "encoding": "utf-8"
+    },
+    "requirements_dev": {
+      "path": "requirements-dev.txt",
+      "content": "# Development dependencies\n-r requirements.txt\npytest>=8.3.0\npytest-asyncio>=0.24.0\nhttpx>=0.28.0\nruff>=0.8.0\nmypy>=1.13.0\npre-commit>=4.0.0\n",
+      "is_executable": false,
+      "encoding": "utf-8"
+    }
+  },
+  "ci_cd_configs": {
+    "github_actions": {
+      "path": ".github/workflows/ci.yml",
+      "content": "name: CI\n\non:\n  push:\n    branches: [ main, develop ]\n  pull_request:\n    branches: [ main, develop ]\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        python-version: [\"3.10\", \"3.11\", \"3.12\"]\n\n    steps:\n    - uses: actions/checkout@v4\n    \n    - name: Set up Python ${{ matrix.python-version }}\n      uses: actions/setup-python@v5\n      with:\n        python-version: ${{ matrix.python-version }}\n    \n    - name: Install uv\n      uses: astral-sh/setup-uv@v3\n    \n    - name: Install dependencies\n      run: |\n        uv sync --dev\n    \n    - name: Lint with Ruff\n      run: |\n        uv run ruff check .\n        uv run ruff format --check .\n    \n    - name: Type check with mypy\n      run: |\n        uv run mypy .\n    \n    - name: Test with pytest\n      run: |\n        uv run pytest --cov=app --cov-report=xml\n    \n    - name: Upload coverage to Codecov\n      uses: codecov/codecov-action@v4\n      with:\n        file: ./coverage.xml\n        flags: unittests\n        name: codecov-umbrella\n",
+      "is_executable": false,
+      "encoding": "utf-8"
+    }
+  },
+  "linting_configs": {
+    "pre_commit": {
+      "path": ".pre-commit-config.yaml",
+      "content": "repos:\n  - repo: https://github.com/pre-commit/pre-commit-hooks\n    rev: v4.6.0\n    hooks:\n      - id: trailing-whitespace\n      - id: end-of-file-fixer\n      - id: check-yaml\n      - id: check-added-large-files\n      - id: check-merge-conflict\n  \n  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.8.0\n    hooks:\n      - id: ruff\n        args: [--fix, --exit-non-zero-on-fix]\n      - id: ruff-format\n  \n  - repo: https://github.com/pre-commit/mirrors-mypy\n    rev: v1.13.0\n    hooks:\n      - id: mypy\n        additional_dependencies: [types-all]\n",
+      "is_executable": false,
+      "encoding": "utf-8"
+    }
+  },
+  "testing_configs": {
+    "pytest": {
+      "path": "pytest.ini",
+      "content": "[tool:pytest]\nminversion = 6.0\naddopts = -ra -q --strict-markers --cov=app --cov-report=term-missing\ntestpaths = tests\npython_files = test_*.py *_test.py\npython_classes = Test*\npython_functions = test_*\nmarkers =\n    slow: marks tests as slow (deselect with '-m \"not slow\"')\n    integration: marks tests as integration tests\n",
+      "is_executable": false,
+      "encoding": "utf-8"
+    }
+  },
+  "readme_template": {
+    "path": "README.md",
+    "content": "# {{ project_name }}\n\n{{ project_description }}\n\n## Features\n\n- ⚡ **FastAPI**: Modern, fast web framework for building APIs\n- 🔒 **Type Safety**: Full type hints with Pydantic models\n- 🧪 **Testing**: Comprehensive test suite with pytest\n- 🔍 **Code Quality**: Linting with Ruff, type checking with mypy\n- 🚀 **CI/CD**: GitHub Actions workflow\n- 📦 **Modern Python**: Uses uv for dependency management\n\n## Quick Start\n\n### Prerequisites\n\n- Python {{ python_version }}+\n- [uv](https://docs.astral.sh/uv/) for dependency management\n\n### Installation\n\n1. **Clone the repository**\n   ```bash\n   git clone {{ repository_url }}\n   cd {{ project_name }}\n   ```\n\n2. **Install dependencies**\n   ```bash\n   uv sync --dev\n   ```\n\n3. **Set up pre-commit hooks**\n   ```bash\n   uv run pre-commit install\n   ```\n\n### Running the Application\n\n**Development server:**\n```bash\nuv run uvicorn main:app --reload\n```\n\n**Production server:**\n```bash\nuv run uvicorn main:app --host 0.0.0.0 --port 8000\n```\n\nThe API will be available at:\n- **Application**: http://localhost:8000\n- **Interactive API docs**: http://localhost:8000/docs\n- **Alternative API docs**: http://localhost:8000/redoc\n\n## Development\n\n### Code Quality\n\n**Format code:**\n```bash\nuv run ruff format\n```\n\n**Lint code:**\n```bash\nuv run ruff check\n```\n\n**Type checking:**\n```bash\nuv run mypy .\n```\n\n**Run all quality checks:**\n```bash\nuv run ruff format\nuv run ruff check\nuv run mypy .\n```\n\n### Testing\n\n**Run tests:**\n```bash\nuv run pytest\n```\n\n**Run tests with coverage:**\n```bash\nuv run pytest --cov=app --cov-report=html\n```\n\n**Run specific test:**\n```bash\nuv run pytest tests/test_main.py::test_root\n```\n\n### Project Structure\n\n```\n{{ project_name }}/\n├── app/                    # Application package\n│   ├── __init__.py\n│   ├── models.py          # Pydantic models\n│   └── routers.py         # API routes\n├── tests/                 # Test suite\n│   ├── __init__.py\n│   └── test_main.py\n├── main.py               # Application entry point\n├── pyproject.toml        # Project configuration\n├── requirements.txt      # Production dependencies\n├── requirements-dev.txt  # Development dependencies\n└── README.md            # This file\n```\n\n## API Documentation\n\nThe API provides the following endpoints:\n\n- `GET /` - Root endpoint\n- `GET /health` - Health check\n- `GET /docs` - Interactive API documentation\n- `GET /redoc` - Alternative API documentation\n\nFor detailed API documentation, visit `/docs` when running the application.\n\n## Deployment\n\n### Docker\n\n**Build image:**\n```bash\ndocker build -t {{ project_name }} .\n```\n\n**Run container:**\n```bash\ndocker run -p 8000:8000 {{ project_name }}\n```\n\n### Environment Variables\n\nThe application supports the following environment variables:\n\n- `PORT`: Server port (default: 8000)\n- `HOST`: Server host (default: 0.0.0.0)\n- `DEBUG`: Enable debug mode (default: False)\n\n## Contributing\n\n1. Fork the repository\n2. Create a feature branch (`git checkout -b feature/amazing-feature`)\n3. Make your changes\n4. Run tests and quality checks\n5. Commit your changes (`git commit -m 'Add amazing feature'`)\n6. Push to the branch (`git push origin feature/amazing-feature`)\n7. Open a Pull Request\n\n### Development Guidelines\n\n- Follow PEP 8 style guidelines\n- Write tests for new features\n- Update documentation as needed\n- Use type hints for all functions\n- Keep functions small and focused\n\n## License\n\nThis project is licensed under the {{ license_type }} License - see the [LICENSE](LICENSE) file for details.\n\n## Support\n\nIf you have any questions or need help, please:\n\n1. Check the [documentation]({{ repository_url }})\n2. Search [existing issues]({{ repository_url }}/issues)\n3. Create a [new issue]({{ repository_url }}/issues/new)\n\n## Changelog\n\nSee [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.\n",
+    "is_executable": false,
+    "encoding": "utf-8"
+  },
+  "contributing_template": {
+    "path": "CONTRIBUTING.md",
+    "content": "# Contributing to {{ project_name }}\n\nThank you for your interest in contributing to {{ project_name }}! This document provides guidelines and instructions for contributing.\n\n## Code of Conduct\n\nBy participating in this project, you agree to abide by our Code of Conduct. Please be respectful and constructive in all interactions.\n\n## Getting Started\n\n### Prerequisites\n\n- Python {{ python_version }}+\n- [uv](https://docs.astral.sh/uv/) for dependency management\n- Git\n\n### Development Setup\n\n1. **Fork and clone the repository**\n   ```bash\n   git clone {{ repository_url }}\n   cd {{ project_name }}\n   ```\n\n2. **Install dependencies**\n   ```bash\n   uv sync --dev\n   ```\n\n3. **Set up pre-commit hooks**\n   ```bash\n   uv run pre-commit install\n   ```\n\n4. **Run tests to ensure everything works**\n   ```bash\n   uv run pytest\n   ```\n\n## Development Workflow\n\n### Branch Strategy\n\nWe use Git Flow:\n- `main` - Production-ready code\n- `develop` - Integration branch for features\n- `feature/*` - Feature development branches\n- `hotfix/*` - Critical production fixes\n\n### Making Changes\n\n1. **Create a feature branch**\n   ```bash\n   git checkout develop\n   git pull origin develop\n   git checkout -b feature/your-feature-name\n   ```\n\n2. **Make your changes**\n   - Write code following our style guidelines\n   - Add tests for new functionality\n   - Update documentation as needed\n\n3. **Run quality checks**\n   ```bash\n   uv run ruff format\n   uv run ruff check\n   uv run mypy .\n   uv run pytest\n   ```\n\n4. **Commit your changes**\n   ```bash\n   git add .\n   git commit -m \"feat: add amazing new feature\"\n   ```\n\n5. **Push and create a Pull Request**\n   ```bash\n   git push origin feature/your-feature-name\n   ```\n\n## Code Style Guidelines\n\n### Python Code Style\n\n- Follow PEP 8 style guidelines\n- Use Ruff for formatting and linting\n- Maximum line length: 88 characters\n- Use type hints for all functions and methods\n- Write docstrings for all public functions and classes\n\n### Commit Message Format\n\nUse [Conventional Commits](https://www.conventionalcommits.org/) format:\n\n```\n<type>[optional scope]: <description>\n\n[optional body]\n\n[optional footer(s)]\n```\n\n**Types:**\n- `feat`: New feature\n- `fix`: Bug fix\n- `docs`: Documentation changes\n- `style`: Code style changes\n- `refactor`: Code refactoring\n- `test`: Adding or updating tests\n- `chore`: Maintenance tasks\n\n**Examples:**\n```\nfeat: add user authentication endpoint\nfix: resolve memory leak in data processing\ndocs: update API documentation\ntest: add integration tests for user service\n```\n\n## Testing Guidelines\n\n### Writing Tests\n\n- Write tests for all new functionality\n- Use pytest for testing framework\n- Follow the AAA pattern (Arrange, Act, Assert)\n- Use descriptive test names\n- Mock external dependencies\n\n### Test Structure\n\n```python\ndef test_function_name_should_expected_behavior():\n    \"\"\"Test description.\"\"\"\n    # Arrange\n    input_data = \"test input\"\n    expected_result = \"expected output\"\n    \n    # Act\n    result = function_under_test(input_data)\n    \n    # Assert\n    assert result == expected_result\n```\n\n### Running Tests\n\n```bash\n# Run all tests\nuv run pytest\n\n# Run with coverage\nuv run pytest --cov=app --cov-report=html\n\n# Run specific test file\nuv run pytest tests/test_main.py\n\n# Run tests matching pattern\nuv run pytest -k \"test_user\"\n```\n\n## Documentation\n\n### Code Documentation\n\n- Use Google-style docstrings\n- Document all public functions and classes\n- Include parameter types and return types\n- Provide usage examples for complex functions\n\n```python\ndef process_data(data: List[str], options: Dict[str, Any]) -> ProcessedData:\n    \"\"\"Process input data according to specified options.\n    \n    Args:\n        data: List of strings to process\n        options: Processing options dictionary\n        \n    Returns:\n        ProcessedData object containing results\n        \n    Raises:\n        ValueError: If data is empty or invalid\n        \n    Example:\n        >>> data = [\"item1\", \"item2\"]\n        >>> options = {\"format\": \"json\"}\n        >>> result = process_data(data, options)\n    \"\"\"\n```\n\n### API Documentation\n\n- Use FastAPI's automatic documentation features\n- Add descriptions to all endpoints\n- Document request/response models\n- Provide example requests and responses\n\n## Pull Request Process\n\n### Before Submitting\n\n- [ ] Code follows style guidelines\n- [ ] Tests pass locally\n- [ ] New functionality has tests\n- [ ] Documentation is updated\n- [ ] Commit messages follow convention\n- [ ] Branch is up to date with develop\n\n### Pull Request Template\n\n```markdown\n## Description\nBrief description of changes\n\n## Type of Change\n- [ ] Bug fix (non-breaking change which fixes an issue)\n- [ ] New feature (non-breaking change which adds functionality)\n- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)\n- [ ] Documentation update\n\n## Testing\n- [ ] Tests pass locally\n- [ ] Added tests for new functionality\n- [ ] Updated documentation\n\n## Checklist\n- [ ] Code follows project style guidelines\n- [ ] Self-review completed\n- [ ] Documentation updated\n- [ ] No breaking changes (or breaking changes documented)\n```\n\n### Review Process\n\n1. **Automated Checks**: CI pipeline runs automatically\n2. **Code Review**: At least one maintainer reviews the code\n3. **Testing**: Reviewers may test the changes locally\n4. **Approval**: Changes are approved and merged\n\n## Issue Reporting\n\n### Bug Reports\n\nWhen reporting bugs, please include:\n\n- **Description**: Clear description of the issue\n- **Steps to Reproduce**: Detailed steps to reproduce the bug\n- **Expected Behavior**: What you expected to happen\n- **Actual Behavior**: What actually happened\n- **Environment**: Python version, OS, etc.\n- **Additional Context**: Screenshots, logs, etc.\n\n### Feature Requests\n\nWhen requesting features, please include:\n\n- **Description**: Clear description of the feature\n- **Use Case**: Why this feature would be useful\n- **Proposed Solution**: How you think it should work\n- **Alternatives**: Alternative solutions you've considered\n\n## Release Process\n\n### Versioning\n\nWe use [Semantic Versioning](https://semver.org/):\n- `MAJOR.MINOR.PATCH`\n- Major: Breaking changes\n- Minor: New features (backward compatible)\n- Patch: Bug fixes (backward compatible)\n\n### Release Checklist\n\n- [ ] Update version in `pyproject.toml`\n- [ ] Update `CHANGELOG.md`\n- [ ] Create release branch\n- [ ] Run full test suite\n- [ ] Create release tag\n- [ ] Deploy to production\n- [ ] Update documentation\n\n## Getting Help\n\nIf you need help or have questions:\n\n1. **Documentation**: Check the project documentation\n2. **Issues**: Search existing issues for similar problems\n3. **Discussions**: Use GitHub Discussions for questions\n4. **Contact**: Reach out to maintainers\n\n## Recognition\n\nContributors are recognized in:\n- `CONTRIBUTORS.md` file\n- Release notes\n- Project documentation\n\nThank you for contributing to {{ project_name }}!\n",
+    "is_executable": false,
+    "encoding": "utf-8"
+  },
+  "changelog_template": {
+    "path": "CHANGELOG.md",
+    "content": "# Changelog\n\nAll notable changes to {{ project_name }} will be documented in this file.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n## [Unreleased]\n\n### Added\n- Initial project setup\n- FastAPI application with basic endpoints\n- Health check endpoint\n- Comprehensive test suite\n- CI/CD pipeline with GitHub Actions\n- Code quality tools (Ruff, mypy)\n- Pre-commit hooks\n- Docker support\n- API documentation\n\n### Changed\n\n### Deprecated\n\n### Removed\n\n### Fixed\n\n### Security\n\n## [0.1.0] - {{ \"now\" | strftime(\"%Y-%m-%d\") }}\n\n### Added\n- Initial release\n- Basic FastAPI application structure\n- Health check and root endpoints\n- Test suite with pytest\n- Development tooling setup\n- Documentation and contributing guidelines\n\n---\n\n## Template for New Releases\n\n```markdown\n## [X.Y.Z] - YYYY-MM-DD\n\n### Added\n- New features\n\n### Changed\n- Changes in existing functionality\n\n### Deprecated\n- Soon-to-be removed features\n\n### Removed\n- Removed features\n\n### Fixed\n- Bug fixes\n\n### Security\n- Security improvements\n```\n\n## Release Types\n\n- **Major (X.0.0)**: Breaking changes\n- **Minor (0.X.0)**: New features, backward compatible\n- **Patch (0.0.X)**: Bug fixes, backward compatible\n",
+    "is_executable": false,
+    "encoding": "utf-8"
+  },
+  "prerequisites": [
+    "python>=3.10",
+    "uv"
+  ],
+  "dependencies": {
+    "python": [
+      "fastapi>=0.115.0",
+      "uvicorn[standard]>=0.32.0",
+      "pydantic>=2.10.0"
+    ]
+  },
+  "customization_points": [
+    "database_integration",
+    "authentication_method",
+    "cors_configuration",
+    "logging_setup",
+    "monitoring_integration"
+  ],
+  "template_variables": {
+    "default_port": 8000,
+    "cors_origins": ["*"],
+    "include_database": false,
+    "include_auth": false
+  }
+}
