@@ -29,7 +29,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 pip install uv
 ```
 
-### Setup
+### Basic Installation
 
 1. Clone the repository:
 ```bash
@@ -46,6 +46,25 @@ uv sync --dev
 ```bash
 uv run dev-agent --help
 ```
+
+### Installation Options
+
+**Default (Azure OpenAI only):**
+```bash
+pip install dev-agent
+```
+
+**With local embeddings support:**
+```bash
+pip install 'dev-agent[local-embeddings]'
+```
+
+**Development installation:**
+```bash
+pip install -e '.[dev]'
+```
+
+> **Note:** The default installation requires Azure OpenAI configuration. For offline usage or when Azure OpenAI isn't available, install with `[local-embeddings]` to enable sentence-transformers fallback.
 
 ## Usage
 

@@ -10,10 +10,14 @@
 - **CLI Framework**: Typer >=0.15.0 with Rich >=13.9.0 for enhanced terminal output
 - **Data Models**: Pydantic >=2.10.0 for data validation and settings (v2 required)
 - **Vector Database**: FAISS-CPU >=1.9.0 for embeddings storage
-- **Code Analysis**: Tree-sitter for parsing, sentence-transformers >=3.3.0 for embeddings
+- **AI Service**: OpenAI >=1.50.0 for Azure OpenAI integration (required)
+- **Code Analysis**: Tree-sitter for parsing
 - **Web Framework**: FastAPI >=0.115.0 with uvicorn >=0.32.0 (for future API features)
 - **HTTP Client**: httpx >=0.28.0 for async requests
 - **Numerical**: NumPy >=2.0.0 (latest major version)
+
+## Optional Dependencies
+- **Local Embeddings**: sentence-transformers >=3.3.0 (install with `pip install 'dev-agent[local-embeddings]'`)
 
 ## Development Tools (Modern Standards)
 - **Testing**: pytest >=8.3.0 with coverage, mock, and asyncio support

@@ -12,7 +12,10 @@ uvicorn[standard]>=0.32.0
 httpx>=0.28.0
 numpy>=2.0.0
 faiss-cpu>=1.9.0
-sentence-transformers>=3.3.0
+openai>=1.50.0
+
+# Optional: Local embeddings support
+# sentence-transformers>=3.3.0  # Install with: pip install dev-agent[local-embeddings]
 
 # Development dependencies (install with: pip install -e ".[dev]")
 # pytest>=8.3.0

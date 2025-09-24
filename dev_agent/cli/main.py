@@ -96,6 +96,10 @@ def init(
         # Load project-specific configuration if available
         config_manager.load_project_config(project_path)
 
+        # Check configuration and provide helpful messages
+        config = config_manager.get_config()
+        _check_configuration_and_warn(config)
+
         # Initialize CLI and session manager
         session_manager = SessionManager(project_path)
 
@@ -166,7 +170,8 @@ def resume(
             raise typer.Exit(1)
 
         # Load project-specific configuration
-        config_manager.load_project_config(project_path)
+        config = config_manager.load_project_config(project_path)
+        _check_configuration_and_warn(config)
 
         # Initialize session manager and try to resume
         session_manager = SessionManager(project_path)
@@ -371,6 +376,24 @@ def _convert_config_value(value: str):
 
     # Return as string
     return value
+
+
+def _check_configuration_and_warn(config) -> None:
+    """Check configuration and provide helpful warnings."""
+    # Check if Azure OpenAI is configured
+    if not config.azure_openai.api_key or not config.azure_openai.endpoint:
+        console.print("[yellow]⚠ Azure OpenAI not configured[/yellow]")
+        console.print("  Configure with: [cyan]dev-agent azure configure[/cyan]")
+        
+        # Check if local embeddings are available
+        try:
+            import sentence_transformers
+            console.print("  [green]✓ Local embeddings available as fallback[/green]")
+        except ImportError:
+            console.print("  [red]✗ Local embeddings not available[/red]")
+            console.print("  Install with: [cyan]pip install 'dev-agent[local-embeddings]'[/cyan]")
+            console.print("  [dim]Note: Without Azure OpenAI or local embeddings, functionality will be limited[/dim]")
+        console.print()
 
 
 @scaffold_app.command("list")

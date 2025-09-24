@@ -31,7 +31,7 @@ class IndexingConfig:
     max_files_per_batch: int = 100
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     vector_db_type: str = "faiss"
-    use_azure_embeddings: bool = False
+    use_azure_embeddings: bool = True  # Default to Azure OpenAI
 
 
 @dataclass

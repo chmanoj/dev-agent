@@ -12,8 +12,7 @@ import numpy as np
 
 from dev_agent.config.config_manager import DevAgentConfig
 from dev_agent.errors.exceptions import IndexingError
-from dev_agent.models.indexing import CodeChunk
-from dev_agent.models.results import CodeMatch
+from dev_agent.models.indexing import CodeChunk, CodeMatch
 from dev_agent.services.azure_openai_service import AzureOpenAIService
 
 logger = logging.getLogger(__name__)
@@ -58,7 +57,8 @@ class AzureVectorDatabase:
             except ImportError:
                 raise IndexingError(
                     "sentence-transformers not available and Azure OpenAI not configured. "
-                    "Please install sentence-transformers or configure Azure OpenAI."
+                    "Please install with: pip install 'dev-agent[local-embeddings]' "
+                    "or configure Azure OpenAI."
                 )
 
         # FAISS index
