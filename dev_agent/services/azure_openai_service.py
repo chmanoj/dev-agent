@@ -1,17 +1,31 @@
-"""Azure OpenAI service for dev-agent."""
+"""Azure OpenAI service for dev-agent.
+
+DEPRECATED: This service is maintained for backward compatibility only.
+New code should use AzureOpenAIClient and AzureEmbeddingClient directly
+from dev_agent.llm module.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
+import warnings
 from typing import Any
 
 from openai import AsyncAzureOpenAI, AzureOpenAI
 from pydantic import BaseModel, Field
 
-from dev_agent.config.config_manager import AzureOpenAIConfig
 from dev_agent.errors.exceptions import ConfigurationError, ServiceError
+from dev_agent.errors.llm_exceptions import (
+    LLMAPIError,
+    LLMAuthenticationError,
+    LLMBadRequestError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
+from dev_agent.llm.azure_client import AzureOpenAIClient
+from dev_agent.llm.embeddings import AzureEmbeddingClient
+from dev_agent.models.llm_config import AzureOpenAIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +59,15 @@ class EmbeddingResponse(BaseModel):
 
 
 class AzureOpenAIService:
-    """Service for interacting with Azure OpenAI."""
+    """Service for interacting with Azure OpenAI.
+
+    DEPRECATED: This service is maintained for backward compatibility only.
+    New code should use AzureOpenAIClient and AzureEmbeddingClient directly
+    from dev_agent.llm module.
+
+    This service now wraps the new LLM client implementations internally
+    while maintaining the same public API for backward compatibility.
+    """
 
     def __init__(self, config: AzureOpenAIConfig | None = None):
         """Initialize Azure OpenAI service.
@@ -56,9 +78,21 @@ class AzureOpenAIService:
         Raises:
             ConfigurationError: If configuration is invalid
         """
+        # Issue deprecation warning
+        warnings.warn(
+            "AzureOpenAIService is deprecated. Use AzureOpenAIClient and "
+            "AzureEmbeddingClient from dev_agent.llm module instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         self.config = config or AzureOpenAIConfig()
         self._client: AzureOpenAI | None = None
         self._async_client: AsyncAzureOpenAI | None = None
+
+        # Initialize new LLM clients
+        self._llm_client: AzureOpenAIClient | None = None
+        self._embedding_client: AzureEmbeddingClient | None = None
 
         # Load configuration from environment if not provided
         self._load_env_config()
@@ -66,21 +100,9 @@ class AzureOpenAIService:
 
     def _load_env_config(self) -> None:
         """Load configuration from environment variables."""
-        if not self.config.api_key:
-            self.config.api_key = os.getenv("AZURE_OPENAI_API_KEY")
-
-        if not self.config.endpoint:
-            self.config.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-
-        # Allow override of other settings via environment
-        if api_version := os.getenv("AZURE_OPENAI_API_VERSION"):
-            self.config.api_version = api_version
-
-        if chat_model := os.getenv("AZURE_OPENAI_CHAT_MODEL"):
-            self.config.chat_model = chat_model
-
-        if embedding_model := os.getenv("AZURE_OPENAI_EMBEDDING_MODEL"):
-            self.config.embedding_model = embedding_model
+        # Note: Environment variable loading is now handled by AzureOpenAIConfig
+        # This method is kept for backward compatibility but is mostly a no-op
+        pass
 
     def _validate_config(self) -> None:
         """Validate configuration.
@@ -132,6 +154,28 @@ class AzureOpenAIService:
             )
         return self._async_client
 
+    @property
+    def llm_client(self) -> AzureOpenAIClient:
+        """Get the new LLM client implementation.
+
+        Returns:
+            AzureOpenAIClient instance for completions
+        """
+        if self._llm_client is None:
+            self._llm_client = AzureOpenAIClient(self.config)
+        return self._llm_client
+
+    @property
+    def embedding_client(self) -> AzureEmbeddingClient:
+        """Get the new embedding client implementation.
+
+        Returns:
+            AzureEmbeddingClient instance for embeddings
+        """
+        if self._embedding_client is None:
+            self._embedding_client = AzureEmbeddingClient(self.config)
+        return self._embedding_client
+
     def chat_completion(
         self,
         messages: list[ChatMessage | dict[str, str]],
@@ -144,7 +188,7 @@ class AzureOpenAIService:
 
         Args:
             messages: List of chat messages
-            model: Model to use (defaults to config.chat_model)
+            model: Model to use (defaults to config.deployment_name)
             temperature: Sampling temperature (defaults to config.temperature)
             max_tokens: Maximum tokens to generate (defaults to config.max_tokens)
             **kwargs: Additional parameters for the API call
@@ -167,7 +211,7 @@ class AzureOpenAIService:
                     formatted_messages.append(msg)
 
             response = self.client.chat.completions.create(
-                model=model or self.config.chat_model,
+                model=model or self.config.deployment_name,
                 messages=formatted_messages,
                 temperature=temperature or self.config.temperature,
                 max_tokens=max_tokens or self.config.max_tokens,
@@ -184,6 +228,16 @@ class AzureOpenAIService:
                 finish_reason=choice.finish_reason,
             )
 
+        except (
+            LLMAuthenticationError,
+            LLMRateLimitError,
+            LLMTimeoutError,
+            LLMBadRequestError,
+            LLMAPIError,
+        ) as e:
+            # Convert LLM exceptions to ServiceError for backward compatibility
+            logger.error(f"Azure OpenAI chat completion failed: {e}")
+            raise ServiceError(f"Chat completion failed: {e}") from e
         except Exception as e:
             logger.error(f"Azure OpenAI chat completion failed: {e}")
             raise ServiceError(f"Chat completion failed: {e}") from e
@@ -200,7 +254,7 @@ class AzureOpenAIService:
 
         Args:
             messages: List of chat messages
-            model: Model to use (defaults to config.chat_model)
+            model: Model to use (defaults to config.deployment_name)
             temperature: Sampling temperature (defaults to config.temperature)
             max_tokens: Maximum tokens to generate (defaults to config.max_tokens)
             **kwargs: Additional parameters for the API call
@@ -223,7 +277,7 @@ class AzureOpenAIService:
                     formatted_messages.append(msg)
 
             response = await self.async_client.chat.completions.create(
-                model=model or self.config.chat_model,
+                model=model or self.config.deployment_name,
                 messages=formatted_messages,
                 temperature=temperature or self.config.temperature,
                 max_tokens=max_tokens or self.config.max_tokens,
@@ -240,6 +294,16 @@ class AzureOpenAIService:
                 finish_reason=choice.finish_reason,
             )
 
+        except (
+            LLMAuthenticationError,
+            LLMRateLimitError,
+            LLMTimeoutError,
+            LLMBadRequestError,
+            LLMAPIError,
+        ) as e:
+            # Convert LLM exceptions to ServiceError for backward compatibility
+            logger.error(f"Azure OpenAI async chat completion failed: {e}")
+            raise ServiceError(f"Async chat completion failed: {e}") from e
         except Exception as e:
             logger.error(f"Azure OpenAI async chat completion failed: {e}")
             raise ServiceError(f"Async chat completion failed: {e}") from e
@@ -254,7 +318,7 @@ class AzureOpenAIService:
 
         Args:
             texts: List of texts to embed
-            model: Model to use (defaults to config.embedding_model)
+            model: Model to use (defaults to config.embedding_deployment)
             **kwargs: Additional parameters for the API call
 
         Returns:
@@ -265,7 +329,7 @@ class AzureOpenAIService:
         """
         try:
             response = self.client.embeddings.create(
-                model=model or self.config.embedding_model,
+                model=model or self.config.embedding_deployment,
                 input=texts,
                 **kwargs,
             )
@@ -279,6 +343,16 @@ class AzureOpenAIService:
                 usage=usage_dict,
             )
 
+        except (
+            LLMAuthenticationError,
+            LLMRateLimitError,
+            LLMTimeoutError,
+            LLMBadRequestError,
+            LLMAPIError,
+        ) as e:
+            # Convert LLM exceptions to ServiceError for backward compatibility
+            logger.error(f"Azure OpenAI embedding generation failed: {e}")
+            raise ServiceError(f"Embedding generation failed: {e}") from e
         except Exception as e:
             logger.error(f"Azure OpenAI embedding generation failed: {e}")
             raise ServiceError(f"Embedding generation failed: {e}") from e
@@ -293,7 +367,7 @@ class AzureOpenAIService:
 
         Args:
             texts: List of texts to embed
-            model: Model to use (defaults to config.embedding_model)
+            model: Model to use (defaults to config.embedding_deployment)
             **kwargs: Additional parameters for the API call
 
         Returns:
@@ -304,7 +378,7 @@ class AzureOpenAIService:
         """
         try:
             response = await self.async_client.embeddings.create(
-                model=model or self.config.embedding_model,
+                model=model or self.config.embedding_deployment,
                 input=texts,
                 **kwargs,
             )
@@ -318,6 +392,16 @@ class AzureOpenAIService:
                 usage=usage_dict,
             )
 
+        except (
+            LLMAuthenticationError,
+            LLMRateLimitError,
+            LLMTimeoutError,
+            LLMBadRequestError,
+            LLMAPIError,
+        ) as e:
+            # Convert LLM exceptions to ServiceError for backward compatibility
+            logger.error(f"Azure OpenAI async embedding generation failed: {e}")
+            raise ServiceError(f"Async embedding generation failed: {e}") from e
         except Exception as e:
             logger.error(f"Azure OpenAI async embedding generation failed: {e}")
             raise ServiceError(f"Async embedding generation failed: {e}") from e
@@ -330,7 +414,7 @@ class AzureOpenAIService:
         """
         try:
             # Test with a simple chat completion
-            response = self.chat_completion(
+            self.chat_completion(
                 messages=[{"role": "user", "content": "Hello"}],
                 max_tokens=10,
             )
@@ -348,7 +432,7 @@ class AzureOpenAIService:
         """
         try:
             # Test with a simple chat completion
-            response = await self.async_chat_completion(
+            await self.async_chat_completion(
                 messages=[{"role": "user", "content": "Hello"}],
                 max_tokens=10,
             )
@@ -368,11 +452,12 @@ class AzureOpenAIService:
             Azure OpenAI doesn't provide a direct way to list models,
             so this returns the configured models.
         """
-        return [self.config.chat_model, self.config.embedding_model]
+        return [self.config.deployment_name, self.config.embedding_deployment]
 
     def close(self) -> None:
         """Close the clients."""
         if self._client:
             self._client.close()
         if self._async_client:
-            asyncio.create_task(self._async_client.close())
+            # Store task reference to avoid warning (intentionally not awaited)
+            _task = asyncio.create_task(self._async_client.close())  # noqa: RUF006

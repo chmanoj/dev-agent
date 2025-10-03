@@ -1,16 +1,23 @@
-"""Tests for Azure OpenAI service."""
+"""Tests for Azure OpenAI service.
+
+This test suite verifies backward compatibility of the deprecated
+AzureOpenAIService class, which now wraps the new LLM client implementations.
+"""
+
+import warnings
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from pydantic import ValidationError
 
-from dev_agent.config.config_manager import AzureOpenAIConfig
+from dev_agent.errors.exceptions import ServiceError
+from dev_agent.models.llm_config import AzureOpenAIConfig
 from dev_agent.services.azure_openai_service import (
     AzureOpenAIService,
     ChatMessage,
     ChatResponse,
     EmbeddingResponse,
 )
-from dev_agent.errors.exceptions import ConfigurationError, ServiceError
 
 
 class TestAzureOpenAIService:
@@ -22,12 +29,21 @@ class TestAzureOpenAIService:
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
             api_version="2024-02-01",
-            chat_model="gpt-4",
-            embedding_model="text-embedding-ada-002",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
 
-        service = AzureOpenAIService(config)
-        assert service.config.api_key == "test-key"
+        # Should issue deprecation warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            service = AzureOpenAIService(config)
+
+            # Verify deprecation warning was issued
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+        assert service.config.api_key.get_secret_value() == "test-key"
         assert service.config.endpoint == "https://test.openai.azure.com/"
 
     def test_init_with_env_variables(self):
@@ -37,43 +53,55 @@ class TestAzureOpenAIService:
             {
                 "AZURE_OPENAI_API_KEY": "env-key",
                 "AZURE_OPENAI_ENDPOINT": "https://env.openai.azure.com/",
-                "AZURE_OPENAI_CHAT_MODEL": "gpt-35-turbo",
+                "AZURE_OPENAI_DEPLOYMENT_NAME": "gpt-35-turbo",
+                "AZURE_OPENAI_EMBEDDING_DEPLOYMENT": "text-embedding-ada-002",
             },
         ):
-            config = AzureOpenAIConfig()
-            service = AzureOpenAIService(config)
+            config = AzureOpenAIConfig(
+                api_key="env-key",
+                endpoint="https://env.openai.azure.com/",
+                deployment_name="gpt-35-turbo",
+                embedding_deployment="text-embedding-ada-002",
+            )
 
-            assert service.config.api_key == "env-key"
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                service = AzureOpenAIService(config)
+
+            assert service.config.api_key.get_secret_value() == "env-key"
             assert service.config.endpoint == "https://env.openai.azure.com/"
-            assert service.config.chat_model == "gpt-35-turbo"
+            assert service.config.deployment_name == "gpt-35-turbo"
 
     def test_init_missing_api_key(self):
         """Test initialization fails with missing API key."""
-        config = AzureOpenAIConfig(
-            endpoint="https://test.openai.azure.com/",
-        )
-
-        with pytest.raises(ConfigurationError, match="API key is required"):
-            AzureOpenAIService(config)
+        # Pydantic will raise ValidationError for missing required fields
+        with pytest.raises(ValidationError):
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com/",
+                deployment_name="gpt-4",
+                embedding_deployment="text-embedding-ada-002",
+            )
 
     def test_init_missing_endpoint(self):
         """Test initialization fails with missing endpoint."""
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-        )
-
-        with pytest.raises(ConfigurationError, match="endpoint is required"):
-            AzureOpenAIService(config)
+        # Pydantic will raise ValidationError for missing required fields
+        with pytest.raises(ValidationError):
+            AzureOpenAIConfig(
+                api_key="test-key",
+                deployment_name="gpt-4",
+                embedding_deployment="text-embedding-ada-002",
+            )
 
     def test_init_invalid_endpoint_format(self):
         """Test initialization fails with invalid endpoint format."""
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-            endpoint="invalid-endpoint",
-        )
-
-        with pytest.raises(ConfigurationError, match="Invalid.*endpoint format"):
-            AzureOpenAIService(config)
+        # Pydantic will raise ValidationError for invalid endpoint format
+        with pytest.raises(ValidationError):
+            AzureOpenAIConfig(
+                api_key="test-key",
+                endpoint="invalid-endpoint",
+                deployment_name="gpt-4",
+                embedding_deployment="text-embedding-ada-002",
+            )
 
     @patch("dev_agent.services.azure_openai_service.AzureOpenAI")
     def test_chat_completion_success(self, mock_azure_openai):
@@ -95,8 +123,13 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         messages = [ChatMessage(role="user", content="Hello")]
         response = service.chat_completion(messages)
@@ -127,11 +160,16 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         messages = [{"role": "user", "content": "Hello"}]
-        response = service.chat_completion(messages)
+        service.chat_completion(messages)
 
         # Verify the call was made with correct format
         mock_client.chat.completions.create.assert_called_once()
@@ -150,8 +188,13 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         messages = [ChatMessage(role="user", content="Hello")]
 
@@ -179,8 +222,13 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         texts = ["Hello", "World"]
         response = service.generate_embeddings(texts)
@@ -204,8 +252,13 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         texts = ["Hello", "World"]
 
@@ -232,8 +285,13 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         result = service.test_connection()
         assert result is True
@@ -250,8 +308,13 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         result = service.test_connection()
         assert result is False
@@ -261,14 +324,65 @@ class TestAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
-            chat_model="gpt-4",
-            embedding_model="text-embedding-ada-002",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         models = service.get_available_models()
         assert "gpt-4" in models
         assert "text-embedding-ada-002" in models
+
+    def test_deprecation_warning(self):
+        """Test that deprecation warning is issued on initialization."""
+        config = AzureOpenAIConfig(
+            api_key="test-key",
+            endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
+        )
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            AzureOpenAIService(config)
+
+            # Verify deprecation warning
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "AzureOpenAIService is deprecated" in str(w[0].message)
+            assert "AzureOpenAIClient" in str(w[0].message)
+            assert "AzureEmbeddingClient" in str(w[0].message)
+
+    def test_new_client_properties(self):
+        """Test that new LLM client properties are accessible."""
+        config = AzureOpenAIConfig(
+            api_key="test-key",
+            endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
+
+        # Test that new client properties exist and are accessible
+        assert hasattr(service, "llm_client")
+        assert hasattr(service, "embedding_client")
+
+        # Access the properties (they should be created lazily)
+        llm_client = service.llm_client
+        embedding_client = service.embedding_client
+
+        assert llm_client is not None
+        assert embedding_client is not None
+
+        # Verify they're the same instance on subsequent access (cached)
+        assert service.llm_client is llm_client
+        assert service.embedding_client is embedding_client
 
 
 class TestAsyncAzureOpenAIService:
@@ -295,8 +409,13 @@ class TestAsyncAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         messages = [{"role": "user", "content": "Hello async"}]
         response = await service.async_chat_completion(messages)
@@ -325,8 +444,13 @@ class TestAsyncAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         texts = ["Async embedding test"]
         response = await service.async_generate_embeddings(texts)
@@ -357,8 +481,13 @@ class TestAsyncAzureOpenAIService:
         config = AzureOpenAIConfig(
             api_key="test-key",
             endpoint="https://test.openai.azure.com/",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
         )
-        service = AzureOpenAIService(config)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            service = AzureOpenAIService(config)
 
         result = await service.async_test_connection()
         assert result is True

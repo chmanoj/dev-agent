@@ -9,6 +9,8 @@ from .documents import (
 )
 from .enums import (
     DocumentType,
+    LLMOperationType,
+    LLMProvider,
     PhaseStatus,
     PhaseType,
     Priority,
@@ -16,6 +18,11 @@ from .enums import (
     TaskStatus,
 )
 from .project_state import IndexMetadata, ProjectState, SessionData
+
+# LLM-related models
+from .llm_config import AzureOpenAIConfig
+from .llm_responses import CompletionResponse, EmbeddingResponse
+from .cost_tracking import CostReport, TokenUsage
 
 # Optional imports that may have external dependencies
 try:
@@ -113,6 +120,8 @@ __all__ = [
     "Priority",
     "DocumentType",
     "SpecificationSource",
+    "LLMProvider",
+    "LLMOperationType",
     # Project State
     "ProjectState",
     "IndexMetadata",
@@ -123,6 +132,12 @@ __all__ = [
     "TaskList",
     "Requirement",
     "Task",
+    # LLM Models
+    "AzureOpenAIConfig",
+    "CompletionResponse",
+    "EmbeddingResponse",
+    "TokenUsage",
+    "CostReport",
 ]
 
 # Add optional exports if available

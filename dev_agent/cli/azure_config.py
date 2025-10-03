@@ -9,8 +9,9 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from dev_agent.config.config_manager import AzureOpenAIConfig, ConfigManager
+from dev_agent.config.config_manager import ConfigManager
 from dev_agent.errors.exceptions import ConfigurationError
+from dev_agent.models.llm_config import AzureOpenAIConfig
 from dev_agent.services.azure_openai_service import AzureOpenAIService
 
 console = Console()

@@ -32,9 +32,13 @@ def process_items(items: List[str]) -> Dict[str, int]:
 
 ### Dependency Versions (CURRENT MINIMUMS)
 - Python: >=3.10 (NO older versions)
+- **Azure OpenAI**: openai >=1.50.0 (REQUIRED)
+- **Token Management**: tiktoken >=0.6.0 (REQUIRED)
+- **Retry Logic**: tenacity >=8.2.0 (REQUIRED)
 - Typer: >=0.15.0
 - Rich: >=13.9.0  
 - Pydantic: >=2.10.0 (v2 REQUIRED)
+- FAISS-CPU: >=1.9.0
 - FastAPI: >=0.115.0
 - NumPy: >=2.0.0 (latest major)
 - Ruff: >=0.8.0
@@ -60,13 +64,16 @@ make ci       # run all CI checks locally
 ```
 
 ### Architecture Patterns (REQUIRED)
-- **Use Pydantic models** for all data structures
-- **Use Enums** for constants and state values
+- **Use Pydantic models** for all data structures (including LLM configs)
+- **Use Enums** for constants and state values (PhaseType, LLMProvider, etc.)
 - **Use pathlib** instead of os.path
 - **Use f-strings** for string formatting
 - **Use type annotations** on ALL functions
-- **Use async/await** for I/O operations
+- **Use async/await** for ALL I/O operations (especially Azure OpenAI API calls)
 - **Use context managers** for resource management
+- **Use SecretStr** for API keys and sensitive data (Pydantic)
+- **Use tenacity** for retry logic with exponential backoff
+- **Use tiktoken** for accurate token counting before API calls
 
 ### Error Handling (STRICT)
 ```python
@@ -86,11 +93,14 @@ except:
 ```
 
 ### Security (NON-NEGOTIABLE)
-- **NO hardcoded secrets** - use environment variables
-- **Validate ALL external inputs**
-- **Use secure defaults**
-- **Follow OWASP guidelines**
-- **Pass Ruff security checks (S rules)**
+- **NO hardcoded secrets** - use environment variables for Azure OpenAI credentials
+- **NEVER log API keys** - use Pydantic SecretStr for sensitive data
+- **Validate ALL external inputs** - especially user prompts and file paths
+- **Use secure defaults** - minimum required permissions
+- **Follow OWASP guidelines** - especially for API key management
+- **Pass Ruff security checks (S rules)** - mandatory for all code
+- **Azure OpenAI only** - no data sent to third-party services
+- **Audit logging** - log API calls without sensitive data
 
 ### Testing (MANDATORY)
 - **90%+ coverage required**

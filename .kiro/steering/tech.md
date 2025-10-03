@@ -7,17 +7,33 @@
 - **Lock File**: `uv.lock` for reproducible builds
 
 ## Core Dependencies (Latest Versions Required)
+
+### AI & LLM Integration (REQUIRED)
+- **Azure OpenAI SDK**: openai >=1.50.0 for GPT-4 and embeddings (REQUIRED)
+- **Token Management**: tiktoken >=0.6.0 for accurate token counting
+- **Retry Logic**: tenacity >=8.2.0 for resilient API calls with exponential backoff
+- **Vector Database**: FAISS-CPU >=1.9.0 for embeddings storage and similarity search
+
+### CLI & Interface
 - **CLI Framework**: Typer >=0.15.0 with Rich >=13.9.0 for enhanced terminal output
 - **Data Models**: Pydantic >=2.10.0 for data validation and settings (v2 required)
-- **Vector Database**: FAISS-CPU >=1.9.0 for embeddings storage
-- **AI Service**: OpenAI >=1.50.0 for Azure OpenAI integration (required)
-- **Code Analysis**: Tree-sitter for parsing
-- **Web Framework**: FastAPI >=0.115.0 with uvicorn >=0.32.0 (for future API features)
 - **HTTP Client**: httpx >=0.28.0 for async requests
-- **Numerical**: NumPy >=2.0.0 (latest major version)
 
-## Optional Dependencies
-- **Local Embeddings**: sentence-transformers >=3.3.0 (install with `pip install 'dev-agent[local-embeddings]'`)
+### Code Analysis
+- **Tree-sitter**: tree-sitter >=0.21.0 for AST parsing
+- **Tree-sitter Languages**: tree-sitter-python >=0.21.0 for Python parsing
+
+### Web Framework (Future)
+- **FastAPI**: FastAPI >=0.115.0 with uvicorn >=0.32.0 (for future API features)
+
+### Utilities
+- **Numerical**: NumPy >=2.0.0 (latest major version)
+- **Path Handling**: pathlib (standard library, Python 3.10+)
+
+## Removed Dependencies (NO LONGER USED)
+- ❌ **sentence-transformers** - Replaced by Azure OpenAI embeddings API
+- ❌ **torch/transformers** - No local model inference needed
+- ❌ **Any local LLM libraries** - All AI operations via Azure OpenAI API
 
 ## Development Tools (Modern Standards)
 - **Testing**: pytest >=8.3.0 with coverage, mock, and asyncio support
@@ -117,8 +133,48 @@ python3 scripts/test_cli_manual.py
 - **Pre-commit**: MUST pass all hooks before commit
 - **CI/CD**: MUST test on Python 3.10, 3.11, 3.12, 3.13
 
+## Azure OpenAI Configuration (MANDATORY)
+
+### Environment Variables (REQUIRED)
+All Azure OpenAI credentials MUST be configured via environment variables:
+
+```bash
+# Azure OpenAI Configuration (REQUIRED)
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-api-key-here
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
+# Model Deployments (REQUIRED)
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4           # For code/spec generation
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002  # For embeddings
+
+# Optional: Model Configuration
+AZURE_OPENAI_MAX_TOKENS=4000                 # Default max tokens for generation
+AZURE_OPENAI_TEMPERATURE=0.7                 # Default temperature
+AZURE_OPENAI_MAX_RETRIES=3                   # Retry attempts for failed API calls
+AZURE_OPENAI_TIMEOUT=60                      # Request timeout in seconds
+```
+
+### Security Requirements (ENFORCED)
+- **NEVER commit API keys** to version control
+- **Use .env files** for local development (add to .gitignore)
+- **Use Azure Key Vault** or similar for production
+- **Rotate keys regularly** following security best practices
+- **Use managed identities** when running on Azure infrastructure
+
+### Supported Models
+- **Generation**: GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo
+- **Embeddings**: text-embedding-ada-002 (1536 dimensions)
+- **Future**: GPT-4o-mini for cost optimization
+
 ## Dependency Management Rules
 - **Primary**: Always use `uv sync --dev` for development
 - **Updates**: Use `uv lock --upgrade` to update dependencies
 - **Production**: Use `uv sync --no-dev` for production installs
 - **Legacy**: Keep requirements.txt in sync for pip compatibility only
+
+## Future Enhancements (Backlog)
+- **AWS Bedrock Integration**: Support for Claude 3 models via AWS Bedrock
+- **Multi-Provider Support**: Fallback between Azure OpenAI and Bedrock
+- **Cost Optimization**: Automatic model selection based on task complexity
+- **Local Model Support**: Optional local embeddings for air-gapped environments

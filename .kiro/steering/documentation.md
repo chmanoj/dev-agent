@@ -13,23 +13,30 @@
 docs/
 ├── index.md              # Project overview and quick start
 ├── installation.md       # Installation and setup guide
+├── configuration/       # Configuration guides (NEW)
+│   ├── azure-openai.md  # Azure OpenAI setup (REQUIRED)
+│   ├── environment.md   # Environment variables
+│   └── security.md      # Security best practices
 ├── usage/               # User guides
 │   ├── cli.md           # CLI usage and commands
 │   ├── workflow.md      # Four-phase workflow guide
-│   └── configuration.md # Configuration options
+│   └── cost-management.md # Token usage and cost tracking (NEW)
 ├── api/                 # API documentation (auto-generated)
 │   ├── cli.md           # CLI module docs
+│   ├── llm.md           # LLM integration docs (NEW)
 │   ├── models.md        # Data models
 │   ├── workflow.md      # Workflow components
 │   └── analysis.md      # Analysis components
 ├── development/         # Developer documentation
 │   ├── contributing.md  # Contribution guidelines
 │   ├── architecture.md  # System architecture
+│   ├── llm-integration.md # LLM integration guide (NEW)
 │   ├── testing.md       # Testing guidelines
 │   └── deployment.md    # Deployment instructions
 └── examples/            # Usage examples and tutorials
     ├── basic-usage.md   # Basic workflow examples
-    └── advanced.md      # Advanced usage patterns
+    ├── advanced.md      # Advanced usage patterns
+    └── azure-setup.md   # Azure OpenAI setup examples (NEW)
 ```
 
 ### Docstring Standards (MANDATORY)
@@ -86,6 +93,10 @@ def process_codebase(project_path: str, config: Config) -> AnalysisResult:
 - **Include complete examples** with imports and setup
 - **Show expected output** where relevant
 - **Use realistic data** not foo/bar placeholders
+- **NEVER include real API keys** - use placeholder values like `your-api-key-here`
+- **Show environment variable setup** for Azure OpenAI configuration
+- **Include cost estimates** for example operations (token usage)
+- **Mock Azure OpenAI calls** in example tests
 
 ### API Documentation (AUTO-GENERATED)
 - **All public APIs** automatically documented via mkdocstrings

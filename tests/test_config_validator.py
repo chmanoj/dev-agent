@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from dev_agent.config.config_manager import DevAgentConfig, IndexingConfig, LoggingConfig, CLIConfig, AzureOpenAIConfig
+from dev_agent.config.config_manager import DevAgentConfig, IndexingConfig, LoggingConfig, CLIConfig
 from dev_agent.config.config_validator import ConfigValidator, ConfigValidationRule, ConsistencyCheck
 from dev_agent.config.customization_manager import (
     ArchitecturalPreferences,
@@ -38,7 +38,7 @@ class TestConfigValidator:
                 max_file_size_mb=10,
             ),
             cli=CLIConfig(),
-            azure_openai=AzureOpenAIConfig(),
+            azure_openai=None,
         )
 
     @pytest.fixture
@@ -80,7 +80,7 @@ class TestConfigValidator:
                 max_file_size_mb=0,  # Invalid zero value
             ),
             cli=CLIConfig(),
-            azure_openai=AzureOpenAIConfig(),
+            azure_openai=None,
         )
         
         result = validator.validate_config(invalid_config)
@@ -103,7 +103,7 @@ class TestConfigValidator:
                 max_file_size_mb=10,
             ),
             cli=CLIConfig(),
-            azure_openai=AzureOpenAIConfig(),
+            azure_openai=None,
         )
         
         result = validator.validate_config(config_with_warnings)

@@ -74,11 +74,15 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 - Use `raise ... from ...` for exception chaining
 
 ### Security Standards
-- NO hardcoded secrets or credentials
-- Use environment variables for configuration
-- Validate all external inputs
+- NO hardcoded secrets or credentials (especially Azure OpenAI API keys)
+- Use environment variables for ALL configuration (Azure endpoint, API keys, deployments)
+- Use Pydantic SecretStr for API keys (never logged or serialized)
+- Validate all external inputs (user prompts, file paths, API responses)
 - Use secure defaults for all configurations
 - Follow OWASP guidelines for web components
+- Implement audit logging for all Azure OpenAI API calls
+- Never include API keys in error messages or logs
+- Rotate Azure OpenAI keys regularly
 
 ### Performance Standards
 - Use pathlib instead of os.path
@@ -108,13 +112,20 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 - Parametrize tests for multiple scenarios
 - Use descriptive test names
 - Group related tests in classes
-- Mock external dependencies
+- Mock external dependencies (ESPECIALLY Azure OpenAI API calls)
+- Use pytest-asyncio for async test functions
+- Mock Azure OpenAI responses with realistic data
+- Test retry logic and error handling
+- Test token counting accuracy
 
 ### Test Quality
-- Tests MUST be deterministic
-- No test dependencies on external services
+- Tests MUST be deterministic (mock all Azure OpenAI API calls)
+- No test dependencies on external services (never call real Azure OpenAI in tests)
 - Fast unit tests (<1s each)
-- Separate slow integration tests
+- Separate slow integration tests (optional Azure OpenAI integration tests with real API)
+- Use environment variable flags for integration tests (AZURE_OPENAI_INTEGRATION_TESTS=true)
+- Mock Azure OpenAI streaming responses
+- Test cost tracking and token counting
 
 ## Documentation Standards
 

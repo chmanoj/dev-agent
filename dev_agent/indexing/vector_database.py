@@ -1,11 +1,22 @@
-"""Vector database implementation for code embeddings using FAISS."""
+"""Vector database implementation for code embeddings using FAISS.
+
+This module provides a high-performance vector database for storing and
+searching code embeddings using FAISS. It integrates with Azure OpenAI
+embeddings via the IEmbeddingClient interface.
+"""
+
+from __future__ import annotations
 
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ..errors.llm_exceptions import LLMAPIError, LLMError
 from ..models.indexing import CodeChunk, CodeMatch
+
+if TYPE_CHECKING:
+    from ..llm.base import IEmbeddingClient
 
 try:
     import faiss
@@ -25,23 +36,15 @@ except ImportError:
         def IndexFlatL2(dim):
             return MockIndex()
 
+        @staticmethod
+        def write_index(index, filename):
+            pass
+
+        @staticmethod
+        def read_index(filename):
+            return MockIndex()
+
     import numpy as np
-
-try:
-    from sentence_transformers import SentenceTransformer
-
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
-
-    # Mock for testing without sentence-transformers
-    class SentenceTransformer:
-        def __init__(self, model_name):
-            self.model_name = model_name
-
-        def encode(self, texts, **kwargs):
-            # Return mock embeddings
-            return np.random.rand(len(texts), 384).astype(np.float32)
 
 
 class MockIndex:
@@ -79,56 +82,64 @@ class MockIndex:
 
 
 class VectorDatabase:
-    """High-performance vector database for code embeddings using FAISS."""
+    """High-performance vector database for code embeddings using FAISS.
+    
+    This class provides efficient storage and similarity search for code
+    embeddings using FAISS. It integrates with Azure OpenAI embeddings
+    via the IEmbeddingClient interface.
+    
+    Example:
+        ```python
+        from dev_agent.llm.embeddings import AzureEmbeddingClient
+        
+        embedding_client = AzureEmbeddingClient(config)
+        db = VectorDatabase(
+            index_path=".dev_agent/vector_index",
+            embedding_client=embedding_client
+        )
+        
+        # Store code chunks
+        chunks = [...]
+        await db.store_embeddings(chunks)
+        
+        # Search for similar code
+        results = await db.query_similar("authentication function", k=5)
+        ```
+    """
 
     def __init__(
         self,
         index_path: str,
-        embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+        embedding_client: IEmbeddingClient,
     ):
         """Initialize the vector database.
 
         Args:
             index_path: Path to store the vector index
-            embedding_model: Name of the sentence transformer model to use
+            embedding_client: Client for generating embeddings via Azure OpenAI
+            
+        Raises:
+            ValueError: If embedding_client is None
         """
+        if embedding_client is None:
+            raise ValueError("embedding_client is required")
+            
         self.index_path = Path(index_path)
         self.index_path.mkdir(parents=True, exist_ok=True)
 
-        self.embedding_model_name = embedding_model
-        self.embedding_model = None
+        self.embedding_client = embedding_client
+        self.embedding_dimension = embedding_client.dimension
         self.index = None
         self.metadata_store = {}
         self.chunk_id_to_index = {}
         self.index_to_chunk_id = {}
-        self.embedding_dimension = 384  # Default for MiniLM
 
         # File paths
         self.index_file = self.index_path / "faiss_index.bin"
         self.metadata_file = self.index_path / "metadata.json"
         self.chunk_mapping_file = self.index_path / "chunk_mapping.json"
 
-        self._initialize_model()
         self._load_or_create_index()
-
-    def _initialize_model(self) -> None:
-        """Initialize the sentence transformer model."""
-        if SENTENCE_TRANSFORMERS_AVAILABLE:
-            try:
-                self.embedding_model = SentenceTransformer(self.embedding_model_name)
-                # Get actual embedding dimension from model
-                test_embedding = self.embedding_model.encode(["test"])
-                self.embedding_dimension = test_embedding.shape[1]
-            except Exception as e:
-                print(f"Warning: Could not load sentence transformer model: {e}")
-                self.embedding_model = SentenceTransformer(
-                    self.embedding_model_name
-                )  # Use mock
-        else:
-            print("Warning: sentence-transformers not available, using mock embeddings")
-            self.embedding_model = SentenceTransformer(
-                self.embedding_model_name
-            )  # Use mock
 
     def _load_or_create_index(self) -> None:
         """Load existing index or create a new one."""
@@ -199,48 +210,57 @@ class VectorDatabase:
         except Exception as e:
             print(f"Warning: Could not save metadata: {e}")
 
-    def generate_embedding(self, text: str) -> np.ndarray:
-        """Generate embedding for a text string.
+    async def generate_embedding(self, text: str) -> np.ndarray:
+        """Generate embedding for a text string using Azure OpenAI.
 
         Args:
             text: Text to embed
 
         Returns:
             Normalized embedding vector
+            
+        Raises:
+            LLMError: If embedding generation fails
         """
-        if not self.embedding_model:
-            # Return random embedding for testing
-            return np.random.rand(self.embedding_dimension).astype(np.float32)
-
         try:
-            embedding = self.embedding_model.encode([text], convert_to_numpy=True)[0]
+            embedding_list = await self.embedding_client.embed_text(text)
+            embedding = np.array(embedding_list, dtype=np.float32)
+            
             # Normalize for cosine similarity
             norm = np.linalg.norm(embedding)
             if norm > 0:
                 embedding = embedding / norm
-            return embedding.astype(np.float32)
+            return embedding
+        except LLMError:
+            # Re-raise LLM errors as-is
+            raise
         except Exception as e:
-            print(f"Warning: Could not generate embedding: {e}")
-            return np.random.rand(self.embedding_dimension).astype(np.float32)
+            raise LLMAPIError(
+                f"Failed to generate embedding: {e}",
+                "Check Azure OpenAI service status and configuration"
+            ) from e
 
-    def store_embedding(
+    async def store_embedding(
         self, chunk: CodeChunk, embedding: np.ndarray | None = None
     ) -> str:
         """Store a code chunk and its embedding in the database.
 
         Args:
             chunk: Code chunk to store
-            embedding: Pre-computed embedding (optional)
+            embedding: Pre-computed embedding (optional, will be generated if not provided)
 
         Returns:
             Unique chunk ID
+            
+        Raises:
+            LLMError: If embedding generation fails
         """
         # Generate unique chunk ID
         chunk_id = self._generate_chunk_id(chunk)
 
         # Generate embedding if not provided
         if embedding is None:
-            embedding = self.generate_embedding(chunk.content)
+            embedding = await self.generate_embedding(chunk.content)
 
         # Add to FAISS index
         current_index = self.index.ntotal
@@ -263,59 +283,64 @@ class VectorDatabase:
 
         return chunk_id
 
-    def store_embeddings(self, chunks: list[CodeChunk]) -> list[str]:
+    async def store_embeddings(self, chunks: list[CodeChunk]) -> list[str]:
         """Store multiple code chunks and their embeddings.
+        
+        This method uses batch embedding generation for efficiency.
 
         Args:
             chunks: List of code chunks to store
 
         Returns:
             List of chunk IDs
+            
+        Raises:
+            LLMError: If embedding generation fails
         """
         chunk_ids = []
 
         # Generate embeddings in batch for efficiency
         texts = [chunk.content for chunk in chunks]
-        embeddings = self._generate_embeddings_batch(texts)
+        embeddings = await self._generate_embeddings_batch(texts)
 
         # Store each chunk with its embedding
         for chunk, embedding in zip(chunks, embeddings, strict=False):
-            chunk_id = self.store_embedding(chunk, embedding)
+            chunk_id = await self.store_embedding(chunk, embedding)
             chunk_ids.append(chunk_id)
 
         return chunk_ids
 
-    def _generate_embeddings_batch(self, texts: list[str]) -> list[np.ndarray]:
-        """Generate embeddings for multiple texts in batch.
+    async def _generate_embeddings_batch(self, texts: list[str]) -> list[np.ndarray]:
+        """Generate embeddings for multiple texts in batch using Azure OpenAI.
 
         Args:
             texts: List of texts to embed
 
         Returns:
             List of normalized embedding vectors
+            
+        Raises:
+            LLMError: If embedding generation fails
         """
-        if not self.embedding_model:
-            # Return random embeddings for testing
-            return [
-                np.random.rand(self.embedding_dimension).astype(np.float32)
-                for _ in texts
-            ]
-
         try:
-            embeddings = self.embedding_model.encode(texts, convert_to_numpy=True)
+            embeddings_list = await self.embedding_client.embed_batch(texts)
+            embeddings = np.array(embeddings_list, dtype=np.float32)
+            
             # Normalize for cosine similarity
             norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
             norms[norms == 0] = 1  # Avoid division by zero
             embeddings = embeddings / norms
-            return [emb.astype(np.float32) for emb in embeddings]
+            return [emb for emb in embeddings]
+        except LLMError:
+            # Re-raise LLM errors as-is
+            raise
         except Exception as e:
-            print(f"Warning: Could not generate batch embeddings: {e}")
-            return [
-                np.random.rand(self.embedding_dimension).astype(np.float32)
-                for _ in texts
-            ]
+            raise LLMAPIError(
+                f"Failed to generate batch embeddings: {e}",
+                "Check Azure OpenAI service status and configuration"
+            ) from e
 
-    def query_similar(
+    async def query_similar(
         self, query_text: str, k: int = 10, min_similarity: float = 0.0
     ) -> list[CodeMatch]:
         """Find similar code chunks using vector similarity search.
@@ -327,12 +352,15 @@ class VectorDatabase:
 
         Returns:
             List of CodeMatch objects sorted by similarity
+            
+        Raises:
+            LLMError: If embedding generation fails
         """
         if self.index.ntotal == 0:
             return []
 
         # Generate query embedding
-        query_embedding = self.generate_embedding(query_text)
+        query_embedding = await self.generate_embedding(query_text)
 
         # Search in FAISS index
         similarities, indices = self.index.search(
@@ -370,7 +398,7 @@ class VectorDatabase:
 
         return matches
 
-    def query_similar_by_chunk(
+    async def query_similar_by_chunk(
         self, chunk: CodeChunk, k: int = 10, min_similarity: float = 0.0
     ) -> list[CodeMatch]:
         """Find similar code chunks using an existing chunk as query.
@@ -382,8 +410,11 @@ class VectorDatabase:
 
         Returns:
             List of CodeMatch objects sorted by similarity
+            
+        Raises:
+            LLMError: If embedding generation fails
         """
-        return self.query_similar(chunk.content, k, min_similarity)
+        return await self.query_similar(chunk.content, k, min_similarity)
 
     def get_chunk_by_id(self, chunk_id: str) -> dict[str, Any] | None:
         """Get chunk metadata by ID.
@@ -396,7 +427,7 @@ class VectorDatabase:
         """
         return self.metadata_store.get(chunk_id)
 
-    def update_embedding(self, chunk_id: str, new_chunk: CodeChunk) -> bool:
+    async def update_embedding(self, chunk_id: str, new_chunk: CodeChunk) -> bool:
         """Update an existing embedding with new content.
 
         Args:
@@ -405,13 +436,16 @@ class VectorDatabase:
 
         Returns:
             True if update successful, False otherwise
+            
+        Raises:
+            LLMError: If embedding generation fails
         """
         if chunk_id not in self.chunk_id_to_index:
             return False
 
         # For FAISS, we can't update in place, so we'd need to rebuild
         # For now, we'll just add the new chunk and mark the old one as outdated
-        new_chunk_id = self.store_embedding(new_chunk)
+        new_chunk_id = await self.store_embedding(new_chunk)
 
         # Mark old chunk as outdated in metadata
         if chunk_id in self.metadata_store:
@@ -460,7 +494,7 @@ class VectorDatabase:
                 if meta.get("outdated", False)
             ),
             "embedding_dimension": self.embedding_dimension,
-            "model_name": self.embedding_model_name,
+            "model_name": "Azure OpenAI (text-embedding-ada-002)",
             "index_size_mb": self._get_index_size_mb(),
         }
 
@@ -495,13 +529,20 @@ class VectorDatabase:
         content_hash = hashlib.md5(chunk.content.encode()).hexdigest()[:8]
         return f"{chunk.file_path}:{chunk.start_line}-{chunk.end_line}:{content_hash}"
 
-    def rebuild_index(self) -> None:
-        """Rebuild the index from scratch, removing deleted/outdated entries."""
+    async def rebuild_index(self) -> None:
+        """Rebuild the index from scratch, removing deleted/outdated entries.
+        
+        Note: This method requires re-generating embeddings for all active chunks
+        since embeddings are not stored separately. This will make API calls to
+        Azure OpenAI.
+        
+        Raises:
+            LLMError: If embedding generation fails during rebuild
+        """
         print("Rebuilding vector database index...")
 
         # Collect active chunks
         active_chunks = []
-        active_embeddings = []
 
         for chunk_id, metadata in self.metadata_store.items():
             if metadata.get("deleted", False) or metadata.get("outdated", False):
@@ -530,6 +571,6 @@ class VectorDatabase:
         for chunk_id, chunk in active_chunks:
             # Note: This will regenerate embeddings since we don't store them
             # In a production system, you'd want to store embeddings separately
-            self.store_embedding(chunk)
+            await self.store_embedding(chunk)
 
         print(f"Index rebuild complete. New size: {self.index.ntotal} embeddings")

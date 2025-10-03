@@ -174,3 +174,29 @@ class CICDPlatform(Enum):
     AZURE_DEVOPS = "azure_devops"
     CIRCLECI = "circleci"
     TRAVIS_CI = "travis_ci"
+
+
+class LLMProvider(Enum):
+    """Supported LLM providers.
+    
+    This enum defines the AI providers that can be used for code generation,
+    specification creation, and embedding generation.
+    """
+
+    AZURE_OPENAI = "azure_openai"
+    # Future providers can be added here:
+    # AWS_BEDROCK = "aws_bedrock"
+    # OPENAI = "openai"
+
+
+class LLMOperationType(Enum):
+    """Types of LLM operations.
+    
+    This enum categorizes different types of operations performed with LLM
+    providers, which is useful for tracking usage, costs, and performance.
+    """
+
+    COMPLETION = "completion"
+    STREAMING = "streaming"
+    EMBEDDING = "embedding"
+    TOKEN_COUNT = "token_count"
