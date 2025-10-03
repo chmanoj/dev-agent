@@ -47,6 +47,21 @@ class TestWorkflowManager:
         """Create a WorkflowManager instance."""
         return WorkflowManager(mock_cli_interface)
 
+    @pytest.fixture
+    def mock_cost_tracker(self):
+        """Create a mock CostTracker instance."""
+        from dev_agent.llm.cost_tracker import CostTracker
+        from dev_agent.models.enums import PhaseType
+        
+        tracker = Mock(spec=CostTracker)
+        tracker.current_phase = PhaseType.INDEXING
+        tracker.get_current_cost.return_value = 0.0
+        tracker.check_budget_threshold.return_value = False
+        tracker.set_phase = Mock()
+        tracker.get_report = Mock()
+        tracker.get_phase_report = Mock()
+        return tracker
+
     def test_start_new_project(
         self, workflow_manager, temp_project_dir, mock_cli_interface
     ):
@@ -244,6 +259,242 @@ class TestWorkflowManager:
                 workflow_manager.current_project_state.current_phase
                 == PhaseType.IMPLEMENTATION
             )
+
+    def test_cost_tracker_initialization(self, mock_cli_interface):
+        """Test that cost tracker is initialized with workflow manager."""
+        # Create workflow manager with budget settings
+        workflow_manager = WorkflowManager(
+            mock_cli_interface,
+            budget_threshold=10.0,
+            budget_limit=50.0,
+        )
+
+        # Verify cost tracker was created
+        assert workflow_manager.cost_tracker is not None
+        assert workflow_manager.cost_tracker.budget_threshold == 10.0
+        assert workflow_manager.cost_tracker.budget_limit == 50.0
+
+    def test_cost_tracker_phase_tracking(
+        self, workflow_manager, temp_project_dir, mock_cli_interface
+    ):
+        """Test that cost tracker tracks phase changes."""
+        # Setup
+        workflow_manager.start_new_project(temp_project_dir)
+
+        # Mock successful phase execution but let _execute_phase run to set phase
+        successful_result = Mock()
+        successful_result.status = PhaseStatus.COMPLETED
+        successful_result.message = "Phase completed"
+
+        # We need to mock the phase manager execution, not _execute_phase
+        # so that set_phase gets called
+        with patch.object(
+            workflow_manager.phase_manager, 
+            "execute_specification_phase", 
+            return_value=successful_result
+        ):
+            # Execute phase transition
+            workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
+
+            # Verify cost tracker phase was updated
+            assert workflow_manager.cost_tracker.current_phase == PhaseType.SPECIFICATION
+
+    def test_phase_cost_summary_display(
+        self, workflow_manager, temp_project_dir, mock_cli_interface
+    ):
+        """Test that phase cost summary is displayed after phase completion."""
+        from dev_agent.models.cost_tracking import CostReport
+        
+        # Setup
+        workflow_manager.start_new_project(temp_project_dir)
+
+        # Mock cost tracker report
+        mock_report = CostReport.create_empty()
+        mock_report.operations_count = 5
+        mock_report.total_prompt_tokens = 1000
+        mock_report.total_completion_tokens = 2000
+        mock_report.total_embedding_tokens = 500
+        mock_report.total_cost = 0.15
+
+        with patch.object(
+            workflow_manager.cost_tracker, "get_phase_report", return_value=mock_report
+        ):
+            # Call display method
+            workflow_manager._display_phase_cost_summary(PhaseType.SPECIFICATION, 0.15)
+
+            # Verify cost information was displayed
+            assert mock_cli_interface.display_message.call_count > 0
+            
+            # Check that cost-related messages were displayed
+            call_args_list = [
+                str(call[0][0]) for call in mock_cli_interface.display_message.call_args_list
+            ]
+            assert any("Cost Summary" in arg for arg in call_args_list)
+
+    def test_budget_warning_display(
+        self, workflow_manager, temp_project_dir, mock_cli_interface
+    ):
+        """Test that budget warnings are displayed when threshold is exceeded."""
+        # Setup with budget threshold
+        workflow_manager = WorkflowManager(
+            mock_cli_interface,
+            budget_threshold=10.0,
+            budget_limit=50.0,
+        )
+        workflow_manager.start_new_project(temp_project_dir)
+
+        # Mock cost tracker to indicate threshold exceeded
+        with patch.object(
+            workflow_manager.cost_tracker, "get_current_cost", return_value=15.0
+        ):
+            # Call display warning method
+            workflow_manager._display_budget_warning()
+
+            # Verify warning was displayed
+            call_args_list = [
+                str(call[0][0]) for call in mock_cli_interface.display_message.call_args_list
+            ]
+            assert any("Budget threshold exceeded" in arg for arg in call_args_list)
+
+    def test_budget_limit_warning_display(
+        self, workflow_manager, temp_project_dir, mock_cli_interface
+    ):
+        """Test that budget limit warnings are displayed when limit is exceeded."""
+        # Setup with budget limit
+        workflow_manager = WorkflowManager(
+            mock_cli_interface,
+            budget_threshold=10.0,
+            budget_limit=50.0,
+        )
+        workflow_manager.start_new_project(temp_project_dir)
+
+        # Mock cost tracker to indicate limit exceeded
+        with patch.object(
+            workflow_manager.cost_tracker, "get_current_cost", return_value=55.0
+        ):
+            # Call display warning method
+            workflow_manager._display_budget_warning()
+
+            # Verify limit warning was displayed
+            call_args_list = [
+                str(call[0][0]) for call in mock_cli_interface.display_message.call_args_list
+            ]
+            assert any("BUDGET LIMIT EXCEEDED" in arg for arg in call_args_list)
+
+    def test_complete_cost_report_display(
+        self, workflow_manager, temp_project_dir, mock_cli_interface
+    ):
+        """Test that complete cost report is displayed."""
+        from dev_agent.models.cost_tracking import CostReport
+        
+        # Setup
+        workflow_manager.start_new_project(temp_project_dir)
+
+        # Mock cost tracker report with phase and operation breakdowns
+        mock_report = CostReport.create_empty()
+        mock_report.operations_count = 10
+        mock_report.total_prompt_tokens = 5000
+        mock_report.total_completion_tokens = 10000
+        mock_report.total_embedding_tokens = 2000
+        mock_report.total_cost = 0.75
+        mock_report.by_phase = {
+            PhaseType.INDEXING: 0.10,
+            PhaseType.SPECIFICATION: 0.35,
+            PhaseType.DESIGN: 0.30,
+        }
+        mock_report.by_operation = {
+            "completion": 15000,
+            "embedding": 2000,
+        }
+
+        with patch.object(
+            workflow_manager.cost_tracker, "get_report", return_value=mock_report
+        ):
+            # Call display method
+            workflow_manager._display_complete_cost_report()
+
+            # Verify comprehensive report was displayed
+            call_args_list = [
+                str(call[0][0]) for call in mock_cli_interface.display_message.call_args_list
+            ]
+            assert any("Complete Workflow Cost Report" in arg for arg in call_args_list)
+            assert any("Total Cost" in arg for arg in call_args_list)
+
+    def test_token_usage_saved_to_state(
+        self, workflow_manager, temp_project_dir, mock_cli_interface
+    ):
+        """Test that token usage is saved to project state."""
+        from dev_agent.models.cost_tracking import CostReport
+        
+        # Setup
+        workflow_manager.start_new_project(temp_project_dir)
+
+        # Mock cost tracker report
+        mock_report = CostReport.create_empty()
+        mock_report.operations_count = 5
+        mock_report.total_prompt_tokens = 1000
+        mock_report.total_completion_tokens = 2000
+        mock_report.total_embedding_tokens = 500
+        mock_report.total_cost = 0.15
+        mock_report.by_phase = {PhaseType.INDEXING: 0.15}
+        mock_report.by_operation = {"completion": 3000, "embedding": 500}
+
+        with patch.object(
+            workflow_manager.cost_tracker, "get_report", return_value=mock_report
+        ):
+            # Save token usage
+            workflow_manager._save_token_usage_to_state()
+
+            # Verify token usage was saved to session data
+            assert workflow_manager.current_project_state.session_data.token_usage is not None
+            token_usage = workflow_manager.current_project_state.session_data.token_usage
+            assert token_usage["total_prompt_tokens"] == 1000
+            assert token_usage["total_completion_tokens"] == 2000
+            assert token_usage["total_embedding_tokens"] == 500
+            assert token_usage["total_cost"] == 0.15
+            assert token_usage["operations_count"] == 5
+
+    def test_generate_cost_report(
+        self, workflow_manager, temp_project_dir, mock_cli_interface
+    ):
+        """Test generating a cost report dictionary."""
+        from dev_agent.models.cost_tracking import CostReport
+        
+        # Setup
+        workflow_manager.start_new_project(temp_project_dir)
+
+        # Mock cost tracker report
+        mock_report = CostReport.create_empty()
+        mock_report.operations_count = 5
+        mock_report.total_prompt_tokens = 1000
+        mock_report.total_completion_tokens = 2000
+        mock_report.total_embedding_tokens = 500
+        mock_report.total_cost = 0.15
+        mock_report.by_phase = {PhaseType.INDEXING: 0.15}
+        mock_report.by_operation = {"completion": 3000, "embedding": 500}
+
+        with patch.object(
+            workflow_manager.cost_tracker, "get_report", return_value=mock_report
+        ):
+            # Generate report
+            report_dict = workflow_manager.generate_cost_report()
+
+            # Verify report structure
+            assert report_dict["total_operations"] == 5
+            assert report_dict["total_prompt_tokens"] == 1000
+            assert report_dict["total_completion_tokens"] == 2000
+            assert report_dict["total_embedding_tokens"] == 500
+            assert report_dict["total_tokens"] == 3500
+            assert report_dict["total_cost"] == 0.15
+            assert "by_phase" in report_dict
+            assert "by_operation" in report_dict
+
+    def test_get_cost_tracker(self, workflow_manager):
+        """Test getting the cost tracker instance."""
+        # Verify cost tracker can be retrieved
+        cost_tracker = workflow_manager.get_cost_tracker()
+        assert cost_tracker is not None
+        assert cost_tracker == workflow_manager.cost_tracker
 
 
 class TestPhaseManager:

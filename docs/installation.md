@@ -119,6 +119,69 @@ uv run pytest
 uv run mkdocs serve
 ```
 
+## Configure Azure OpenAI (Required)
+
+dev-agent requires Azure OpenAI for all AI-powered features. You must configure your Azure OpenAI credentials before using the tool.
+
+### Prerequisites
+
+1. An Azure subscription
+2. An Azure OpenAI resource with deployed models:
+   - GPT-4 (or GPT-4 Turbo) deployment for code generation
+   - text-embedding-ada-002 deployment for embeddings
+
+### Interactive Configuration
+
+The easiest way to configure Azure OpenAI:
+
+```bash
+# Run the interactive configuration wizard
+uv run dev-agent azure configure
+
+# Test your connection
+uv run dev-agent azure test
+
+# Check configuration status
+uv run dev-agent azure status
+```
+
+### Environment Variables (Recommended)
+
+For production or CI/CD environments, use environment variables:
+
+```bash
+# Required settings
+export AZURE_OPENAI_API_KEY="your-api-key-here"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_OPENAI_CHAT_MODEL="gpt-4"
+export AZURE_OPENAI_EMBEDDING_MODEL="text-embedding-ada-002"
+
+# Optional settings
+export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
+export AZURE_OPENAI_MAX_TOKENS="4000"
+export AZURE_OPENAI_TEMPERATURE="0.7"
+```
+
+Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) or use a `.env` file.
+
+### Configuration File
+
+Alternatively, create a configuration file at `~/.dev_agent/config.json`:
+
+```json
+{
+  "azure_openai": {
+    "api_key": "your-api-key-here",
+    "endpoint": "https://your-resource.openai.azure.com/",
+    "chat_model": "gpt-4",
+    "embedding_model": "text-embedding-ada-002",
+    "api_version": "2024-02-15-preview"
+  }
+}
+```
+
+**Security Note**: Never commit API keys to version control. Use environment variables or secure key management systems in production.
+
 ## Verify Installation
 
 Test that everything is working:
@@ -126,6 +189,12 @@ Test that everything is working:
 ```bash
 # Check version
 uv run dev-agent --version
+
+# Verify Azure OpenAI configuration
+uv run dev-agent azure status
+
+# Test Azure OpenAI connection
+uv run dev-agent azure test
 
 # Run help command
 uv run dev-agent --help
@@ -140,7 +209,7 @@ Expected output:
 ```
 ✅ Initialized new dev-agent project
 🔍 Starting indexing phase...
-📊 No existing code found, ready for specification phase
+📊 Analyzing codebase with Azure OpenAI embeddings...
 💬 Interactive mode started. Type 'help' for commands.
 ```
 
@@ -183,6 +252,34 @@ temperature = 0.1
 ## Troubleshooting
 
 ### Common Issues
+
+#### Azure OpenAI Not Configured
+```
+Error: Azure OpenAI embeddings are required
+```
+**Solution**: Configure Azure OpenAI using the interactive wizard:
+```bash
+uv run dev-agent azure configure
+```
+
+#### Azure OpenAI Authentication Failed
+```
+Error: Failed to initialize Azure OpenAI service
+```
+**Solution**: 
+1. Verify your API key is correct
+2. Check that your endpoint URL is correct
+3. Ensure your Azure OpenAI resource is active
+4. Test the connection: `uv run dev-agent azure test`
+
+#### Model Deployment Not Found
+```
+Error: The API deployment for this resource does not exist
+```
+**Solution**: 
+1. Verify your model deployment names in Azure Portal
+2. Ensure you've deployed both GPT-4 and text-embedding-ada-002
+3. Update your configuration with the correct deployment names
 
 #### Python Version Too Old
 ```
@@ -231,6 +328,7 @@ If you encounter issues:
 
 ## Next Steps
 
+- [Azure OpenAI Setup](azure-openai-integration.md) - Detailed Azure OpenAI configuration guide
 - [CLI Usage Guide](usage/cli.md) - Learn the command-line interface
 - [Workflow Guide](usage/workflow.md) - Understand the four-phase process
 - [Configuration](usage/configuration.md) - Customize dev-agent behavior

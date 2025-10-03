@@ -21,9 +21,9 @@ class IndexingConfig:
     chunk_size: int = 1000
     overlap_size: int = 200
     max_files_per_batch: int = 100
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"  # Deprecated: kept for backward compatibility
     vector_db_type: str = "faiss"
-    use_azure_embeddings: bool = True  # Default to Azure OpenAI
+    use_azure_embeddings: bool = True  # Azure OpenAI is required
 
 
 @dataclass

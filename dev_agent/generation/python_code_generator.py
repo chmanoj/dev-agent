@@ -1,6 +1,9 @@
 """Python code generator for implementing tasks with pattern consistency."""
 
+from __future__ import annotations
+
 import ast
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,12 +11,19 @@ from typing import Any
 
 from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.generation_interface import IPythonCodeGenerator
+from ..llm.base import ILLMClient
+from ..llm.cost_tracker import CostTracker
+from ..llm.prompt_templates import CODE_GENERATION_TEMPLATE
+from ..llm.token_counter import TokenCounter
 from ..models.analysis import CodeContext, CodePattern, CodePatterns, ContextualCode
 from ..models.documents import Task
+from ..models.enums import PhaseType
 from ..models.indexing import ASTIndex
 from ..models.results import GeneratedCode
 
 # Utility functions are defined at the end of this file
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,13 +39,25 @@ class StyleGuideline:
 class PythonCodeGenerator(IPythonCodeGenerator):
     """Generates Python code that maintains consistency with existing codebase patterns."""
 
-    def __init__(self, codebase_analyzer: ICodebaseAnalyzer):
+    def __init__(
+        self,
+        codebase_analyzer: ICodebaseAnalyzer,
+        llm_client: ILLMClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        token_counter: TokenCounter | None = None,
+    ):
         """Initialize the Python code generator.
 
         Args:
             codebase_analyzer: Analyzer for extracting codebase patterns
+            llm_client: LLM client for AI-powered code generation (optional)
+            cost_tracker: Cost tracker for monitoring token usage (optional)
+            token_counter: Token counter for validation (optional)
         """
         self.codebase_analyzer = codebase_analyzer
+        self.llm_client = llm_client
+        self.cost_tracker = cost_tracker
+        self.token_counter = token_counter
         self.existing_patterns: CodePatterns | None = None
         self.style_guidelines: dict[str, Any] = {}
         self._load_patterns()
@@ -71,10 +93,96 @@ class PythonCodeGenerator(IPythonCodeGenerator):
             overall_style={},
         )
 
+    async def generate_code_with_llm(
+        self, task: Task, context: CodeContext
+    ) -> GeneratedCode:
+        """Generate Python code using LLM client with context injection.
+
+        Args:
+            task: Task to implement
+            context: Code context with relevant information
+
+        Returns:
+            Generated code with metadata
+
+        Raises:
+            ValueError: If LLM client is not configured
+        """
+        if not self.llm_client:
+            raise ValueError("LLM client not configured for AI-powered code generation")
+
+        logger.info(f"Generating code for task {task.id} using LLM")
+
+        # Determine target file path
+        file_path = self._determine_file_path(task, context)
+
+        # Build context for prompt template
+        prompt_context = self._build_prompt_context(task, context)
+
+        # Validate token limits before generation
+        if self.token_counter:
+            system_prompt, user_prompt = CODE_GENERATION_TEMPLATE.render(
+                prompt_context, self.token_counter
+            )
+            total_tokens = self.token_counter.count_tokens(
+                system_prompt + user_prompt
+            )
+
+            if total_tokens > 8000:  # GPT-4 context limit
+                logger.warning(
+                    f"Prompt exceeds token limit ({total_tokens} tokens), "
+                    "applying truncation"
+                )
+        else:
+            system_prompt, user_prompt = CODE_GENERATION_TEMPLATE.render(prompt_context)
+
+        # Generate code using LLM
+        try:
+            generated_code = await self.llm_client.generate_completion(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=CODE_GENERATION_TEMPLATE.temperature,
+                max_tokens=CODE_GENERATION_TEMPLATE.max_tokens,
+            )
+
+            # Track cost if tracker is available
+            if self.cost_tracker:
+                # Token usage will be tracked by the LLM client
+                logger.info("Code generation completed, cost tracked")
+
+        except Exception as e:
+            logger.error(f"Failed to generate code with LLM: {e}")
+            raise
+
+        # Apply consistency checks
+        generated_code = self._apply_style_consistency(generated_code, context)
+
+        # Extract imports from generated code
+        imports = self._extract_imports_from_code(generated_code)
+
+        # Generate dependencies list
+        dependencies = self._extract_dependencies(task, context)
+
+        # Generate tests if requested
+        tests = None
+        if self._should_generate_tests(task):
+            tests = self.generate_tests(generated_code, "pytest")
+
+        return GeneratedCode(
+            code=generated_code,
+            file_path=file_path,
+            imports=imports,
+            dependencies=dependencies,
+            tests=tests,
+        )
+
     def generate_code_from_task(
         self, task: Task, context: CodeContext
     ) -> GeneratedCode:
         """Generate Python code for a specific task.
+
+        This method uses rule-based generation. For AI-powered generation,
+        use generate_code_with_llm() instead.
 
         Args:
             task: Task to implement
@@ -190,6 +298,182 @@ class PythonCodeGenerator(IPythonCodeGenerator):
 
     # Private helper methods
 
+    def _build_prompt_context(self, task: Task, context: CodeContext) -> dict[str, Any]:
+        """Build context dictionary for prompt template.
+
+        Args:
+            task: Task to implement
+            context: Code context with relevant information
+
+        Returns:
+            Dictionary with context for prompt template
+        """
+        # Format specification from task
+        specification = f"""## Task: {task.title}
+
+{task.description}
+
+### Requirements
+{', '.join(task.requirements_refs) if task.requirements_refs else 'No specific requirements referenced'}
+"""
+
+        # Format design information
+        design = context.suggested_approach if hasattr(context, 'suggested_approach') and context.suggested_approach else "Design information not available"
+
+        # Format code patterns
+        code_patterns = self._format_code_patterns()
+        
+        # Add relevant patterns from context if available
+        if hasattr(context, 'relevant_patterns') and context.relevant_patterns:
+            code_patterns += "\n\n### Context-Specific Patterns\n" + "\n".join(
+                f"- {pattern}" for pattern in context.relevant_patterns
+            )
+
+        # Format similar implementations
+        similar_code = self._format_similar_implementations(context)
+
+        # Format style requirements
+        style_requirements = self._format_style_requirements()
+
+        return {
+            "specification": specification,
+            "design": design,
+            "code_patterns": code_patterns,
+            "similar_code": similar_code,
+            "style_requirements": style_requirements,
+        }
+
+    def _format_code_patterns(self) -> str:
+        """Format existing code patterns for prompt context.
+
+        Returns:
+            Formatted string of code patterns
+        """
+        if not self.existing_patterns:
+            return "No existing patterns detected"
+
+        patterns_text = []
+
+        # Naming conventions
+        if self.existing_patterns.naming_conventions:
+            patterns_text.append("### Naming Conventions")
+            for pattern in self.existing_patterns.naming_conventions[:3]:
+                patterns_text.append(f"- {pattern.description} (confidence: {pattern.confidence:.2f})")
+                if pattern.examples:
+                    patterns_text.append(f"  Example: {pattern.examples[0]}")
+
+        # Structural patterns
+        if self.existing_patterns.structural_patterns:
+            patterns_text.append("\n### Structural Patterns")
+            for pattern in self.existing_patterns.structural_patterns[:3]:
+                patterns_text.append(f"- {pattern.description} (confidence: {pattern.confidence:.2f})")
+
+        # Import patterns
+        if self.existing_patterns.import_patterns:
+            patterns_text.append("\n### Import Patterns")
+            for pattern in self.existing_patterns.import_patterns[:3]:
+                patterns_text.append(f"- {pattern.description}")
+                if pattern.examples:
+                    patterns_text.append(f"  Example: {pattern.examples[0]}")
+
+        # Error handling patterns
+        if self.existing_patterns.error_handling_patterns:
+            patterns_text.append("\n### Error Handling Patterns")
+            for pattern in self.existing_patterns.error_handling_patterns[:3]:
+                patterns_text.append(f"- {pattern.description}")
+
+        # Documentation patterns
+        if self.existing_patterns.documentation_patterns:
+            patterns_text.append("\n### Documentation Patterns")
+            for pattern in self.existing_patterns.documentation_patterns[:3]:
+                patterns_text.append(f"- {pattern.description}")
+
+        return "\n".join(patterns_text) if patterns_text else "No patterns detected"
+
+    def _format_similar_implementations(self, context: CodeContext) -> str:
+        """Format similar implementations for prompt context.
+
+        Args:
+            context: Code context with similar implementations
+
+        Returns:
+            Formatted string of similar code
+        """
+        if not context.similar_implementations:
+            return "No similar implementations found"
+
+        similar_text = []
+        for impl in context.similar_implementations[:3]:  # Top 3 most relevant
+            # Handle both CodeExample and ContextualCode types
+            if hasattr(impl, 'similarity_score'):
+                score = impl.similarity_score
+            elif hasattr(impl, 'relevance_score'):
+                score = impl.relevance_score
+            else:
+                score = 0.0
+                
+            similar_text.append(f"### {impl.file_path} (relevance: {score:.2f})")
+            similar_text.append(f"```python\n{impl.code}\n```")
+            
+            # Add explanation if available
+            if hasattr(impl, 'explanation') and impl.explanation:
+                similar_text.append(f"Context: {impl.explanation}\n")
+            elif hasattr(impl, 'description') and impl.description:
+                similar_text.append(f"Context: {impl.description}\n")
+
+        return "\n".join(similar_text)
+
+    def _format_style_requirements(self) -> str:
+        """Format style requirements for prompt context.
+
+        Returns:
+            Formatted string of style requirements
+        """
+        requirements = [
+            "- Use modern Python 3.10+ syntax (list[str] not List[str])",
+            "- Add type hints to ALL functions and methods",
+            "- Use Google-style docstrings for all public functions/classes",
+            "- Follow PEP 8 naming conventions (snake_case for functions, PascalCase for classes)",
+            "- Use pathlib instead of os.path for file operations",
+            "- Use f-strings for string formatting",
+            "- Include appropriate error handling with specific exception types",
+            "- Add logging where appropriate using the logging module",
+        ]
+
+        # Add project-specific style guidelines
+        if self.style_guidelines:
+            requirements.append("\n### Project-Specific Guidelines")
+            for category, guideline in self.style_guidelines.items():
+                if isinstance(guideline, str):
+                    requirements.append(f"- {category}: {guideline}")
+
+        return "\n".join(requirements)
+
+    def _extract_imports_from_code(self, code: str) -> list[str]:
+        """Extract import statements from generated code.
+
+        Args:
+            code: Generated code string
+
+        Returns:
+            List of import statements
+        """
+        imports = []
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        imports.append(f"import {alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        names = [alias.name for alias in node.names]
+                        imports.append(f"from {node.module} import {', '.join(names)}")
+        except SyntaxError:
+            logger.warning("Failed to parse generated code for import extraction")
+
+        return imports
+
     def _determine_file_path(self, task: Task, context: CodeContext) -> str:
         """Determine the appropriate file path for the task implementation."""
         # Extract module/component from task description
@@ -229,8 +513,9 @@ class PythonCodeGenerator(IPythonCodeGenerator):
         """Generate appropriate imports for the task."""
         imports = []
 
-        # Add required imports from context
-        imports.extend(context.required_imports)
+        # Add required imports from context (if available in old context format)
+        if hasattr(context, 'required_imports'):
+            imports.extend(context.required_imports)
 
         # Add standard library imports based on task type
         task_desc_lower = task.description.lower()
@@ -814,15 +1099,17 @@ def placeholder_implementation():
         elif "exception" in desc_lower or "error" in desc_lower:
             base_classes.append("Exception")
 
-        # Check context for suggested patterns
-        for pattern in context.suggested_patterns:
-            if "inheritance" in pattern.description.lower():
-                # Extract base class from pattern examples
-                for example in pattern.examples:
-                    if "class" in example and "(" in example:
-                        match = re.search(r"class\s+\w+\(([^)]+)\)", example)
-                        if match:
-                            base_classes.append(match.group(1).strip())
+        # Check context for suggested patterns (if available in old context format)
+        if hasattr(context, 'suggested_patterns'):
+            for pattern in context.suggested_patterns:
+                if hasattr(pattern, 'description') and "inheritance" in pattern.description.lower():
+                    # Extract base class from pattern examples
+                    if hasattr(pattern, 'examples'):
+                        for example in pattern.examples:
+                            if "class" in example and "(" in example:
+                                match = re.search(r"class\s+\w+\(([^)]+)\)", example)
+                                if match:
+                                    base_classes.append(match.group(1).strip())
 
         return base_classes
 

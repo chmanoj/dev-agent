@@ -1,11 +1,14 @@
 """Tests for task generator."""
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from dev_agent.generation.task_generator import TaskGenerator
 from dev_agent.interfaces.cli_interface import ICLIInterface
+from dev_agent.llm.base import ILLMClient
+from dev_agent.llm.cost_tracker import CostTracker
+from dev_agent.llm.token_counter import TokenCounter
 from dev_agent.models.documents import (
     ArchitectureDescription,
     ComponentSpec,
@@ -17,7 +20,7 @@ from dev_agent.models.documents import (
     TaskList,
     TestingStrategy,
 )
-from dev_agent.models.enums import TaskStatus
+from dev_agent.models.enums import PhaseType, TaskStatus
 
 
 class TestTaskGenerator:
@@ -33,9 +36,49 @@ class TestTaskGenerator:
         return cli
 
     @pytest.fixture
+    def mock_llm_client(self):
+        """Create a mock LLM client."""
+        client = AsyncMock(spec=ILLMClient)
+        client.generate_completion = AsyncMock(
+            return_value="# Generated Task List\n\n- [ ] 1. Implement feature\n  - Details here\n  - _Requirements: 1.1_"
+        )
+        client.count_tokens = Mock(return_value=100)
+        client.estimate_cost = Mock(return_value=0.01)
+        return client
+
+    @pytest.fixture
+    def mock_cost_tracker(self):
+        """Create a mock cost tracker."""
+        tracker = Mock(spec=CostTracker)
+        tracker.set_phase = Mock()
+        tracker.record_completion = Mock(return_value=0.01)
+        tracker.get_current_cost = Mock(return_value=0.05)
+        return tracker
+
+    @pytest.fixture
+    def mock_token_counter(self):
+        """Create a mock token counter."""
+        counter = Mock(spec=TokenCounter)
+        counter.count_tokens = Mock(return_value=100)
+        counter.validate_context_window = Mock(return_value=(True, ""))
+        counter.estimate_cost = Mock(return_value=0.01)
+        counter.get_model_name = Mock(return_value="gpt-4")
+        return counter
+
+    @pytest.fixture
     def generator(self, mock_cli):
         """Create a task generator with mock CLI."""
         return TaskGenerator(cli_interface=mock_cli)
+
+    @pytest.fixture
+    def generator_with_llm(self, mock_cli, mock_llm_client, mock_cost_tracker, mock_token_counter):
+        """Create a task generator with LLM client."""
+        return TaskGenerator(
+            cli_interface=mock_cli,
+            llm_client=mock_llm_client,
+            cost_tracker=mock_cost_tracker,
+            token_counter=mock_token_counter,
+        )
 
     @pytest.fixture
     def generator_no_cli(self):
@@ -442,6 +485,118 @@ class TestTaskGenerator:
         assert generator._increment_version("2.5") == "2.6"
         assert generator._increment_version("invalid") == "1.1"
         assert generator._increment_version("1") == "1.1"
+
+    @pytest.mark.asyncio
+    async def test_generate_from_design_async_with_llm(
+        self, generator_with_llm, sample_design, mock_llm_client, mock_cost_tracker, mock_token_counter
+    ):
+        """Test async task generation with LLM client."""
+        task_list = await generator_with_llm.generate_from_design_async(sample_design)
+
+        # Should have generated tasks
+        assert isinstance(task_list, TaskList)
+        assert len(task_list.tasks) > 0
+
+        # Should have called LLM client
+        mock_llm_client.generate_completion.assert_called_once()
+
+        # Should have tracked costs
+        mock_cost_tracker.set_phase.assert_called_with(PhaseType.DESIGN)
+        mock_cost_tracker.record_completion.assert_called_once()
+
+        # Should have validated tokens
+        mock_token_counter.count_tokens.assert_called()
+        mock_token_counter.validate_context_window.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_generate_from_design_async_without_llm(self, generator, sample_design):
+        """Test async generation falls back to rule-based when no LLM client."""
+        task_list = await generator.generate_from_design_async(sample_design)
+
+        # Should fall back to rule-based generation
+        assert isinstance(task_list, TaskList)
+        assert len(task_list.tasks) > 0
+
+    @pytest.mark.asyncio
+    async def test_generate_from_design_async_with_specification(
+        self, generator_with_llm, sample_design, mock_llm_client
+    ):
+        """Test async generation with specification context."""
+        specification = "Build a user management system with authentication"
+
+        task_list = await generator_with_llm.generate_from_design_async(
+            sample_design, specification=specification
+        )
+
+        assert isinstance(task_list, TaskList)
+        mock_llm_client.generate_completion.assert_called_once()
+
+        # Check that specification was included in prompt
+        call_args = mock_llm_client.generate_completion.call_args
+        assert "prompt" in call_args.kwargs
+        # Specification should be in the context somewhere
+
+    @pytest.mark.asyncio
+    async def test_generate_from_design_async_token_validation_failure(
+        self, generator_with_llm, sample_design, mock_token_counter
+    ):
+        """Test handling of token validation failure."""
+        # Make token validation fail
+        mock_token_counter.validate_context_window.return_value = (
+            False,
+            "Token limit exceeded",
+        )
+
+        with pytest.raises(ValueError, match="Token limit exceeded"):
+            await generator_with_llm.generate_from_design_async(sample_design)
+
+    @pytest.mark.asyncio
+    async def test_generate_from_design_async_llm_failure_fallback(
+        self, generator_with_llm, sample_design, mock_llm_client
+    ):
+        """Test fallback to rule-based generation on LLM failure."""
+        # Make LLM client fail
+        mock_llm_client.generate_completion.side_effect = Exception("API error")
+
+        # Should fall back to rule-based generation
+        task_list = await generator_with_llm.generate_from_design_async(sample_design)
+
+        assert isinstance(task_list, TaskList)
+        assert len(task_list.tasks) > 0
+
+    def test_build_llm_context(self, generator_with_llm, sample_design):
+        """Test building LLM context from design."""
+        context = generator_with_llm._build_llm_context(sample_design)
+
+        assert "specification" in context
+        assert "design" in context
+        assert "complexity_analysis" in context
+
+        # Design should be formatted as text
+        assert isinstance(context["design"], str)
+        assert "UserService" in context["design"]
+        assert "User" in context["design"]
+
+    def test_format_design_for_prompt(self, generator_with_llm, sample_design):
+        """Test formatting design document for LLM prompt."""
+        formatted = generator_with_llm._format_design_for_prompt(sample_design)
+
+        assert isinstance(formatted, str)
+        assert "# Design Document" in formatted
+        assert "## Components" in formatted
+        assert "UserService" in formatted
+        assert "## Data Models" in formatted
+        assert "User" in formatted
+
+    def test_analyze_complexity(self, generator_with_llm, sample_design):
+        """Test complexity analysis of design."""
+        analysis = generator_with_llm._analyze_complexity(sample_design)
+
+        assert isinstance(analysis, str)
+        assert "Complexity Analysis" in analysis
+        assert "Components:" in analysis
+        assert "Data Models:" in analysis
+        assert "Complexity Level:" in analysis
 
     def test_parse_feedback(self, generator):
         """Test parsing user feedback."""

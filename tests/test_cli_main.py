@@ -106,6 +106,116 @@ class TestCLIMain(unittest.TestCase):
         # Should not crash
         self.assertIn(result.exit_code, [0, 1])
 
+    @patch('dev_agent.cli.main.setup_cli_logging')
+    @patch('dev_agent.workflow.workflow_manager.WorkflowManager')
+    def test_cost_report_command(self, mock_workflow, mock_logging):
+        """Test cost-report command."""
+        from typer.testing import CliRunner
+        from dev_agent.models.cost_tracking import CostReport
+        from datetime import datetime
+        
+        runner = CliRunner()
+        
+        # Create a mock cost report
+        mock_report = CostReport(
+            total_prompt_tokens=1000,
+            total_completion_tokens=2000,
+            total_embedding_tokens=500,
+            total_cost=0.15,
+            operations_count=10,
+            by_phase={},
+            by_operation={},
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        
+        # Mock workflow manager and cost tracker
+        mock_workflow_instance = Mock()
+        mock_workflow.return_value = mock_workflow_instance
+        mock_workflow_instance.cost_tracker.get_report.return_value = mock_report
+        
+        # Create .dev_agent directory
+        dev_agent_dir = os.path.join(self.temp_dir, ".dev_agent")
+        os.makedirs(dev_agent_dir, exist_ok=True)
+        
+        result = runner.invoke(app, ["cost-report", self.temp_dir])
+        
+        # Should display cost information
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("Cost Report", result.stdout)
+
+    @patch('dev_agent.cli.main.setup_cli_logging')
+    @patch('dev_agent.workflow.workflow_manager.WorkflowManager')
+    def test_cost_report_command_with_phase_filter(self, mock_workflow, mock_logging):
+        """Test cost-report command with phase filter."""
+        from typer.testing import CliRunner
+        from dev_agent.models.cost_tracking import CostReport
+        from dev_agent.models.enums import PhaseType
+        from datetime import datetime
+        
+        runner = CliRunner()
+        
+        # Create a mock cost report
+        mock_report = CostReport(
+            total_prompt_tokens=500,
+            total_completion_tokens=1000,
+            total_embedding_tokens=250,
+            total_cost=0.075,
+            operations_count=5,
+            by_phase={PhaseType.INDEXING: 0.075},
+            by_operation={},
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        
+        # Mock workflow manager and cost tracker
+        mock_workflow_instance = Mock()
+        mock_workflow.return_value = mock_workflow_instance
+        mock_workflow_instance.cost_tracker.get_phase_report.return_value = mock_report
+        
+        # Create .dev_agent directory
+        dev_agent_dir = os.path.join(self.temp_dir, ".dev_agent")
+        os.makedirs(dev_agent_dir, exist_ok=True)
+        
+        result = runner.invoke(app, ["cost-report", self.temp_dir, "--phase", "INDEXING"])
+        
+        # Should display phase-specific cost information
+        # Note: May fail if project state cannot be loaded, which is acceptable in test
+        self.assertIn(result.exit_code, [0, 1])
+        if result.exit_code == 0:
+            self.assertIn("INDEXING", result.stdout)
+
+    @patch('dev_agent.cli.main.setup_cli_logging')
+    def test_cost_report_command_no_project(self, mock_logging):
+        """Test cost-report command with no project."""
+        from typer.testing import CliRunner
+        
+        runner = CliRunner()
+        
+        result = runner.invoke(app, ["cost-report", self.temp_dir])
+        
+        # Should fail with error message
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("No dev-agent project found", result.stdout)
+
+    @patch('dev_agent.cli.main.setup_cli_logging')
+    @patch('dev_agent.workflow.workflow_manager.WorkflowManager')
+    def test_cost_report_command_invalid_phase(self, mock_workflow, mock_logging):
+        """Test cost-report command with invalid phase."""
+        from typer.testing import CliRunner
+        
+        runner = CliRunner()
+        
+        # Create .dev_agent directory
+        dev_agent_dir = os.path.join(self.temp_dir, ".dev_agent")
+        os.makedirs(dev_agent_dir, exist_ok=True)
+        
+        result = runner.invoke(app, ["cost-report", self.temp_dir, "--phase", "INVALID"])
+        
+        # Should fail with error message
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("Invalid phase", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

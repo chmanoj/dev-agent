@@ -248,6 +248,94 @@ def interactive(
         raise typer.Exit(1)
 
 
+@app.command()
+def cost_report(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    phase: Annotated[
+        str | None, typer.Option("--phase", "-p", help="Filter by phase (INDEXING, SPECIFICATION, DESIGN, IMPLEMENTATION)")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Display cost report for Azure OpenAI usage."""
+    if project_path is None:
+        project_path = os.getcwd()
+
+    project_path = os.path.abspath(project_path)
+
+    try:
+        setup_cli_logging(verbose, False, project_path)
+
+        dev_agent_dir = os.path.join(project_path, ".dev_agent")
+        if not os.path.exists(dev_agent_dir):
+            console.print(
+                f"[red]Error: No dev-agent project found at {project_path}[/red]"
+            )
+            raise typer.Exit(1)
+
+        # Initialize workflow manager to access cost tracker
+        from ..workflow.workflow_manager import WorkflowManager
+
+        cli = EnhancedCLI()
+        workflow_manager = WorkflowManager(cli)
+        
+        try:
+            workflow_manager.resume_project(project_path)
+        except Exception:
+            console.print("[yellow]Could not load project state, showing empty report[/yellow]")
+
+        # Get cost report
+        if phase:
+            try:
+                from ..models.enums import PhaseType
+                phase_enum = PhaseType(phase.upper())
+                report = workflow_manager.cost_tracker.get_phase_report(phase_enum)
+                console.print(f"[bold blue]Cost Report for {phase_enum.value} Phase[/bold blue]")
+            except ValueError:
+                console.print(f"[red]Invalid phase: {phase}[/red]")
+                console.print("Valid phases: INDEXING, SPECIFICATION, DESIGN, IMPLEMENTATION")
+                raise typer.Exit(1)
+        else:
+            report = workflow_manager.cost_tracker.get_report()
+            console.print("[bold blue]Complete Cost Report[/bold blue]")
+
+        console.print("=" * 60)
+        
+        # Display summary
+        console.print(f"[cyan]Total Operations:[/cyan] {report.operations_count}")
+        console.print(f"[cyan]Total Tokens:[/cyan] {report.total_prompt_tokens + report.total_completion_tokens + report.total_embedding_tokens:,}")
+        console.print(f"  - Prompt Tokens: {report.total_prompt_tokens:,}")
+        console.print(f"  - Completion Tokens: {report.total_completion_tokens:,}")
+        console.print(f"  - Embedding Tokens: {report.total_embedding_tokens:,}")
+        console.print(f"[green]Total Cost:[/green] ${report.total_cost:.4f}")
+        
+        # Display by phase
+        if not phase and report.by_phase:
+            console.print("\n[bold]Cost by Phase:[/bold]")
+            for phase_type, cost in report.by_phase.items():
+                console.print(f"  {phase_type.value}: ${cost:.4f}")
+        
+        # Display by operation type
+        if report.by_operation:
+            console.print("\n[bold]Operations by Type:[/bold]")
+            for op_type, count in report.by_operation.items():
+                console.print(f"  {op_type}: {count}")
+        
+        # Display time range
+        console.print(f"\n[dim]Period: {report.start_time.strftime('%Y-%m-%d %H:%M:%S')} to {report.end_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
+        console.print("=" * 60)
+
+    except Exception as e:
+        error_msg = f"Failed to generate cost report: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1)
+
+
 def _start_interactive_mode(
     project_path: str, session_manager: SessionManager, cli: InteractiveCLI
 ) -> None:
@@ -384,15 +472,7 @@ def _check_configuration_and_warn(config) -> None:
     if not config.azure_openai.api_key or not config.azure_openai.endpoint:
         console.print("[yellow]⚠ Azure OpenAI not configured[/yellow]")
         console.print("  Configure with: [cyan]dev-agent azure configure[/cyan]")
-        
-        # Check if local embeddings are available
-        try:
-            import sentence_transformers
-            console.print("  [green]✓ Local embeddings available as fallback[/green]")
-        except ImportError:
-            console.print("  [red]✗ Local embeddings not available[/red]")
-            console.print("  Install with: [cyan]pip install 'dev-agent[local-embeddings]'[/cyan]")
-            console.print("  [dim]Note: Without Azure OpenAI or local embeddings, functionality will be limited[/dim]")
+        console.print("  [dim]Note: Azure OpenAI is required for all AI operations[/dim]")
         console.print()
 
 

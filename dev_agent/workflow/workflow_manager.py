@@ -5,6 +5,7 @@ from datetime import datetime
 
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.workflow_interface import IWorkflowManager
+from ..llm.cost_tracker import CostTracker
 from ..models.context import ProjectContext
 from ..models.enums import PhaseStatus, PhaseType
 from ..models.project_state import ProjectState
@@ -18,11 +19,20 @@ from .phase_manager import PhaseManager
 class WorkflowManager(IWorkflowManager):
     """Orchestrates the complete four-phase development workflow."""
 
-    def __init__(self, cli_interface: ICLIInterface):
+    def __init__(
+        self,
+        cli_interface: ICLIInterface,
+        cost_tracker: CostTracker | None = None,
+        budget_threshold: float | None = None,
+        budget_limit: float | None = None,
+    ):
         """Initialize the workflow manager.
 
         Args:
             cli_interface: CLI interface for user interaction
+            cost_tracker: Optional cost tracker instance (created if not provided)
+            budget_threshold: Budget threshold for warnings in USD
+            budget_limit: Hard budget limit in USD
         """
         self.cli_interface = cli_interface
         self.state_manager: StateManager | None = None
@@ -30,6 +40,13 @@ class WorkflowManager(IWorkflowManager):
         self.undo_redo_manager: UndoRedoManager | None = None
         self.current_project_state: ProjectState | None = None
         self.error_handler = WorkflowErrorHandler(cli_interface)
+
+        # Initialize cost tracker
+        self.cost_tracker = cost_tracker or CostTracker(
+            current_phase=PhaseType.INDEXING,
+            budget_threshold=budget_threshold,
+            budget_limit=budget_limit,
+        )
 
         # Workflow configuration
         self.max_retry_attempts = 3
@@ -417,22 +434,42 @@ class WorkflowManager(IWorkflowManager):
         if not self.phase_manager:
             raise Exception("Phase manager not initialized")
 
+        # Update cost tracker phase
+        self.cost_tracker.set_phase(phase)
+
+        # Get cost before phase execution
+        cost_before = self.cost_tracker.get_current_cost()
+
         # Create project context
         context = self._create_project_context()
 
         # Execute phase based on type
         if phase == PhaseType.INDEXING:
-            return self.phase_manager.execute_indexing_phase(
+            result = self.phase_manager.execute_indexing_phase(
                 self.current_project_state.project_path
             )
         elif phase == PhaseType.SPECIFICATION:
-            return self.phase_manager.execute_specification_phase(context)
+            result = self.phase_manager.execute_specification_phase(context)
         elif phase == PhaseType.DESIGN:
-            return self.phase_manager.execute_design_phase(context)
+            result = self.phase_manager.execute_design_phase(context)
         elif phase == PhaseType.IMPLEMENTATION:
-            return self.phase_manager.execute_implementation_phase(context)
+            result = self.phase_manager.execute_implementation_phase(context)
         else:
             raise Exception(f"Unknown phase: {phase}")
+
+        # Display cost summary for this phase
+        cost_after = self.cost_tracker.get_current_cost()
+        phase_cost = cost_after - cost_before
+        self._display_phase_cost_summary(phase, phase_cost)
+
+        # Check budget warnings
+        if self.cost_tracker.check_budget_threshold():
+            self._display_budget_warning()
+
+        # Save token usage to project state
+        self._save_token_usage_to_state()
+
+        return result
 
     def _create_project_context(self) -> ProjectContext:
         """Create project context for phase execution.
@@ -528,12 +565,174 @@ class WorkflowManager(IWorkflowManager):
                 f"✅ Tasks: {len(tasks.tasks)} implementation tasks ready"
             )
 
+        # Display complete cost report
+        self._display_complete_cost_report()
+
         self.cli_interface.display_message(
             "\n🚀 Your project is ready for development!"
         )
         self.cli_interface.display_message(
             "Check the .dev_agent/documents/ folder for generated documents."
         )
+
+    def _display_phase_cost_summary(self, phase: PhaseType, phase_cost: float) -> None:
+        """Display cost summary for a completed phase.
+
+        Args:
+            phase: Phase that was completed
+            phase_cost: Cost incurred during this phase
+        """
+        phase_report = self.cost_tracker.get_phase_report(phase)
+
+        self.cli_interface.display_message(f"\n💰 {phase.value.title()} Phase Cost Summary")
+        self.cli_interface.display_message("=" * 50)
+        self.cli_interface.display_message(
+            f"Operations: {phase_report.operations_count}"
+        )
+        self.cli_interface.display_message(
+            f"Prompt Tokens: {phase_report.total_prompt_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Completion Tokens: {phase_report.total_completion_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Embedding Tokens: {phase_report.total_embedding_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Total Tokens: {phase_report.total_prompt_tokens + phase_report.total_completion_tokens + phase_report.total_embedding_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Phase Cost: ${phase_cost:.4f}"
+        )
+        self.cli_interface.display_message(
+            f"Total Cost So Far: ${self.cost_tracker.get_current_cost():.4f}"
+        )
+        self.cli_interface.display_message("=" * 50)
+
+    def _display_budget_warning(self) -> None:
+        """Display budget threshold warning."""
+        current_cost = self.cost_tracker.get_current_cost()
+
+        if self.cost_tracker.budget_limit is not None:
+            if current_cost >= self.cost_tracker.budget_limit:
+                self.cli_interface.display_message(
+                    f"\n⚠️  BUDGET LIMIT EXCEEDED: ${current_cost:.2f} >= ${self.cost_tracker.budget_limit:.2f}"
+                )
+                self.cli_interface.display_message(
+                    "Consider stopping operations to avoid additional costs."
+                )
+            elif self.cost_tracker.budget_threshold is not None:
+                remaining = self.cost_tracker.budget_limit - current_cost
+                self.cli_interface.display_message(
+                    f"\n⚠️  Budget threshold exceeded: ${current_cost:.2f} >= ${self.cost_tracker.budget_threshold:.2f}"
+                )
+                self.cli_interface.display_message(
+                    f"Remaining budget: ${remaining:.2f}"
+                )
+        elif self.cost_tracker.budget_threshold is not None:
+            self.cli_interface.display_message(
+                f"\n⚠️  Budget threshold exceeded: ${current_cost:.2f} >= ${self.cost_tracker.budget_threshold:.2f}"
+            )
+
+    def _display_complete_cost_report(self) -> None:
+        """Display complete cost report for entire workflow."""
+        report = self.cost_tracker.get_report()
+
+        self.cli_interface.display_message("\n💰 Complete Workflow Cost Report")
+        self.cli_interface.display_message("=" * 50)
+        self.cli_interface.display_message(
+            f"Total Operations: {report.operations_count}"
+        )
+        self.cli_interface.display_message(
+            f"Total Prompt Tokens: {report.total_prompt_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Total Completion Tokens: {report.total_completion_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Total Embedding Tokens: {report.total_embedding_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Total Tokens: {report.total_prompt_tokens + report.total_completion_tokens + report.total_embedding_tokens:,}"
+        )
+        self.cli_interface.display_message(
+            f"Total Cost: ${report.total_cost:.4f}"
+        )
+
+        # Display breakdown by phase
+        if report.by_phase:
+            self.cli_interface.display_message("\nCost by Phase:")
+            for phase_name, phase_cost in report.by_phase.items():
+                self.cli_interface.display_message(
+                    f"  {phase_name}: ${phase_cost:.4f}"
+                )
+
+        # Display breakdown by operation type
+        if report.by_operation:
+            self.cli_interface.display_message("\nOperations by Type:")
+            for op_type, count in report.by_operation.items():
+                self.cli_interface.display_message(
+                    f"  {op_type}: {count}"
+                )
+
+        self.cli_interface.display_message("=" * 50)
+
+    def _save_token_usage_to_state(self) -> None:
+        """Save token usage statistics to project state."""
+        if not self.current_project_state or not self.state_manager:
+            return
+
+        # Get current report
+        report = self.cost_tracker.get_report()
+
+        # Convert by_phase dict to use string keys for JSON serialization
+        by_phase_str = {phase.value: cost for phase, cost in report.by_phase.items()}
+
+        # Store token usage in session data
+        token_usage_data = {
+            "total_prompt_tokens": report.total_prompt_tokens,
+            "total_completion_tokens": report.total_completion_tokens,
+            "total_embedding_tokens": report.total_embedding_tokens,
+            "total_cost": report.total_cost,
+            "operations_count": report.operations_count,
+            "by_phase": by_phase_str,
+            "by_operation": report.by_operation,
+            "last_updated": datetime.now().isoformat(),
+        }
+
+        self.current_project_state.session_data.token_usage = token_usage_data
+
+        # Save updated state
+        self.state_manager.save_project_state(self.current_project_state)
+
+    def get_cost_tracker(self) -> CostTracker:
+        """Get the cost tracker instance.
+
+        Returns:
+            CostTracker instance
+        """
+        return self.cost_tracker
+
+    def generate_cost_report(self) -> dict:
+        """Generate a cost report for the entire workflow.
+
+        Returns:
+            Dictionary containing cost report data
+        """
+        report = self.cost_tracker.get_report()
+
+        return {
+            "total_operations": report.operations_count,
+            "total_prompt_tokens": report.total_prompt_tokens,
+            "total_completion_tokens": report.total_completion_tokens,
+            "total_embedding_tokens": report.total_embedding_tokens,
+            "total_tokens": report.total_prompt_tokens + report.total_completion_tokens + report.total_embedding_tokens,
+            "total_cost": report.total_cost,
+            "by_phase": report.by_phase,
+            "by_operation": report.by_operation,
+            "start_time": report.start_time.isoformat(),
+            "end_time": report.end_time.isoformat(),
+        }
 
     def create_manual_snapshot(self, description: str) -> str | None:
         """Create a manual snapshot of the current state.

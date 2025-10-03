@@ -1,23 +1,31 @@
 # Azure OpenAI Integration
 
-Dev-agent provides comprehensive support for Azure OpenAI services, enabling enterprise-grade AI-powered development workflows with your organization's Azure OpenAI deployments.
+Dev-agent **requires** Azure OpenAI for all AI-powered features. This integration provides enterprise-grade AI capabilities using your organization's Azure OpenAI deployments.
 
 ## Overview
 
-Azure OpenAI integration provides:
+Azure OpenAI is the exclusive AI provider for dev-agent, providing:
 
-- **AI-powered specification generation** using GPT models
+- **AI-powered specification generation** using GPT-4
 - **Intelligent design document creation** with architectural insights
 - **Smart task breakdown** for implementation planning
-- **Enhanced code embeddings** for better similarity search
+- **Semantic code embeddings** using text-embedding-ada-002
 - **Enterprise security** with your Azure OpenAI endpoints
 - **Cost control** through your Azure billing and quotas
 
-## Prerequisites
+**Note**: Local model support has been removed. Azure OpenAI configuration is mandatory for all AI operations.
 
-1. **Azure OpenAI Resource**: You need an Azure OpenAI resource deployed in your Azure subscription
-2. **Model Deployments**: Deploy the models you want to use (e.g., GPT-4, text-embedding-ada-002)
-3. **API Access**: Obtain your API key and endpoint URL from the Azure portal
+## Prerequisites (Required)
+
+Before using dev-agent, you must have:
+
+1. **Azure OpenAI Resource**: An Azure OpenAI resource deployed in your Azure subscription
+2. **Required Model Deployments**:
+   - **GPT-4** (or GPT-4 Turbo) - for code generation, specifications, and designs
+   - **text-embedding-ada-002** - for code embeddings and similarity search
+3. **API Access**: Your API key and endpoint URL from the Azure portal
+
+Without these prerequisites, dev-agent will not function.
 
 ## Configuration
 
@@ -277,10 +285,10 @@ IndexingConfig(
 
 The Azure OpenAI integration includes comprehensive error handling:
 
-- **Connection failures**: Automatic fallback to local models
-- **Rate limiting**: Exponential backoff with retries
+- **Connection failures**: Clear error messages with resolution guidance
+- **Rate limiting**: Exponential backoff with automatic retries
 - **Token limits**: Automatic chunking for large inputs
-- **Model unavailability**: Graceful degradation
+- **Model unavailability**: Informative error messages
 
 ```python
 from dev_agent.errors.exceptions import ConfigurationError, ServiceError

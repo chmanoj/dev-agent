@@ -1,12 +1,13 @@
 """Tests for Python code generator."""
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from dev_agent.generation.python_code_generator import PythonCodeGenerator
 from dev_agent.models.analysis import (
     CodeContext,
+    CodeExample,
     CodePattern,
     CodePatterns,
     ContextualCode,
@@ -14,6 +15,21 @@ from dev_agent.models.analysis import (
 from dev_agent.models.documents import Task
 from dev_agent.models.enums import TaskStatus
 from dev_agent.models.results import GeneratedCode
+
+
+def create_code_context(task: Task, similar_implementations=None, relevant_patterns=None, dependencies=None, suggested_approach="", required_imports=None):
+    """Helper function to create CodeContext with correct structure."""
+    context = CodeContext(
+        task=task,
+        relevant_patterns=relevant_patterns or [],
+        similar_implementations=similar_implementations or [],
+        dependencies=dependencies or [],
+        suggested_approach=suggested_approach,
+    )
+    # Add required_imports as a dynamic attribute for backward compatibility with old tests
+    if required_imports:
+        context.required_imports = required_imports
+    return context
 
 
 class TestPythonCodeGenerator:
@@ -32,6 +48,31 @@ class TestPythonCodeGenerator:
             overall_style={},
         )
         self.generator = PythonCodeGenerator(self.mock_analyzer)
+        
+        # Mock LLM client for AI-powered tests
+        self.mock_llm_client = AsyncMock()
+        self.mock_llm_client.generate_completion = AsyncMock(
+            return_value="""\"\"\"Generated module.\"\"\"
+
+def example_function(param: str) -> str:
+    \"\"\"Example function.
+    
+    Args:
+        param: Input parameter
+        
+    Returns:
+        Processed result
+    \"\"\"
+    return param.upper()
+"""
+        )
+        
+        # Mock cost tracker
+        self.mock_cost_tracker = Mock()
+        
+        # Mock token counter
+        self.mock_token_counter = Mock()
+        self.mock_token_counter.count_tokens.return_value = 500
 
     def test_init(self):
         """Test PythonCodeGenerator initialization."""
@@ -56,16 +97,7 @@ class TestPythonCodeGenerator:
             status=TaskStatus.NOT_STARTED,
         )
 
-        context = CodeContext(
-            task_id="1.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         result = self.generator.generate_code_from_task(task, context)
 
@@ -87,16 +119,7 @@ class TestPythonCodeGenerator:
             status=TaskStatus.NOT_STARTED,
         )
 
-        context = CodeContext(
-            task_id="2.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         result = self.generator.generate_code_from_task(task, context)
 
@@ -116,16 +139,7 @@ class TestPythonCodeGenerator:
             status=TaskStatus.NOT_STARTED,
         )
 
-        context = CodeContext(
-            task_id="3.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         result = self.generator.generate_code_from_task(task, context)
 
@@ -145,16 +159,7 @@ class TestPythonCodeGenerator:
             status=TaskStatus.NOT_STARTED,
         )
 
-        context = CodeContext(
-            task_id="4.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         result = self.generator.generate_code_from_task(task, context)
 
@@ -177,16 +182,7 @@ class TestPythonCodeGenerator:
             status=TaskStatus.NOT_STARTED,
         )
 
-        context = CodeContext(
-            task_id="5.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         result = self.generator.generate_code_from_task(task, context)
 
@@ -289,16 +285,7 @@ class Calculator:
             subtasks=[],
             status=TaskStatus.NOT_STARTED,
         )
-        context = CodeContext(
-            task_id="1.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         file_path = self.generator._determine_file_path(task, context)
 
@@ -315,16 +302,7 @@ class Calculator:
             subtasks=[],
             status=TaskStatus.NOT_STARTED,
         )
-        context = CodeContext(
-            task_id="2.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         file_path = self.generator._determine_file_path(task, context)
 
@@ -341,16 +319,7 @@ class Calculator:
             subtasks=[],
             status=TaskStatus.NOT_STARTED,
         )
-        context = CodeContext(
-            task_id="1.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=["import sys"],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task, required_imports=["import sys"])
 
         imports = self.generator._generate_imports(task, context)
 
@@ -455,7 +424,7 @@ class Calculator:
             status=TaskStatus.NOT_STARTED,
         )
 
-        similar_impl = ContextualCode(
+        similar_impl = CodeExample(
             code="""class ExampleProcessor:
     def __init__(self, config):
         self.config = config
@@ -463,21 +432,13 @@ class Calculator:
     def process(self, data):
         return data.upper()""",
             file_path="example.py",
-            relevance_score=0.8,
-            context_type="similar_class",
-            explanation="Similar processor class",
+            function_name=None,
+            class_name="ExampleProcessor",
+            similarity_score=0.8,
+            description="Similar processor class",
         )
 
-        context = CodeContext(
-            task_id="1.1",
-            relevant_files=[],
-            similar_implementations=[similar_impl],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task, similar_implementations=[similar_impl])
 
         result = self.generator.generate_code_from_task(task, context)
 
@@ -518,16 +479,7 @@ class Calculator:
             subtasks=[],
             status=TaskStatus.NOT_STARTED,
         )
-        context = CodeContext(
-            task_id="1.1",
-            relevant_files=[],
-            similar_implementations=[],
-            required_imports=[],
-            suggested_patterns=[],
-            dependencies=[],
-            test_examples=[],
-            style_guidelines={},
-        )
+        context = create_code_context(task)
 
         fields = self.generator._generate_model_fields(task, context)
 
@@ -535,3 +487,323 @@ class Calculator:
         assert "name: str" in fields
         assert "description: str" in fields
         assert "created_at: datetime" in fields
+
+
+    @pytest.mark.asyncio
+    async def test_generate_code_with_llm(self):
+        """Test generating code with LLM client."""
+        # Create generator with LLM client
+        generator = PythonCodeGenerator(
+            self.mock_analyzer,
+            llm_client=self.mock_llm_client,
+            cost_tracker=self.mock_cost_tracker,
+            token_counter=self.mock_token_counter,
+        )
+
+        task = Task(
+            id="1.1",
+            title="Create UserManager class",
+            description="Create class UserManager with user management functionality",
+            requirements_refs=["FR-1.1"],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+
+        context = create_code_context(task)
+
+        result = await generator.generate_code_with_llm(task, context)
+
+        # Verify result
+        assert isinstance(result, GeneratedCode)
+        assert "def example_function" in result.code
+        assert result.file_path.endswith(".py")
+        
+        # Verify LLM client was called
+        self.mock_llm_client.generate_completion.assert_called_once()
+        call_kwargs = self.mock_llm_client.generate_completion.call_args[1]
+        assert "prompt" in call_kwargs
+        assert "system_prompt" in call_kwargs
+        assert "temperature" in call_kwargs
+        assert "max_tokens" in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_generate_code_with_llm_no_client(self):
+        """Test generating code with LLM when client is not configured."""
+        # Generator without LLM client
+        generator = PythonCodeGenerator(self.mock_analyzer)
+
+        task = Task(
+            id="1.1",
+            title="Create UserManager class",
+            description="Create class UserManager",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+
+        context = create_code_context(task)
+
+        with pytest.raises(ValueError, match="LLM client not configured"):
+            await generator.generate_code_with_llm(task, context)
+
+    @pytest.mark.asyncio
+    async def test_generate_code_with_llm_context_injection(self):
+        """Test that context is properly injected into LLM prompt."""
+        # Create generator with patterns
+        self.mock_analyzer.identify_code_patterns.return_value = CodePatterns(
+            naming_conventions=[
+                CodePattern(
+                    pattern_type="function_naming",
+                    description="Functions use snake_case",
+                    examples=["def my_function():", "def process_data():"],
+                    frequency=10,
+                    confidence=0.9,
+                )
+            ],
+            structural_patterns=[],
+            import_patterns=[],
+            error_handling_patterns=[],
+            testing_patterns=[],
+            documentation_patterns=[],
+            overall_style={},
+        )
+
+        generator = PythonCodeGenerator(
+            self.mock_analyzer,
+            llm_client=self.mock_llm_client,
+            cost_tracker=self.mock_cost_tracker,
+            token_counter=self.mock_token_counter,
+        )
+
+        task = Task(
+            id="1.1",
+            title="Create DataProcessor class",
+            description="Create class for data processing",
+            requirements_refs=["FR-1.1", "FR-1.2"],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+
+        similar_impl = CodeExample(
+            code="""class ExampleProcessor:
+    def process(self, data):
+        return data.upper()""",
+            file_path="example.py",
+            function_name=None,
+            class_name="ExampleProcessor",
+            similarity_score=0.8,
+            description="Similar processor class",
+        )
+
+        context = create_code_context(
+            task,
+            similar_implementations=[similar_impl],
+            relevant_patterns=["Use dependency injection", "Follow SOLID principles"],
+        )
+
+        result = await generator.generate_code_with_llm(task, context)
+
+        # Verify LLM was called with proper context
+        self.mock_llm_client.generate_completion.assert_called_once()
+        call_kwargs = self.mock_llm_client.generate_completion.call_args[1]
+        
+        # Check that prompt contains context elements
+        prompt = call_kwargs["prompt"]
+        assert "DataProcessor" in prompt or "data processing" in prompt.lower()
+        assert "FR-1.1" in prompt or "FR-1.2" in prompt
+        
+        # Check system prompt
+        system_prompt = call_kwargs["system_prompt"]
+        assert "Python developer" in system_prompt or "code" in system_prompt.lower()
+
+    @pytest.mark.asyncio
+    async def test_generate_code_with_llm_token_validation(self):
+        """Test token validation before LLM generation."""
+        # Mock token counter to return high token count
+        mock_token_counter = Mock()
+        mock_token_counter.count_tokens.return_value = 9000  # Exceeds limit
+
+        generator = PythonCodeGenerator(
+            self.mock_analyzer,
+            llm_client=self.mock_llm_client,
+            cost_tracker=self.mock_cost_tracker,
+            token_counter=mock_token_counter,
+        )
+
+        task = Task(
+            id="1.1",
+            title="Create complex system",
+            description="Create a very complex system with many components",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+
+        context = create_code_context(task)
+
+        # Should still generate but log warning
+        result = await generator.generate_code_with_llm(task, context)
+        
+        assert isinstance(result, GeneratedCode)
+        # Token counter should have been called
+        assert mock_token_counter.count_tokens.called
+
+    @pytest.mark.asyncio
+    async def test_generate_code_with_llm_error_handling(self):
+        """Test error handling when LLM generation fails."""
+        # Mock LLM client to raise exception
+        mock_failing_client = AsyncMock()
+        mock_failing_client.generate_completion = AsyncMock(
+            side_effect=Exception("API error")
+        )
+
+        generator = PythonCodeGenerator(
+            self.mock_analyzer,
+            llm_client=mock_failing_client,
+            cost_tracker=self.mock_cost_tracker,
+            token_counter=self.mock_token_counter,
+        )
+
+        task = Task(
+            id="1.1",
+            title="Create UserManager class",
+            description="Create class UserManager",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+
+        context = create_code_context(task)
+
+        with pytest.raises(Exception, match="API error"):
+            await generator.generate_code_with_llm(task, context)
+
+    def test_build_prompt_context(self):
+        """Test building prompt context for LLM."""
+        task = Task(
+            id="1.1",
+            title="Create UserManager class",
+            description="Create class for managing users",
+            requirements_refs=["FR-1.1", "FR-1.2"],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+
+        similar_impl = CodeExample(code="class Example: pass", file_path="example.py", function_name=None, class_name="Example", description="Similar class", similarity_score=0.8)
+
+        context = create_code_context(task, similar_implementations=[similar_impl], relevant_patterns=["Use dependency injection"], suggested_approach="Use dependency injection pattern")
+
+        prompt_context = self.generator._build_prompt_context(task, context)
+
+        # Verify all required keys are present
+        assert "specification" in prompt_context
+        assert "design" in prompt_context
+        assert "code_patterns" in prompt_context
+        assert "similar_code" in prompt_context
+        assert "style_requirements" in prompt_context
+
+        # Verify content
+        assert "UserManager" in prompt_context["specification"]
+        assert "FR-1.1" in prompt_context["specification"]
+        assert "dependency injection" in prompt_context["design"].lower()
+        assert "example.py" in prompt_context["similar_code"]
+
+    def test_format_code_patterns(self):
+        """Test formatting code patterns for prompt."""
+        self.mock_analyzer.identify_code_patterns.return_value = CodePatterns(
+            naming_conventions=[
+                CodePattern(
+                    pattern_type="function_naming",
+                    description="Functions use snake_case",
+                    examples=["def my_function():"],
+                    frequency=10,
+                    confidence=0.9,
+                )
+            ],
+            structural_patterns=[
+                CodePattern(
+                    pattern_type="error_handling",
+                    description="Use specific exceptions",
+                    examples=["raise ValueError()"],
+                    frequency=5,
+                    confidence=0.8,
+                )
+            ],
+            import_patterns=[],
+            error_handling_patterns=[],
+            testing_patterns=[],
+            documentation_patterns=[],
+            overall_style={},
+        )
+
+        generator = PythonCodeGenerator(self.mock_analyzer)
+        formatted = generator._format_code_patterns()
+
+        assert "Naming Conventions" in formatted
+        assert "snake_case" in formatted
+        assert "Structural Patterns" in formatted
+        assert "specific exceptions" in formatted
+
+    def test_format_similar_implementations(self):
+        """Test formatting similar implementations for prompt."""
+        task = Task(
+            id="1.1",
+            title="Test",
+            description="Test",
+            requirements_refs=[],
+            subtasks=[],
+            status=TaskStatus.NOT_STARTED,
+        )
+        
+        similar_impl1 = CodeExample(code="class Example1: pass", file_path="example1.py", function_name=None, class_name="Example1", description="Most similar", similarity_score=0.9)
+
+        similar_impl2 = CodeExample(code="class Example2: pass", file_path="example2.py", function_name=None, class_name="Example2", description="Also similar", similarity_score=0.7)
+
+        context = create_code_context(task, similar_implementations=[similar_impl1, similar_impl2])
+
+        formatted = self.generator._format_similar_implementations(context)
+
+        assert "example1.py" in formatted
+        assert "0.9" in formatted or "0.90" in formatted
+        assert "class Example1" in formatted
+        assert "Most similar" in formatted
+
+    def test_format_style_requirements(self):
+        """Test formatting style requirements for prompt."""
+        self.generator.style_guidelines = {
+            "indentation": "4 spaces",
+            "line_length": "88 characters",
+        }
+
+        formatted = self.generator._format_style_requirements()
+
+        assert "Python 3.10+" in formatted
+        assert "type hints" in formatted
+        assert "Google-style docstrings" in formatted
+        assert "indentation" in formatted
+        assert "4 spaces" in formatted
+
+    def test_extract_imports_from_code(self):
+        """Test extracting imports from generated code."""
+        code = """import os
+from pathlib import Path
+from typing import Any, Dict
+
+def example():
+    pass
+"""
+
+        imports = self.generator._extract_imports_from_code(code)
+
+        assert "import os" in imports
+        assert "from pathlib import Path" in imports
+        assert "from typing import Any, Dict" in imports
+
+    def test_extract_imports_from_invalid_code(self):
+        """Test extracting imports from invalid code."""
+        code = "this is not valid python code {"
+
+        imports = self.generator._extract_imports_from_code(code)
+
+        # Should return empty list and log warning
+        assert imports == []

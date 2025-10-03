@@ -94,8 +94,8 @@ def setup_logging(
     if log_level > logging.DEBUG:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
         logging.getLogger("requests").setLevel(logging.WARNING)
-        logging.getLogger("transformers").setLevel(logging.WARNING)
-        logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+        logging.getLogger("openai").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

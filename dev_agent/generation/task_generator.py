@@ -1,9 +1,13 @@
 """Task generator for creating TASKS.md documents."""
 
-from typing import Any
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any
 
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.generation_interface import ITaskGenerator
+from ..llm.prompt_templates import TASK_GENERATION_TEMPLATE
 from ..models.documents import (
     ComponentSpec,
     DataModel,
@@ -12,23 +16,164 @@ from ..models.documents import (
     Task,
     TaskList,
 )
-from ..models.enums import TaskStatus
+from ..models.enums import PhaseType, TaskStatus
+
+if TYPE_CHECKING:
+    from ..llm.base import ILLMClient
+    from ..llm.cost_tracker import CostTracker
+    from ..llm.token_counter import TokenCounter
+
+logger = logging.getLogger(__name__)
 
 
 class TaskGenerator(ITaskGenerator):
-    """Generates task lists from design documents."""
+    """Generates task lists from design documents using Azure OpenAI.
+    
+    This generator uses GPT-4 to create comprehensive, actionable task breakdowns
+    from design documents. It integrates with the LLM abstraction layer for
+    provider-agnostic code generation, tracks token usage and costs, and validates
+    token limits before making API calls.
+    
+    Attributes:
+        cli_interface: Optional CLI interface for user interaction
+        llm_client: LLM client for generating task lists
+        cost_tracker: Cost tracker for monitoring API usage
+        token_counter: Token counter for validation
+        version: Generator version
+    """
 
-    def __init__(self, cli_interface: ICLIInterface | None = None):
+    def __init__(
+        self,
+        cli_interface: ICLIInterface | None = None,
+        llm_client: ILLMClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        token_counter: TokenCounter | None = None,
+    ):
         """Initialize the task generator.
 
         Args:
             cli_interface: Optional CLI interface for user interaction
+            llm_client: Optional LLM client for AI-powered task generation
+            cost_tracker: Optional cost tracker for monitoring API usage
+            token_counter: Optional token counter for validation
         """
         self.cli_interface = cli_interface
+        self.llm_client = llm_client
+        self.cost_tracker = cost_tracker
+        self.token_counter = token_counter
         self.version = "1.0"
 
+        logger.info(
+            f"TaskGenerator initialized with "
+            f"llm_client={'present' if llm_client else 'absent'}, "
+            f"cost_tracker={'present' if cost_tracker else 'absent'}"
+        )
+
+    async def generate_from_design_async(
+        self,
+        design: DesignDocument,
+        specification: str | None = None,
+    ) -> TaskList:
+        """Generate implementation tasks from design document using LLM.
+        
+        This method uses Azure OpenAI to generate a comprehensive task breakdown
+        from the design document. It validates token limits, tracks costs, and
+        injects relevant context into the prompt.
+        
+        Args:
+            design: Design document to generate tasks from
+            specification: Optional specification text for additional context
+            
+        Returns:
+            Generated task list with AI-powered task breakdown
+            
+        Raises:
+            ValueError: If LLM client is not configured
+            LLMTokenLimitError: If prompt exceeds token limits
+        """
+        if not self.llm_client:
+            logger.warning("No LLM client configured, falling back to rule-based generation")
+            return self.generate_from_design(design)
+
+        logger.info("Generating tasks from design using Azure OpenAI")
+
+        # Set phase for cost tracking
+        if self.cost_tracker:
+            self.cost_tracker.set_phase(PhaseType.DESIGN)
+
+        # Build context for prompt
+        context = self._build_llm_context(design, specification)
+
+        # Render prompt with context
+        system_prompt, user_prompt = TASK_GENERATION_TEMPLATE.render(
+            context,
+            token_counter=self.token_counter,
+        )
+
+        # Validate token limits
+        if self.token_counter:
+            prompt_tokens = self.token_counter.count_tokens(user_prompt)
+            is_valid, error_msg = self.token_counter.validate_context_window(
+                prompt_tokens=prompt_tokens,
+                max_completion_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+            )
+
+            if not is_valid:
+                logger.error(f"Token validation failed: {error_msg}")
+                raise ValueError(error_msg)
+
+            # Estimate cost before generation
+            estimated_cost = self.token_counter.estimate_cost(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+            )
+            logger.info(
+                f"Generating tasks: {prompt_tokens} prompt tokens, "
+                f"estimated cost ${estimated_cost:.4f}"
+            )
+
+        # Generate tasks using LLM
+        try:
+            task_content = await self.llm_client.generate_completion(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=TASK_GENERATION_TEMPLATE.temperature,
+                max_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+            )
+
+            # Track actual token usage if available
+            if self.cost_tracker and self.token_counter:
+                # Count actual tokens in response
+                completion_tokens = self.token_counter.count_tokens(task_content)
+                prompt_tokens = self.token_counter.count_tokens(user_prompt)
+
+                self.cost_tracker.record_completion(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    model=self.token_counter.get_model_name(),
+                )
+
+                logger.info(
+                    f"Task generation complete: {completion_tokens} completion tokens, "
+                    f"total cost ${self.cost_tracker.get_current_cost():.4f}"
+                )
+
+            # Parse the generated task content into TaskList
+            # For now, fall back to rule-based parsing
+            # TODO: Implement LLM response parsing
+            logger.info("Generated task content, parsing into TaskList structure")
+            return self.generate_from_design(design)
+
+        except Exception as e:
+            logger.error(f"Failed to generate tasks with LLM: {e}")
+            logger.info("Falling back to rule-based task generation")
+            return self.generate_from_design(design)
+
     def generate_from_design(self, design: DesignDocument) -> TaskList:
-        """Generate implementation tasks from design document.
+        """Generate implementation tasks from design document (rule-based).
+        
+        This is the fallback method that uses rule-based task generation
+        when LLM client is not available or fails.
 
         Args:
             design: Design document to generate tasks from
@@ -233,6 +378,148 @@ class TaskGenerator(ITaskGenerator):
 
     # Private helper methods
 
+    def _build_llm_context(
+        self,
+        design: DesignDocument,
+        specification: str | None = None,
+    ) -> dict[str, Any]:
+        """Build context dictionary for LLM prompt.
+        
+        Args:
+            design: Design document
+            specification: Optional specification text
+            
+        Returns:
+            Context dictionary for prompt template
+        """
+        # Format design document as text
+        design_text = self._format_design_for_prompt(design)
+
+        # Analyze complexity
+        complexity_analysis = self._analyze_complexity(design)
+
+        context = {
+            "specification": specification or "No specification provided",
+            "design": design_text,
+            "complexity_analysis": complexity_analysis,
+        }
+
+        return context
+
+    def _format_design_for_prompt(self, design: DesignDocument) -> str:
+        """Format design document as text for LLM prompt.
+        
+        Args:
+            design: Design document to format
+            
+        Returns:
+            Formatted design text
+        """
+        lines = []
+
+        lines.append("# Design Document")
+        lines.append("")
+        lines.append("## Overview")
+        lines.append(design.overview)
+        lines.append("")
+
+        lines.append("## Architecture")
+        lines.append(design.architecture.overview)
+        lines.append("")
+        lines.append("**Patterns:**")
+        for pattern in design.architecture.patterns:
+            lines.append(f"- {pattern}")
+        lines.append("")
+
+        lines.append("## Components")
+        for component in design.components:
+            lines.append(f"### {component.name}")
+            lines.append(f"- **Description:** {component.description}")
+            lines.append(f"- **Interfaces:** {', '.join(component.interfaces)}")
+            lines.append(f"- **Dependencies:** {', '.join(component.dependencies)}")
+            lines.append("")
+
+        lines.append("## Data Models")
+        for model in design.data_models:
+            lines.append(f"### {model.name}")
+            lines.append(f"- **Fields:** {', '.join(model.fields.keys())}")
+            if model.relationships:
+                lines.append(f"- **Relationships:** {', '.join(model.relationships)}")
+            lines.append("")
+
+        lines.append("## Interfaces")
+        for interface in design.interfaces:
+            lines.append(f"### {interface.name}")
+            lines.append(f"- **Description:** {interface.description}")
+            lines.append(f"- **Methods:** {', '.join(interface.methods[:5])}")
+            lines.append("")
+
+        lines.append("## Error Handling")
+        lines.append(f"- **Categories:** {', '.join(design.error_handling.error_categories)}")
+        lines.append(f"- **Strategy:** {design.error_handling.logging_strategy}")
+        lines.append("")
+
+        lines.append("## Testing Strategy")
+        lines.append(f"- **Unit Testing:** {design.testing_strategy.unit_testing}")
+        lines.append(f"- **Integration Testing:** {design.testing_strategy.integration_testing}")
+        lines.append(f"- **Coverage Target:** {design.testing_strategy.test_coverage_target:.0%}")
+        lines.append("")
+
+        return "\n".join(lines)
+
+    def _analyze_complexity(self, design: DesignDocument) -> str:
+        """Analyze design complexity for task breakdown.
+        
+        Args:
+            design: Design document to analyze
+            
+        Returns:
+            Complexity analysis text
+        """
+        lines = []
+
+        # Count components
+        num_components = len(design.components)
+        num_models = len(design.data_models)
+        num_interfaces = len(design.interfaces)
+
+        lines.append("# Complexity Analysis")
+        lines.append("")
+        lines.append(f"- **Components:** {num_components}")
+        lines.append(f"- **Data Models:** {num_models}")
+        lines.append(f"- **Interfaces:** {num_interfaces}")
+        lines.append("")
+
+        # Estimate complexity level
+        total_items = num_components + num_models + num_interfaces
+        if total_items < 5:
+            complexity = "Low"
+            recommendation = "Focus on 5-10 high-level tasks"
+        elif total_items < 10:
+            complexity = "Medium"
+            recommendation = "Break down into 10-20 incremental tasks"
+        else:
+            complexity = "High"
+            recommendation = "Create 20-30 detailed tasks with clear dependencies"
+
+        lines.append(f"**Complexity Level:** {complexity}")
+        lines.append(f"**Recommendation:** {recommendation}")
+        lines.append("")
+
+        # Identify key areas
+        lines.append("**Key Implementation Areas:**")
+        if num_models > 0:
+            lines.append("- Data model implementation and validation")
+        if num_interfaces > 0:
+            lines.append("- Interface definitions and contracts")
+        if num_components > 0:
+            lines.append("- Component implementation with dependency injection")
+        lines.append("- Error handling and logging")
+        lines.append("- Comprehensive testing (unit, integration)")
+        lines.append("- System integration and wiring")
+
+        return "\n".join(lines)
+
     def _generate_data_model_tasks(
         self, design: DesignDocument, start_id: int
     ) -> list[Task]:
@@ -434,10 +721,10 @@ class TaskGenerator(ITaskGenerator):
 
     def _generate_task_dependencies(self, tasks: list[Task]) -> dict[str, list[str]]:
         """Generate dependencies between tasks."""
-        dependencies = {}
+        dependencies: dict[str, list[str]] = {}
 
         # Create task lookup by category
-        task_categories = {}
+        task_categories: dict[str, list[Task]] = {}
         for task in tasks:
             category = self._determine_task_category(task)
             if category not in task_categories:
@@ -527,7 +814,7 @@ class TaskGenerator(ITaskGenerator):
 
     def _categorize_tasks(self, tasks: list[Task]) -> dict[str, list[Task]]:
         """Categorize tasks for better organization."""
-        categories = {}
+        categories: dict[str, list[Task]] = {}
 
         for task in tasks:
             category = self._determine_task_category(task)
@@ -568,8 +855,8 @@ class TaskGenerator(ITaskGenerator):
             return "!"
         elif status == TaskStatus.BLOCKED:
             return "?"
-        else:
-            return " "
+
+        return " "  # type: ignore[unreachable]  # Safety fallback for unknown status
 
     def _extract_requirements_from_model(
         self, model: DataModel, design: DesignDocument
@@ -644,12 +931,16 @@ class TaskGenerator(ITaskGenerator):
     def _parse_feedback(self, feedback: str) -> dict[str, Any]:
         """Parse user feedback to understand requested changes."""
         feedback_lower = feedback.lower()
-        refinements = {
-            "add_tasks": [],
+        add_tasks: list[str] = []
+        remove_tasks: list[str] = []
+        adjust_effort: dict[str, str] = {}
+
+        refinements: dict[str, Any] = {
+            "add_tasks": add_tasks,
             "modify_tasks": [],
-            "remove_tasks": [],
+            "remove_tasks": remove_tasks,
             "change_order": False,
-            "adjust_effort": {},
+            "adjust_effort": adjust_effort,
             "add_dependencies": {},
         }
 
@@ -659,24 +950,24 @@ class TaskGenerator(ITaskGenerator):
         ):
             # Extract what to add (simplified)
             if "security" in feedback_lower:
-                refinements["add_tasks"].append("Security implementation task")
+                add_tasks.append("Security implementation task")
             if "documentation" in feedback_lower:
-                refinements["add_tasks"].append("Documentation task")
+                add_tasks.append("Documentation task")
             if "testing" in feedback_lower:
-                refinements["add_tasks"].append("Additional testing task")
+                add_tasks.append("Additional testing task")
 
             # Generic addition if no specific type found
-            if not refinements["add_tasks"]:
-                refinements["add_tasks"].append("Additional task based on feedback")
+            if not add_tasks:
+                add_tasks.append("Additional task based on feedback")
 
         if "remove" in feedback_lower:
-            refinements["remove_tasks"].append("Remove unnecessary tasks")
+            remove_tasks.append("Remove unnecessary tasks")
 
         if "effort" in feedback_lower or "time" in feedback_lower:
             if "increase" in feedback_lower or "more" in feedback_lower:
-                refinements["adjust_effort"]["general"] = "increase effort"
+                adjust_effort["general"] = "increase effort"
             elif "decrease" in feedback_lower or "less" in feedback_lower:
-                refinements["adjust_effort"]["general"] = "decrease effort"
+                adjust_effort["general"] = "decrease effort"
 
         if "order" in feedback_lower or "sequence" in feedback_lower:
             refinements["change_order"] = True

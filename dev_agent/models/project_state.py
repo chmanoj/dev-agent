@@ -28,6 +28,7 @@ class SessionData:
     last_activity: datetime
     user_approvals: dict[str, bool]  # phase -> approved
     pending_approvals: list[str]
+    token_usage: dict | None = None  # Token usage statistics
 
 
 @dataclass

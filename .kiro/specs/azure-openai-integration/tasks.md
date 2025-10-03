@@ -255,13 +255,13 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Test deprecation warnings
   - _Requirements: 9.1, 9.2_
 
-- [ ] 11. Update indexing engine to use new embedding client
+- [x] 11. Update indexing engine to use new embedding client
   - Replace direct service calls with IEmbeddingClient
   - Add progress tracking
   - Integrate cost tracking
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 12.7_
 
-- [ ] 11.1 Update `IndexingEngine` in `dev_agent/indexing/indexing_engine.py`
+- [x] 11.1 Update `IndexingEngine` in `dev_agent/indexing/indexing_engine.py`
   - Accept `IEmbeddingClient` via dependency injection
   - Replace direct Azure service calls with embedding client
   - Add progress tracking for embedding generation (every 100 chunks)
@@ -269,7 +269,7 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Add batch processing with configurable batch size
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 12.7_
 
-- [ ] 11.2 Update tests for indexing engine in `tests/test_indexing_engine.py`
+- [x] 11.2 Update tests for indexing engine in `tests/test_indexing_engine.py`
   - Mock IEmbeddingClient interface
   - Test progress tracking
   - Test cost tracking integration
@@ -297,14 +297,14 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Test error handling
   - _Requirements: 9.1, 9.2_
 
-- [ ] 13. Update specification generator to use new LLM client
+- [x] 13. Update specification generator to use new LLM client
   - Replace direct service calls with ILLMClient
   - Use prompt templates
   - Add context injection from vector search
   - Integrate cost tracking
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-- [ ] 13.1 Update `SpecificationGenerator` in `dev_agent/generation/specification_generator.py`
+- [x] 13.1 Update `SpecificationGenerator` in `dev_agent/generation/specification_generator.py`
   - Accept `ILLMClient` via dependency injection
   - Use specification prompt template from `prompt_templates.py`
   - Retrieve relevant code chunks via vector search
@@ -314,7 +314,7 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Handle LLM exceptions appropriately
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 13.2 Update tests for specification generator in `tests/test_specification_generator.py`
+- [x] 13.2 Update tests for specification generator in `tests/test_specification_generator.py`
   - Mock ILLMClient interface
   - Test prompt template usage
   - Test context injection
@@ -322,14 +322,14 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Test error handling
   - _Requirements: 9.1, 9.2_
 
-- [ ] 14. Update design generator to use new LLM client
+- [x] 14. Update design generator to use new LLM client
   - Replace direct service calls with ILLMClient
   - Use prompt templates
   - Add context injection
   - Integrate cost tracking
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-- [ ] 14.1 Update `DesignGenerator` in `dev_agent/generation/design_generator.py`
+- [x] 14.1 Update `DesignGenerator` in `dev_agent/generation/design_generator.py`
   - Accept `ILLMClient` via dependency injection
   - Use design prompt template from `prompt_templates.py`
   - Retrieve relevant architecture patterns via vector search
@@ -338,21 +338,21 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Integrate with `CostTracker`
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 14.2 Update tests for design generator in `tests/test_design_generator.py`
+- [x] 14.2 Update tests for design generator in `tests/test_design_generator.py`
   - Mock ILLMClient interface
   - Test prompt template usage
   - Test context injection
   - Test cost tracking
   - _Requirements: 9.1, 9.2_
 
-- [ ] 15. Update task generator to use new LLM client
+- [x] 15. Update task generator to use new LLM client
   - Replace direct service calls with ILLMClient
   - Use prompt templates
   - Add context injection
   - Integrate cost tracking
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-- [ ] 15.1 Update `TaskGenerator` in `dev_agent/generation/task_generator.py`
+- [x] 15.1 Update `TaskGenerator` in `dev_agent/generation/task_generator.py`
   - Accept `ILLMClient` via dependency injection
   - Use task prompt template from `prompt_templates.py`
   - Inject design and requirements into prompt
@@ -360,20 +360,20 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Integrate with `CostTracker`
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ]* 15.2 Update tests for task generator in `tests/test_task_generator.py`
+- [x] 15.2 Update tests for task generator in `tests/test_task_generator.py`
   - Mock ILLMClient interface
   - Test prompt template usage
   - Test cost tracking
   - _Requirements: 9.1, 9.2_
 
-- [ ] 16. Update Python code generator to use new LLM client
+- [x] 16. Update Python code generator to use new LLM client
   - Replace direct service calls with ILLMClient
   - Use prompt templates
   - Add context injection from similar code
   - Integrate cost tracking
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-- [ ] 16.1 Update `PythonCodeGenerator` in `dev_agent/generation/python_code_generator.py`
+- [x] 16.1 Update `PythonCodeGenerator` in `dev_agent/generation/python_code_generator.py`
   - Accept `ILLMClient` via dependency injection
   - Use code generation prompt template
   - Retrieve similar code implementations via vector search
@@ -382,21 +382,21 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Integrate with `CostTracker`
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 16.2 Update tests for Python code generator in `tests/test_python_code_generator.py`
+- [x] 16.2 Update tests for Python code generator in `tests/test_python_code_generator.py`
   - Mock ILLMClient interface
   - Test prompt template usage
   - Test context injection with similar code
   - Test cost tracking
   - _Requirements: 9.1, 9.2_
 
-- [ ] 17. Update workflow manager to integrate cost tracking
+- [x] 17. Update workflow manager to integrate cost tracking
   - Add cost tracking per phase
   - Display cost summaries
   - Save token usage to project state
   - Add budget warnings
   - _Requirements: 6.6, 6.7, 6.8, 3.4, 3.5, 3.6_
 
-- [ ] 17.1 Update `WorkflowManager` in `dev_agent/workflow/workflow_manager.py`
+- [x] 17.1 Update `WorkflowManager` in `dev_agent/workflow/workflow_manager.py`
   - Inject `CostTracker` instance
   - Track token usage per workflow phase
   - Display cost summary after each phase completion
@@ -405,20 +405,20 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Add cost report generation for entire workflow
   - _Requirements: 6.6, 6.7, 6.8, 3.4, 3.5, 3.6_
 
-- [ ] 17.2 Update tests for workflow manager in `tests/test_workflow_manager.py`
+- [x] 17.2 Update tests for workflow manager in `tests/test_workflow_manager.py`
   - Mock CostTracker
   - Test per-phase cost tracking
   - Test cost summary display
   - Test budget warnings
   - _Requirements: 9.1, 9.2_
 
-- [ ] 18. Update CLI to display cost information
+- [x] 18. Update CLI to display cost information
   - Add cost display to phase completions
   - Add cost report command
   - Add streaming progress for LLM operations
   - _Requirements: 3.5, 3.6, 12.4_
 
-- [ ] 18.1 Update CLI commands in `dev_agent/cli/main.py` and `dev_agent/cli/interactive_cli.py`
+- [x] 18.1 Update CLI commands in `dev_agent/cli/main.py` and `dev_agent/cli/interactive_cli.py`
   - Display token usage and cost after each phase
   - Add `cost-report` command to show session costs
   - Add streaming progress indicators for LLM operations
@@ -426,19 +426,19 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Add cost warnings when approaching budget limits
   - _Requirements: 3.5, 3.6, 12.4_
 
-- [ ]* 18.2 Update CLI tests in `tests/test_cli_main.py` and `tests/test_interactive_cli.py`
+- [x] 18.2 Update CLI tests in `tests/test_cli_main.py` and `tests/test_interactive_cli.py`
   - Test cost display
   - Test cost report command
   - Test streaming progress
   - _Requirements: 9.1, 9.2_
 
-- [ ] 19. Update Azure CLI configuration commands
+- [x] 19. Update Azure CLI configuration commands
   - Enhance interactive configuration wizard
   - Add connection testing
   - Add model validation
   - _Requirements: 8.3, 8.4, 8.6, 8.7_
 
-- [ ] 19.1 Update `dev_agent/cli/azure_config.py`
+- [x] 19.1 Update `dev_agent/cli/azure_config.py`
   - Enhance `configure` command with better validation
   - Update `test` command to test both completion and embeddings
   - Add model deployment validation
@@ -446,45 +446,45 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Add configuration export/import commands
   - _Requirements: 8.3, 8.4, 8.6, 8.7_
 
-- [ ]* 19.2 Update tests for Azure CLI config in `tests/test_azure_config.py`
+- [x] 19.2 Update tests for Azure CLI config in `tests/test_azure_config.py`
   - Test configuration wizard
   - Test connection testing
   - Test validation
   - _Requirements: 9.1, 9.2_
 
-- [ ] 20. Remove local model dependencies from core
+- [x] 20. Remove local model dependencies from core
   - Update pyproject.toml
   - Move sentence-transformers to optional dependencies
   - Update imports
   - _Requirements: 11.1, 11.2, 11.5, 11.6, 11.7_
 
-- [ ] 20.1 Update `pyproject.toml`
+- [x] 20.1 Update `pyproject.toml`
   - Add `tiktoken>=0.6.0` and `tenacity>=8.2.0` to core dependencies
   - Move `sentence-transformers` to `[project.optional-dependencies]` under `local-embeddings`
   - Update dependency versions to latest
   - _Requirements: 11.1, 11.2, 11.5_
 
-- [ ] 20.2 Remove local model imports and fallback logic
+- [x] 20.2 Remove local model imports and fallback logic
   - Remove sentence-transformers imports from core modules
   - Remove local model fallback logic from indexing engine
   - Remove local model fallback from vector database
   - Update error messages to guide users to Azure OpenAI setup
   - _Requirements: 11.2, 11.3, 11.4, 11.5_
 
-- [ ] 20.3 Update documentation to reflect Azure OpenAI as primary provider
+- [x] 20.3 Update documentation to reflect Azure OpenAI as primary provider
   - Update README.md to emphasize Azure OpenAI
   - Update installation guide with Azure OpenAI setup
   - Remove or deprecate local model documentation
   - _Requirements: 10.1, 10.2, 10.7, 11.7_
 
-- [ ] 21. Create comprehensive documentation
+- [x] 21. Create comprehensive documentation
   - Create Azure OpenAI setup guide
   - Create cost management guide
   - Create troubleshooting guide
   - Update API documentation
   - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8_
 
-- [ ] 21.1 Create Azure OpenAI setup guide in `docs/configuration/azure-openai.md`
+- [x] 21.1 Create Azure OpenAI setup guide in `docs/configuration/azure-openai.md`
   - Step-by-step Azure OpenAI resource creation
   - Deployment configuration instructions
   - Environment variable setup
@@ -492,14 +492,14 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Connection testing
   - _Requirements: 10.1, 10.2, 10.3_
 
-- [ ] 21.2 Create cost management guide in `docs/usage/cost-management.md`
+- [x] 21.2 Create cost management guide in `docs/usage/cost-management.md`
   - Token usage explanation
   - Cost estimation methodology
   - Budget management strategies
   - Cost optimization tips
   - _Requirements: 10.4_
 
-- [ ] 21.3 Create troubleshooting guide in `docs/configuration/troubleshooting.md`
+- [x] 21.3 Create troubleshooting guide in `docs/configuration/troubleshooting.md`
   - Common error messages and solutions
   - Authentication issues
   - Rate limiting guidance
@@ -507,28 +507,28 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Token limit errors
   - _Requirements: 10.5_
 
-- [ ] 21.4 Create usage examples in `docs/examples/azure-setup.md`
+- [x] 21.4 Create usage examples in `docs/examples/azure-setup.md`
   - Basic setup example
   - Configuration examples
   - Cost tracking examples
   - Never include real API keys (use placeholders)
   - _Requirements: 10.6, 10.7_
 
-- [ ] 21.5 Update API documentation
+- [x] 21.5 Update API documentation
   - Document all new LLM modules
   - Document configuration models
   - Document cost tracking APIs
   - Use mkdocstrings for auto-generation
   - _Requirements: 10.8_
 
-- [ ] 22. Create integration tests with real Azure OpenAI API
+- [x] 22. Create integration tests with real Azure OpenAI API
   - Create gated integration tests
   - Test end-to-end workflows
   - Test cost tracking
   - Test error recovery
   - _Requirements: 9.6, 9.7, 9.8_
 
-- [ ] 22.1 Create integration test suite in `tests/integration/test_azure_openai_integration.py`
+- [x] 22.1 Create integration test suite in `tests/integration/test_azure_openai_integration.py`
   - Gate tests with `AZURE_OPENAI_INTEGRATION_TESTS=true` environment variable
   - Test end-to-end specification generation with real API
   - Test end-to-end code generation with real API
@@ -538,14 +538,14 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Test streaming responses
   - _Requirements: 9.6, 9.7, 9.8_
 
-- [ ] 23. Create example scripts demonstrating Azure OpenAI integration
+- [-] 23. Create example scripts demonstrating Azure OpenAI integration
   - Create specification generation example
   - Create code generation example
   - Create embedding example
   - Create cost tracking example
   - _Requirements: 10.6_
 
-- [ ] 23.1 Create example scripts in `examples/`
+- [-] 23.1 Create example scripts in `examples/`
   - Create `azure_specification_example.py` demonstrating spec generation
   - Create `azure_code_generation_example.py` demonstrating code generation
   - Create `azure_embedding_example.py` demonstrating embedding and search

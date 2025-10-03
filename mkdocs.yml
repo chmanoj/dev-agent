@@ -75,11 +75,16 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Installation: installation.md
+  - Configuration:
+    - Azure OpenAI Setup: configuration/azure-openai.md
+    - Troubleshooting: configuration/troubleshooting.md
   - User Guide:
     - CLI Usage: usage/cli.md
     - Workflow Guide: usage/workflow.md
+    - Cost Management: usage/cost-management.md
     - Configuration: usage/configuration.md
   - API Reference:
+    - LLM Integration: api/llm.md
     - CLI Module: api/cli.md
     - Models: api/models.md
     - Workflow: api/workflow.md
@@ -87,9 +92,11 @@ nav:
   - Development:
     - Contributing: development/contributing.md
     - Architecture: development/architecture.md
+    - LLM Integration: development/llm-integration.md
     - Testing: development/testing.md
     - Deployment: development/deployment.md
   - Examples:
+    - Azure Setup: examples/azure-setup.md
     - Basic Usage: examples/basic-usage.md
     - Advanced Patterns: examples/advanced.md
 

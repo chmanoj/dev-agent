@@ -47,7 +47,6 @@ class TestSpecificationGenerator:
             supporting_files=["models/user.py", "services/user_service.py"],
             supporting_functions=["create_user", "update_user", "delete_user"],
             confidence=0.8,
-            code_examples=[],
         )
 
         return SpecificationAnalysis(
@@ -59,9 +58,8 @@ class TestSpecificationGenerator:
             ],
             user_roles=["User", "Admin"],
             functional_areas=["Authentication", "User Management", "Profile"],
-            requirement_evidence=[evidence],
             technology_constraints=["Python 3.x required", "Web framework dependency"],
-            external_dependencies=["flask", "sqlalchemy"],
+            requirement_evidence=[evidence],
             confidence_score=0.8,
         )
 
@@ -262,7 +260,6 @@ class TestSpecificationGenerator:
             supporting_files=["file1.py"],
             supporting_functions=["func1"],
             confidence=0.9,
-            code_examples=[],
         )
 
         medium_confidence_evidence = RequirementEvidence(
@@ -271,7 +268,6 @@ class TestSpecificationGenerator:
             supporting_files=["file1.py"],
             supporting_functions=["func1"],
             confidence=0.7,
-            code_examples=[],
         )
 
         low_confidence_evidence = RequirementEvidence(
@@ -280,7 +276,6 @@ class TestSpecificationGenerator:
             supporting_files=["file1.py"],
             supporting_functions=["func1"],
             confidence=0.4,
-            code_examples=[],
         )
 
         assert (
@@ -348,9 +343,8 @@ class TestSpecificationGenerator:
             main_features=[],
             user_roles=[],
             functional_areas=[],
-            requirement_evidence=[],
             technology_constraints=[],
-            external_dependencies=[],
+            requirement_evidence=[],
             confidence_score=0.0,
         )
 
@@ -375,6 +369,425 @@ class TestSpecificationGenerator:
         )
 
 
+class TestSpecificationGeneratorAI:
+    """Test cases for AI-powered specification generation."""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Create a mock LLM client."""
+        from unittest.mock import AsyncMock
+        
+        client = AsyncMock()
+        client.generate_completion = AsyncMock(
+            return_value="""## Overview
+This feature provides user authentication and authorization capabilities.
+
+## Functional Requirements
+1. As a user, I want to register with email and password, so that I can create an account
+   - WHEN I provide valid email and password THEN the system SHALL create a new account
+   - WHEN I provide invalid email THEN the system SHALL reject the registration
+
+2. As a user, I want to login securely, so that I can access my account
+   - WHEN I provide correct credentials THEN the system SHALL authenticate me
+   - WHEN I provide incorrect credentials THEN the system SHALL deny access
+
+## Technical Requirements
+- Use bcrypt for password hashing
+- Implement JWT tokens for session management
+- Store user data in PostgreSQL database
+
+## Acceptance Criteria
+- All passwords SHALL be hashed before storage
+- JWT tokens SHALL expire after 24 hours
+- Failed login attempts SHALL be rate limited
+
+## Dependencies
+- bcrypt library for password hashing
+- PyJWT for token management
+- SQLAlchemy for database access
+
+## Error Handling
+- Invalid credentials SHALL return 401 Unauthorized
+- Rate limit exceeded SHALL return 429 Too Many Requests
+- Database errors SHALL be logged and return 500 Internal Server Error
+
+## Testing Strategy
+- Unit tests for authentication logic
+- Integration tests for API endpoints
+- Security tests for password hashing and token validation
+"""
+        )
+        return client
+
+    @pytest.fixture
+    def mock_cost_tracker(self):
+        """Create a mock cost tracker."""
+        from unittest.mock import Mock
+        
+        tracker = Mock()
+        tracker.record_completion = Mock(return_value=0.05)
+        return tracker
+
+    @pytest.fixture
+    def mock_token_counter(self):
+        """Create a mock token counter."""
+        from unittest.mock import Mock
+        
+        counter = Mock()
+        counter.count_tokens = Mock(return_value=150)
+        counter.validate_context_window = Mock(return_value=(True, ""))
+        counter.get_model_name = Mock(return_value="gpt-4")
+        return counter
+
+    @pytest.fixture
+    def mock_vector_db(self):
+        """Create a mock vector database."""
+        from unittest.mock import AsyncMock, Mock
+        
+        from dev_agent.models.indexing import CodeChunk, CodeMatch
+        
+        db = AsyncMock()
+        
+        # Mock query_similar to return relevant code chunks
+        chunk1 = CodeChunk(
+            content="def authenticate_user(email, password):\n    # Authentication logic\n    pass",
+            file_path="auth/authentication.py",
+            start_line=10,
+            end_line=15,
+            language="python",
+            chunk_type="function",
+        )
+        
+        chunk2 = CodeChunk(
+            content="class User(Base):\n    email = Column(String)\n    password_hash = Column(String)",
+            file_path="models/user.py",
+            start_line=5,
+            end_line=10,
+            language="python",
+            chunk_type="class",
+        )
+        
+        match1 = CodeMatch(chunk=chunk1, similarity_score=0.85, embedding_id="chunk1")
+        match2 = CodeMatch(chunk=chunk2, similarity_score=0.75, embedding_id="chunk2")
+        
+        db.query_similar = AsyncMock(return_value=[match1, match2])
+        
+        return db
+
+    @pytest.fixture
+    def ai_generator(
+        self,
+        mock_llm_client,
+        mock_cost_tracker,
+        mock_token_counter,
+        mock_vector_db,
+    ):
+        """Create AI-powered specification generator."""
+        return SpecificationGenerator(
+            llm_client=mock_llm_client,
+            cost_tracker=mock_cost_tracker,
+            token_counter=mock_token_counter,
+            vector_db=mock_vector_db,
+        )
+
+    @pytest.fixture
+    def sample_analysis(self):
+        """Create sample specification analysis."""
+        evidence = RequirementEvidence(
+            requirement_type="Authentication",
+            description="System provides user authentication",
+            supporting_files=["auth/authentication.py"],
+            supporting_functions=["authenticate_user", "hash_password"],
+            confidence=0.8,
+        )
+
+        return SpecificationAnalysis(
+            project_purpose="Web application with user authentication",
+            main_features=["User Registration", "User Login", "Password Reset"],
+            user_roles=["User", "Admin"],
+            functional_areas=["Authentication", "User Management"],
+            technology_constraints=["Python 3.10+", "FastAPI"],
+            requirement_evidence=[evidence],
+            confidence_score=0.8,
+        )
+
+    @pytest.mark.asyncio
+    async def test_generate_from_existing_code_ai(
+        self,
+        ai_generator,
+        sample_analysis,
+        mock_llm_client,
+    ):
+        """Test AI-powered specification generation."""
+        spec = await ai_generator.generate_from_existing_code_ai(
+            analysis=sample_analysis,
+            feature_description="User authentication system",
+        )
+
+        assert isinstance(spec, SpecificationDocument)
+        assert spec.source == SpecificationSource.EXISTING_CODE
+        assert spec.approved is False
+        assert len(spec.introduction) > 0
+        assert len(spec.functional_requirements) > 0
+        
+        # Verify LLM client was called
+        mock_llm_client.generate_completion.assert_called_once()
+        call_args = mock_llm_client.generate_completion.call_args
+        assert "prompt" in call_args.kwargs
+        assert "system_prompt" in call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_with_context_retrieval(
+        self,
+        ai_generator,
+        sample_analysis,
+        mock_vector_db,
+    ):
+        """Test that AI generation retrieves relevant context."""
+        await ai_generator.generate_from_existing_code_ai(
+            analysis=sample_analysis,
+            feature_description="User authentication",
+        )
+
+        # Verify vector search was called
+        mock_vector_db.query_similar.assert_called_once()
+        call_args = mock_vector_db.query_similar.call_args
+        assert call_args.kwargs["query_text"] == "User authentication"
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_with_cost_tracking(
+        self,
+        ai_generator,
+        sample_analysis,
+        mock_cost_tracker,
+    ):
+        """Test that AI generation tracks costs."""
+        await ai_generator.generate_from_existing_code_ai(
+            analysis=sample_analysis,
+            feature_description="User authentication",
+        )
+
+        # Verify cost was tracked
+        mock_cost_tracker.record_completion.assert_called_once()
+        call_args = mock_cost_tracker.record_completion.call_args
+        assert call_args.kwargs["prompt_tokens"] > 0
+        assert call_args.kwargs["completion_tokens"] > 0
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_with_token_validation(
+        self,
+        ai_generator,
+        sample_analysis,
+        mock_token_counter,
+    ):
+        """Test that AI generation validates token limits."""
+        await ai_generator.generate_from_existing_code_ai(
+            analysis=sample_analysis,
+            feature_description="User authentication",
+        )
+
+        # Verify token validation was performed
+        mock_token_counter.validate_context_window.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_token_limit_exceeded(
+        self,
+        ai_generator,
+        sample_analysis,
+        mock_token_counter,
+    ):
+        """Test handling of token limit exceeded."""
+        from dev_agent.errors.llm_exceptions import LLMTokenLimitError
+        
+        # Mock token validation to fail
+        mock_token_counter.validate_context_window.return_value = (
+            False,
+            "Token limit exceeded",
+        )
+
+        with pytest.raises(LLMTokenLimitError):
+            await ai_generator.generate_from_existing_code_ai(
+                analysis=sample_analysis,
+                feature_description="User authentication",
+            )
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_without_llm_client(self, sample_analysis):
+        """Test that AI generation fails without LLM client."""
+        generator = SpecificationGenerator()
+
+        with pytest.raises(ValueError, match="LLM client not configured"):
+            await generator.generate_from_existing_code_ai(
+                analysis=sample_analysis,
+                feature_description="User authentication",
+            )
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_without_vector_db(
+        self,
+        mock_llm_client,
+        sample_analysis,
+    ):
+        """Test AI generation works without vector database."""
+        generator = SpecificationGenerator(llm_client=mock_llm_client)
+
+        spec = await generator.generate_from_existing_code_ai(
+            analysis=sample_analysis,
+            feature_description="User authentication",
+        )
+
+        assert isinstance(spec, SpecificationDocument)
+        # Should still work, just without context retrieval
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_llm_authentication_error(
+        self,
+        ai_generator,
+        sample_analysis,
+        mock_llm_client,
+    ):
+        """Test handling of LLM authentication errors."""
+        from dev_agent.errors.llm_exceptions import LLMAuthenticationError
+        
+        mock_llm_client.generate_completion.side_effect = LLMAuthenticationError(
+            "Invalid API key"
+        )
+
+        with pytest.raises(LLMAuthenticationError):
+            await ai_generator.generate_from_existing_code_ai(
+                analysis=sample_analysis,
+                feature_description="User authentication",
+            )
+
+    @pytest.mark.asyncio
+    async def test_ai_generation_llm_rate_limit_error(
+        self,
+        ai_generator,
+        sample_analysis,
+        mock_llm_client,
+    ):
+        """Test handling of LLM rate limit errors."""
+        from dev_agent.errors.llm_exceptions import LLMRateLimitError
+        
+        mock_llm_client.generate_completion.side_effect = LLMRateLimitError(
+            "Rate limit exceeded"
+        )
+
+        with pytest.raises(LLMRateLimitError):
+            await ai_generator.generate_from_existing_code_ai(
+                analysis=sample_analysis,
+                feature_description="User authentication",
+            )
+
+    @pytest.mark.asyncio
+    async def test_parse_ai_specification(self, ai_generator, sample_analysis):
+        """Test parsing of AI-generated specification content."""
+        ai_content = """## Overview
+This is a test specification for user authentication.
+
+## Functional Requirements
+1. As a user, I want to register
+   - WHEN I provide email THEN system SHALL create account
+2. As a user, I want to login
+   - WHEN I provide credentials THEN system SHALL authenticate
+
+## Key Features
+- User registration
+- Secure login
+- Password hashing
+"""
+
+        spec = ai_generator._parse_ai_specification(ai_content, sample_analysis)
+
+        assert isinstance(spec, SpecificationDocument)
+        assert "test specification" in spec.introduction.lower()
+        assert len(spec.key_features) > 0
+        assert len(spec.functional_requirements) > 0
+
+    def test_extract_sections(self, ai_generator):
+        """Test extraction of sections from markdown."""
+        content = """## Overview
+This is the overview.
+
+## Requirements
+These are requirements.
+
+## Testing
+This is testing info.
+"""
+
+        sections = ai_generator._extract_sections(content)
+
+        assert "overview" in sections
+        assert "requirements" in sections
+        assert "testing" in sections
+        assert "overview" in sections["overview"].lower()
+
+    def test_extract_list_items(self, ai_generator):
+        """Test extraction of list items."""
+        content = """
+- Item 1
+- Item 2
+* Item 3
+- Item 4
+"""
+
+        items = ai_generator._extract_list_items(content)
+
+        assert len(items) == 4
+        assert "Item 1" in items
+        assert "Item 3" in items
+
+    def test_extract_user_story(self, ai_generator):
+        """Test extraction of user story from block."""
+        block = """1. As a user, I want to login, so that I can access my account
+   - WHEN I provide credentials THEN system SHALL authenticate
+"""
+
+        user_story = ai_generator._extract_user_story(block)
+
+        assert "as a user" in user_story.lower()
+        assert "login" in user_story.lower()
+
+    def test_extract_acceptance_criteria(self, ai_generator):
+        """Test extraction of acceptance criteria."""
+        block = """Requirement description
+- WHEN I provide valid input THEN system SHALL accept it
+- WHEN I provide invalid input THEN system SHALL reject it
+- The system SHALL validate all inputs
+"""
+
+        criteria = ai_generator._extract_acceptance_criteria(block)
+
+        assert len(criteria) >= 2
+        assert any("when" in c.lower() and "then" in c.lower() for c in criteria)
+        assert any("shall" in c.lower() for c in criteria)
+
+    @pytest.mark.asyncio
+    async def test_build_specification_context(
+        self,
+        ai_generator,
+        sample_analysis,
+    ):
+        """Test building context for specification prompt."""
+        relevant_chunks = [
+            "File: auth.py\nLines: 1-10\n```python\ndef authenticate(): pass\n```"
+        ]
+
+        context = ai_generator._build_specification_context(
+            analysis=sample_analysis,
+            feature_description="User authentication",
+            relevant_chunks=relevant_chunks,
+        )
+
+        assert "codebase_summary" in context
+        assert "relevant_code_chunks" in context
+        assert "detected_patterns" in context
+        assert "feature_description" in context
+        assert "User authentication" in context["feature_description"]
+        assert "Web application" in context["codebase_summary"]
+
+
 class TestSpecificationGeneratorIntegration:
     """Integration tests for specification generator."""
 
@@ -392,7 +805,6 @@ class TestSpecificationGeneratorIntegration:
             supporting_files=["models/user.py", "controllers/user_controller.py"],
             supporting_functions=["create_user", "update_profile", "authenticate_user"],
             confidence=0.85,
-            code_examples=[],
         )
 
         evidence2 = RequirementEvidence(
@@ -401,7 +813,6 @@ class TestSpecificationGeneratorIntegration:
             supporting_files=["models/database.py", "repositories/user_repo.py"],
             supporting_functions=["save_user", "find_user", "delete_user"],
             confidence=0.75,
-            code_examples=[],
         )
 
         analysis = SpecificationAnalysis(
@@ -419,9 +830,8 @@ class TestSpecificationGeneratorIntegration:
                 "Data Storage",
                 "Security",
             ],
-            requirement_evidence=[evidence1, evidence2],
             technology_constraints=["Python 3.8+", "Flask framework", "SQLAlchemy ORM"],
-            external_dependencies=["flask", "sqlalchemy", "bcrypt", "jwt"],
+            requirement_evidence=[evidence1, evidence2],
             confidence_score=0.8,
         )
 

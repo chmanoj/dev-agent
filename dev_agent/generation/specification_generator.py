@@ -1,32 +1,229 @@
 """Specification generator for creating SPECIFICATION.md documents."""
 
+from __future__ import annotations
+
+import logging
 import re
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ..errors.llm_exceptions import (
+    LLMAPIError,
+    LLMAuthenticationError,
+    LLMBadRequestError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMTokenLimitError,
+)
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.generation_interface import ISpecificationGenerator
+from ..llm.prompt_templates import get_template
 from ..models.analysis import RequirementEvidence, SpecificationAnalysis
 from ..models.documents import CodeAnalysisRef, Requirement, SpecificationDocument
 from ..models.enums import Priority, SpecificationSource
 
+if TYPE_CHECKING:
+    from ..indexing.vector_database import VectorDatabase
+    from ..llm.base import ILLMClient
+    from ..llm.cost_tracker import CostTracker
+    from ..llm.token_counter import TokenCounter
+
+logger = logging.getLogger(__name__)
+
 
 class SpecificationGenerator(ISpecificationGenerator):
-    """Generates specification documents from codebase analysis or user input."""
+    """Generates specification documents from codebase analysis or user input.
+    
+    This generator uses Azure OpenAI (GPT-4) to create detailed specifications
+    based on codebase analysis and vector search for relevant code examples.
+    It integrates with cost tracking and token management for efficient API usage.
+    
+    Example:
+        ```python
+        from dev_agent.llm.azure_client import AzureOpenAIClient
+        from dev_agent.llm.cost_tracker import CostTracker
+        from dev_agent.llm.token_counter import TokenCounter
+        from dev_agent.indexing.vector_database import VectorDatabase
+        
+        llm_client = AzureOpenAIClient(config)
+        cost_tracker = CostTracker()
+        token_counter = TokenCounter()
+        vector_db = VectorDatabase(index_path, embedding_client)
+        
+        generator = SpecificationGenerator(
+            llm_client=llm_client,
+            cost_tracker=cost_tracker,
+            token_counter=token_counter,
+            vector_db=vector_db,
+        )
+        
+        spec = await generator.generate_from_existing_code(analysis)
+        ```
+    """
 
-    def __init__(self, cli_interface: ICLIInterface | None = None):
+    def __init__(
+        self,
+        cli_interface: ICLIInterface | None = None,
+        llm_client: ILLMClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        token_counter: TokenCounter | None = None,
+        vector_db: VectorDatabase | None = None,
+    ):
         """Initialize the specification generator.
 
         Args:
             cli_interface: Optional CLI interface for user interaction
+            llm_client: LLM client for AI-powered generation (optional for backward compatibility)
+            cost_tracker: Cost tracker for monitoring API usage (optional)
+            token_counter: Token counter for validation (optional)
+            vector_db: Vector database for context retrieval (optional)
         """
         self.cli_interface = cli_interface
+        self.llm_client = llm_client
+        self.cost_tracker = cost_tracker
+        self.token_counter = token_counter
+        self.vector_db = vector_db
         self.version = "1.0"
+        
+        if llm_client:
+            logger.info("SpecificationGenerator initialized with LLM client")
+        else:
+            logger.warning(
+                "SpecificationGenerator initialized without LLM client - "
+                "AI-powered generation will not be available"
+            )
+
+    async def generate_from_existing_code_ai(
+        self,
+        analysis: SpecificationAnalysis,
+        feature_description: str,
+    ) -> SpecificationDocument:
+        """Generate specification using AI from existing codebase analysis.
+        
+        This method uses Azure OpenAI (GPT-4) to generate a comprehensive
+        specification based on codebase analysis and relevant code examples
+        retrieved via vector search.
+
+        Args:
+            analysis: Results from codebase analysis
+            feature_description: Description of the feature to specify
+
+        Returns:
+            Generated specification document
+            
+        Raises:
+            ValueError: If LLM client is not configured
+            LLMError: If AI generation fails
+        """
+        if not self.llm_client:
+            raise ValueError(
+                "LLM client not configured. Initialize SpecificationGenerator "
+                "with an ILLMClient instance for AI-powered generation."
+            )
+        
+        logger.info(f"Generating AI-powered specification for: {feature_description}")
+        
+        try:
+            # Retrieve relevant code chunks via vector search
+            relevant_chunks = await self._retrieve_relevant_context(feature_description)
+            
+            # Build context for prompt template
+            context = self._build_specification_context(
+                analysis=analysis,
+                feature_description=feature_description,
+                relevant_chunks=relevant_chunks,
+            )
+            
+            # Get specification template
+            template = get_template("specification")
+            
+            # Validate token limits before generation
+            if self.token_counter:
+                system_prompt, user_prompt = template.render(context, self.token_counter)
+                prompt_tokens = self.token_counter.count_tokens(user_prompt)
+                system_tokens = self.token_counter.count_tokens(system_prompt)
+                total_prompt_tokens = prompt_tokens + system_tokens
+                
+                is_valid, error_msg = self.token_counter.validate_context_window(
+                    prompt_tokens=total_prompt_tokens,
+                    max_completion_tokens=template.max_tokens,
+                )
+                
+                if not is_valid:
+                    raise LLMTokenLimitError(error_msg)
+                
+                logger.info(
+                    f"Token validation passed: {total_prompt_tokens} prompt tokens, "
+                    f"{template.max_tokens} max completion tokens"
+                )
+            else:
+                system_prompt, user_prompt = template.render(context)
+            
+            # Generate specification using LLM
+            logger.info("Calling Azure OpenAI for specification generation...")
+            spec_content = await self.llm_client.generate_completion(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=template.temperature,
+                max_tokens=template.max_tokens,
+            )
+            
+            # Track cost if tracker available
+            if self.cost_tracker and self.token_counter:
+                prompt_tokens = self.token_counter.count_tokens(user_prompt + system_prompt)
+                completion_tokens = self.token_counter.count_tokens(spec_content)
+                cost = self.cost_tracker.record_completion(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    model=self.token_counter.get_model_name(),
+                )
+                logger.info(
+                    f"Specification generation cost: ${cost:.4f} "
+                    f"({prompt_tokens} + {completion_tokens} tokens)"
+                )
+            
+            # Parse AI-generated content into structured document
+            spec_doc = self._parse_ai_specification(spec_content, analysis)
+            
+            logger.info("AI-powered specification generated successfully")
+            return spec_doc
+            
+        except LLMAuthenticationError as e:
+            logger.error(f"Authentication failed: {e}")
+            raise
+        except LLMRateLimitError as e:
+            logger.warning(f"Rate limit hit: {e}")
+            raise
+        except LLMTimeoutError as e:
+            logger.error(f"Request timed out: {e}")
+            raise
+        except LLMBadRequestError as e:
+            logger.error(f"Bad request: {e}")
+            raise
+        except LLMTokenLimitError as e:
+            logger.error(f"Token limit exceeded: {e}")
+            raise
+        except LLMAPIError as e:
+            logger.error(f"API error: {e}")
+            raise
+        except LLMError as e:
+            logger.error(f"LLM error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during AI generation: {e}")
+            raise LLMAPIError(
+                f"Failed to generate specification: {e}",
+                "Check logs for details and verify Azure OpenAI configuration"
+            ) from e
 
     def generate_from_existing_code(
         self, analysis: SpecificationAnalysis
     ) -> SpecificationDocument:
         """Generate specification from existing codebase analysis.
+        
+        This is the legacy method that uses rule-based generation.
+        For AI-powered generation, use generate_from_existing_code_ai().
 
         Args:
             analysis: Results from codebase analysis
@@ -219,7 +416,325 @@ class SpecificationGenerator(ISpecificationGenerator):
 
         return approved
 
-    # Private helper methods
+    # Private helper methods for AI-powered generation
+
+    async def _retrieve_relevant_context(
+        self,
+        feature_description: str,
+        top_k: int = 5,
+    ) -> list[str]:
+        """Retrieve relevant code chunks via vector search.
+        
+        Args:
+            feature_description: Description of the feature
+            top_k: Number of relevant chunks to retrieve
+            
+        Returns:
+            List of relevant code chunk contents
+        """
+        if not self.vector_db:
+            logger.warning("Vector database not available, skipping context retrieval")
+            return []
+        
+        try:
+            matches = await self.vector_db.query_similar(
+                query_text=feature_description,
+                k=top_k,
+                min_similarity=0.5,
+            )
+            
+            # Format chunks with file paths and line numbers
+            formatted_chunks = []
+            for match in matches:
+                chunk_info = (
+                    f"File: {match.chunk.file_path}\n"
+                    f"Lines: {match.chunk.start_line}-{match.chunk.end_line}\n"
+                    f"Similarity: {match.similarity_score:.2f}\n"
+                    f"```{match.chunk.language}\n"
+                    f"{match.chunk.content}\n"
+                    f"```"
+                )
+                formatted_chunks.append(chunk_info)
+            
+            logger.info(f"Retrieved {len(formatted_chunks)} relevant code chunks")
+            return formatted_chunks
+            
+        except Exception as e:
+            logger.warning(f"Failed to retrieve context from vector DB: {e}")
+            return []
+
+    def _build_specification_context(
+        self,
+        analysis: SpecificationAnalysis,
+        feature_description: str,
+        relevant_chunks: list[str],
+    ) -> dict[str, str]:
+        """Build context dictionary for specification prompt template.
+        
+        Args:
+            analysis: Codebase analysis results
+            feature_description: Feature to specify
+            relevant_chunks: Relevant code chunks from vector search
+            
+        Returns:
+            Context dictionary for template rendering
+        """
+        # Build codebase summary
+        codebase_summary = (
+            f"Project Purpose: {analysis.project_purpose}\n\n"
+            f"Main Features:\n"
+        )
+        for feature in analysis.main_features[:5]:
+            codebase_summary += f"- {feature}\n"
+        
+        codebase_summary += f"\nUser Roles: {', '.join(analysis.user_roles)}\n"
+        codebase_summary += f"\nFunctional Areas:\n"
+        for area in analysis.functional_areas[:5]:
+            codebase_summary += f"- {area}\n"
+        
+        codebase_summary += f"\nTechnology Stack:\n"
+        for tech in analysis.technology_constraints[:5]:
+            codebase_summary += f"- {tech}\n"
+        
+        # Format relevant code chunks
+        relevant_code_chunks = "\n\n---\n\n".join(relevant_chunks) if relevant_chunks else "No relevant code examples found."
+        
+        # Extract detected patterns
+        detected_patterns = "Patterns detected from codebase analysis:\n"
+        for evidence in analysis.requirement_evidence[:3]:
+            detected_patterns += f"- {evidence.requirement_type}: {evidence.description}\n"
+        
+        return {
+            "codebase_summary": codebase_summary,
+            "relevant_code_chunks": relevant_code_chunks,
+            "detected_patterns": detected_patterns,
+            "feature_description": feature_description,
+        }
+
+    def _parse_ai_specification(
+        self,
+        ai_content: str,
+        analysis: SpecificationAnalysis,
+    ) -> SpecificationDocument:
+        """Parse AI-generated specification content into structured document.
+        
+        This method extracts structured information from the AI-generated
+        markdown content and creates a SpecificationDocument.
+        
+        Args:
+            ai_content: AI-generated specification content
+            analysis: Original codebase analysis
+            
+        Returns:
+            Structured SpecificationDocument
+        """
+        # Extract sections from AI-generated content
+        sections = self._extract_sections(ai_content)
+        
+        # Extract introduction (Overview section)
+        introduction = sections.get("overview", sections.get("introduction", ""))
+        if not introduction:
+            # Fallback to first paragraph
+            paragraphs = [p.strip() for p in ai_content.split("\n\n") if p.strip()]
+            introduction = paragraphs[0] if paragraphs else "AI-generated specification"
+        
+        # Extract key features
+        key_features = self._extract_list_items(
+            sections.get("functional requirements", sections.get("key features", ""))
+        )
+        if not key_features:
+            key_features = analysis.main_features[:5]
+        
+        # Extract functional requirements
+        functional_requirements = self._extract_requirements_from_ai_content(
+            ai_content,
+            sections,
+        )
+        
+        # If no requirements extracted, fall back to analysis-based generation
+        if not functional_requirements:
+            logger.warning("No requirements extracted from AI content, using analysis-based generation")
+            functional_requirements = self._generate_requirements_from_evidence(analysis)
+        
+        return SpecificationDocument(
+            introduction=introduction,
+            key_features=key_features,
+            functional_requirements=functional_requirements,
+            source=SpecificationSource.EXISTING_CODE,
+            version=self.version,
+            approved=False,
+        )
+
+    def _extract_sections(self, content: str) -> dict[str, str]:
+        """Extract sections from markdown content.
+        
+        Args:
+            content: Markdown content
+            
+        Returns:
+            Dictionary mapping section names to content
+        """
+        sections = {}
+        current_section = None
+        current_content = []
+        
+        for line in content.split("\n"):
+            # Check for section headers (## or ###)
+            if line.startswith("##"):
+                # Save previous section
+                if current_section:
+                    sections[current_section.lower()] = "\n".join(current_content).strip()
+                
+                # Start new section
+                current_section = line.lstrip("#").strip()
+                current_content = []
+            elif current_section:
+                current_content.append(line)
+        
+        # Save last section
+        if current_section:
+            sections[current_section.lower()] = "\n".join(current_content).strip()
+        
+        return sections
+
+    def _extract_list_items(self, content: str) -> list[str]:
+        """Extract list items from markdown content.
+        
+        Args:
+            content: Markdown content with list items
+            
+        Returns:
+            List of extracted items
+        """
+        items = []
+        for line in content.split("\n"):
+            line = line.strip()
+            if line.startswith("-") or line.startswith("*"):
+                item = line.lstrip("-*").strip()
+                if item:
+                    items.append(item)
+        return items
+
+    def _extract_requirements_from_ai_content(
+        self,
+        content: str,
+        sections: dict[str, str],
+    ) -> list[Requirement]:
+        """Extract requirements from AI-generated content.
+        
+        Args:
+            content: Full AI-generated content
+            sections: Extracted sections
+            
+        Returns:
+            List of Requirement objects
+        """
+        requirements = []
+        req_id_counter = 1
+        
+        # Look for requirements in various sections
+        req_sections = [
+            "functional requirements",
+            "requirements",
+            "acceptance criteria",
+            "technical requirements",
+        ]
+        
+        for section_name in req_sections:
+            if section_name in sections:
+                section_content = sections[section_name]
+                
+                # Extract requirement blocks (look for numbered items or bullet points)
+                req_blocks = self._split_requirement_blocks(section_content)
+                
+                for block in req_blocks:
+                    # Try to extract user story and acceptance criteria
+                    user_story = self._extract_user_story(block)
+                    acceptance_criteria = self._extract_acceptance_criteria(block)
+                    
+                    if user_story or acceptance_criteria:
+                        requirement = Requirement(
+                            id=f"FR-{req_id_counter}",
+                            user_story=user_story or "As a user, I want this functionality",
+                            acceptance_criteria=acceptance_criteria or ["WHEN using this feature THEN it SHALL work as expected"],
+                            priority=Priority.MEDIUM,
+                        )
+                        requirements.append(requirement)
+                        req_id_counter += 1
+        
+        return requirements
+
+    def _split_requirement_blocks(self, content: str) -> list[str]:
+        """Split content into requirement blocks.
+        
+        Args:
+            content: Section content
+            
+        Returns:
+            List of requirement blocks
+        """
+        blocks = []
+        current_block = []
+        
+        for line in content.split("\n"):
+            line = line.strip()
+            
+            # New block starts with number or bullet
+            if line and (line[0].isdigit() or line.startswith("-") or line.startswith("*")):
+                if current_block:
+                    blocks.append("\n".join(current_block))
+                current_block = [line]
+            elif line:
+                current_block.append(line)
+        
+        if current_block:
+            blocks.append("\n".join(current_block))
+        
+        return blocks
+
+    def _extract_user_story(self, block: str) -> str:
+        """Extract user story from requirement block.
+        
+        Args:
+            block: Requirement block text
+            
+        Returns:
+            User story or empty string
+        """
+        # Look for "As a" pattern
+        for line in block.split("\n"):
+            if "as a" in line.lower():
+                return line.strip().lstrip("-*0123456789. ")
+        
+        # If no user story found, use first line
+        lines = [l.strip() for l in block.split("\n") if l.strip()]
+        if lines:
+            return lines[0].lstrip("-*0123456789. ")
+        
+        return ""
+
+    def _extract_acceptance_criteria(self, block: str) -> list[str]:
+        """Extract acceptance criteria from requirement block.
+        
+        Args:
+            block: Requirement block text
+            
+        Returns:
+            List of acceptance criteria
+        """
+        criteria = []
+        
+        for line in block.split("\n"):
+            line = line.strip()
+            # Look for WHEN/THEN or SHALL patterns
+            if ("when" in line.lower() and "then" in line.lower()) or "shall" in line.lower():
+                criterion = line.lstrip("-*0123456789. ")
+                if criterion:
+                    criteria.append(criterion)
+        
+        return criteria
+
+    # Private helper methods for rule-based generation
 
     def _generate_introduction_from_analysis(
         self, analysis: SpecificationAnalysis

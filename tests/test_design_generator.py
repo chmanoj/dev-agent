@@ -1,6 +1,6 @@
 """Tests for design generator."""
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -428,6 +428,403 @@ class TestDesignGenerator:
 
         assert any("Session" in rel for rel in user_relationships)
         assert any("User" in rel for rel in session_relationships)
+
+
+class TestDesignGeneratorWithLLM:
+    """Test cases for DesignGenerator with LLM client integration."""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Create a mock LLM client."""
+        from unittest.mock import AsyncMock
+
+        client = AsyncMock()
+        client.generate_completion = AsyncMock(
+            return_value="""## Overview
+This design document outlines a comprehensive architecture for the data management system.
+
+## Architecture
+The system follows a layered architecture with clear separation of concerns.
+
+### Patterns
+- Repository Pattern
+- Service Layer Pattern
+- Dependency Injection
+
+## Components and Interfaces
+### DataService
+Handles all data operations including CRUD operations.
+
+**Interfaces:**
+- IDataService
+- IDataRepository
+
+**Dependencies:**
+- Database connection
+- Validation service
+
+## Data Models
+### User
+**Fields:**
+- id: int
+- username: str
+- email: str
+
+## Error Handling
+Comprehensive error handling with logging and recovery mechanisms.
+
+## Testing Strategy
+Unit testing with >90% coverage and integration tests for all components.
+"""
+        )
+        return client
+
+    @pytest.fixture
+    def mock_cost_tracker(self):
+        """Create a mock cost tracker."""
+        tracker = Mock()
+        tracker.record_completion = Mock(return_value=0.05)
+        return tracker
+
+    @pytest.fixture
+    def mock_token_counter(self):
+        """Create a mock token counter."""
+        counter = Mock()
+        counter.count_tokens = Mock(return_value=500)
+        counter.validate_context_window = Mock(return_value=(True, ""))
+        counter.get_model_name = Mock(return_value="gpt-4")
+        return counter
+
+    @pytest.fixture
+    def mock_vector_db(self):
+        """Create a mock vector database."""
+        from unittest.mock import AsyncMock
+
+        db = AsyncMock()
+        db.search = AsyncMock(
+            return_value=[
+                {
+                    "content": "class UserService:\n    def __init__(self):\n        pass",
+                    "metadata": {"file_path": "services/user_service.py"},
+                },
+                {
+                    "content": "class DataRepository:\n    def save(self, data):\n        pass",
+                    "metadata": {"file_path": "repositories/data_repo.py"},
+                },
+            ]
+        )
+        return db
+
+    @pytest.fixture
+    def mock_analyzer(self):
+        """Create a mock codebase analyzer."""
+        analyzer = Mock(spec=ICodebaseAnalyzer)
+        return analyzer
+
+    @pytest.fixture
+    def generator_with_llm(
+        self,
+        mock_analyzer,
+        mock_llm_client,
+        mock_cost_tracker,
+        mock_token_counter,
+        mock_vector_db,
+    ):
+        """Create a design generator with LLM client."""
+        return DesignGenerator(
+            codebase_analyzer=mock_analyzer,
+            llm_client=mock_llm_client,
+            cost_tracker=mock_cost_tracker,
+            token_counter=mock_token_counter,
+            vector_db=mock_vector_db,
+        )
+
+    @pytest.fixture
+    def sample_specification(self):
+        """Create sample specification document."""
+        requirements = [
+            Requirement(
+                id="FR-1",
+                user_story="As a user, I want to manage data efficiently",
+                acceptance_criteria=["WHEN I create data THEN it SHALL be stored"],
+                priority=Priority.HIGH,
+            ),
+        ]
+
+        return SpecificationDocument(
+            introduction="Test application for data management",
+            key_features=["Data Management", "User Authentication"],
+            functional_requirements=requirements,
+            source=SpecificationSource.EXISTING_CODE,
+            version="1.0",
+            approved=True,
+        )
+
+    @pytest.fixture
+    def sample_design_analysis(self):
+        """Create sample design analysis."""
+        component_analysis = ComponentAnalysis(
+            name="UserService",
+            purpose="Handles user management operations",
+            interfaces=["IUserService"],
+            dependencies=["UserRepository"],
+            internal_structure={"files": 3, "functions": 15},
+            complexity_score=2.5,
+        )
+
+        return DesignAnalysis(
+            architecture_overview="Service-oriented architecture",
+            components=[component_analysis],
+            data_models=[
+                {
+                    "name": "User",
+                    "attributes": ["id", "username", "email"],
+                    "relationships": [],
+                }
+            ],
+            api_interfaces=[],
+            design_patterns=["Repository Pattern"],
+            quality_metrics={"documentation_coverage": 0.8},
+            technical_debt=[],
+            recommendations=[],
+        )
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai(
+        self,
+        generator_with_llm,
+        sample_specification,
+        sample_design_analysis,
+        mock_llm_client,
+    ):
+        """Test AI-powered design generation."""
+        design = await generator_with_llm.generate_from_specification_ai(
+            sample_specification, sample_design_analysis
+        )
+
+        assert isinstance(design, DesignDocument)
+        assert design.version == "1.0"
+        assert not design.approved
+        mock_llm_client.generate_completion.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai_uses_prompt_template(
+        self,
+        generator_with_llm,
+        sample_specification,
+        sample_design_analysis,
+        mock_llm_client,
+    ):
+        """Test that AI generation uses the design prompt template."""
+        await generator_with_llm.generate_from_specification_ai(
+            sample_specification, sample_design_analysis
+        )
+
+        # Verify LLM was called with proper prompts
+        call_args = mock_llm_client.generate_completion.call_args
+        assert "prompt" in call_args.kwargs
+        assert "system_prompt" in call_args.kwargs
+        assert "temperature" in call_args.kwargs
+        assert "max_tokens" in call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai_retrieves_context(
+        self,
+        generator_with_llm,
+        sample_specification,
+        sample_design_analysis,
+        mock_vector_db,
+    ):
+        """Test that AI generation retrieves relevant context via vector search."""
+        await generator_with_llm.generate_from_specification_ai(
+            sample_specification, sample_design_analysis
+        )
+
+        # Verify vector search was called
+        mock_vector_db.search.assert_called_once()
+        call_args = mock_vector_db.search.call_args
+        assert "query" in call_args.kwargs
+        assert "top_k" in call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai_validates_tokens(
+        self,
+        generator_with_llm,
+        sample_specification,
+        sample_design_analysis,
+        mock_token_counter,
+    ):
+        """Test that AI generation validates token limits."""
+        await generator_with_llm.generate_from_specification_ai(
+            sample_specification, sample_design_analysis
+        )
+
+        # Verify token counting and validation
+        assert mock_token_counter.count_tokens.called
+        assert mock_token_counter.validate_context_window.called
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai_tracks_cost(
+        self,
+        generator_with_llm,
+        sample_specification,
+        sample_design_analysis,
+        mock_cost_tracker,
+    ):
+        """Test that AI generation tracks costs."""
+        await generator_with_llm.generate_from_specification_ai(
+            sample_specification, sample_design_analysis
+        )
+
+        # Verify cost tracking
+        mock_cost_tracker.record_completion.assert_called_once()
+        call_args = mock_cost_tracker.record_completion.call_args
+        assert "prompt_tokens" in call_args.kwargs
+        assert "completion_tokens" in call_args.kwargs
+        assert "model" in call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai_without_llm_client(
+        self, mock_analyzer, sample_specification, sample_design_analysis
+    ):
+        """Test that AI generation raises error without LLM client."""
+        generator = DesignGenerator(codebase_analyzer=mock_analyzer)
+
+        with pytest.raises(ValueError, match="LLM client not configured"):
+            await generator.generate_from_specification_ai(
+                sample_specification, sample_design_analysis
+            )
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai_handles_token_limit_error(
+        self,
+        generator_with_llm,
+        sample_specification,
+        sample_design_analysis,
+        mock_token_counter,
+    ):
+        """Test that AI generation handles token limit errors."""
+        from dev_agent.errors.llm_exceptions import LLMTokenLimitError
+
+        # Mock token validation to fail
+        mock_token_counter.validate_context_window = Mock(
+            return_value=(False, "Token limit exceeded")
+        )
+
+        with pytest.raises(LLMTokenLimitError):
+            await generator_with_llm.generate_from_specification_ai(
+                sample_specification, sample_design_analysis
+            )
+
+    @pytest.mark.asyncio
+    async def test_generate_from_specification_ai_handles_llm_errors(
+        self,
+        generator_with_llm,
+        sample_specification,
+        sample_design_analysis,
+        mock_llm_client,
+    ):
+        """Test that AI generation handles LLM errors gracefully."""
+        from dev_agent.errors.llm_exceptions import LLMAPIError
+
+        # Mock LLM to raise error
+        mock_llm_client.generate_completion = AsyncMock(
+            side_effect=LLMAPIError("API error", "Check configuration")
+        )
+
+        with pytest.raises(LLMAPIError):
+            await generator_with_llm.generate_from_specification_ai(
+                sample_specification, sample_design_analysis
+            )
+
+    @pytest.mark.asyncio
+    async def test_retrieve_architecture_patterns(
+        self, generator_with_llm, sample_specification, mock_vector_db
+    ):
+        """Test retrieving architecture patterns via vector search."""
+        patterns = await generator_with_llm._retrieve_architecture_patterns(
+            sample_specification
+        )
+
+        assert isinstance(patterns, list)
+        assert len(patterns) > 0
+        mock_vector_db.search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retrieve_architecture_patterns_without_vector_db(
+        self, mock_analyzer, mock_llm_client, sample_specification
+    ):
+        """Test pattern retrieval without vector database."""
+        generator = DesignGenerator(
+            codebase_analyzer=mock_analyzer, llm_client=mock_llm_client
+        )
+
+        patterns = await generator._retrieve_architecture_patterns(sample_specification)
+
+        assert isinstance(patterns, list)
+        assert len(patterns) == 0  # Should return empty list
+
+    def test_build_design_context(
+        self, generator_with_llm, sample_specification, sample_design_analysis
+    ):
+        """Test building context for design prompt."""
+        relevant_patterns = [
+            {
+                "content": "class Example:\n    pass",
+                "metadata": {"file_path": "example.py"},
+            }
+        ]
+
+        context = generator_with_llm._build_design_context(
+            sample_specification, sample_design_analysis, relevant_patterns
+        )
+
+        assert isinstance(context, dict)
+        assert "specification" in context
+        assert "existing_architecture" in context
+        assert "code_patterns" in context
+        assert "similar_implementations" in context
+
+    def test_format_specification_for_context(
+        self, generator_with_llm, sample_specification
+    ):
+        """Test formatting specification for context."""
+        formatted = generator_with_llm._format_specification_for_context(
+            sample_specification
+        )
+
+        assert isinstance(formatted, str)
+        assert "Introduction" in formatted
+        assert "Key Features" in formatted
+        assert "Functional Requirements" in formatted
+
+    def test_format_architecture_for_context(
+        self, generator_with_llm, sample_design_analysis
+    ):
+        """Test formatting architecture for context."""
+        formatted = generator_with_llm._format_architecture_for_context(
+            sample_design_analysis
+        )
+
+        assert isinstance(formatted, str)
+        assert "Overview" in formatted or "Service-oriented" in formatted
+        assert "Design Patterns" in formatted or "Repository Pattern" in formatted
+
+    def test_format_patterns_for_context(self, generator_with_llm, sample_design_analysis):
+        """Test formatting patterns for context."""
+        relevant_patterns = [
+            {
+                "content": "class Example:\n    pass",
+                "metadata": {"file_path": "example.py"},
+            }
+        ]
+
+        formatted = generator_with_llm._format_patterns_for_context(
+            sample_design_analysis, relevant_patterns
+        )
+
+        assert isinstance(formatted, str)
+        assert "Detected Patterns" in formatted or "Code Examples" in formatted
 
 
 class TestDesignGeneratorIntegration:

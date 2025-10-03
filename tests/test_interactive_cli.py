@@ -223,6 +223,184 @@ class TestInteractiveCLI(unittest.TestCase):
         self.cli._handle_interrupt(2, None)  # SIGINT
         mock_graceful_exit.assert_called_once()
 
+    def test_handle_user_input_cost_command(self):
+        """Test handling cost command."""
+        with patch.object(self.cli, "_display_cost_report") as mock_cost_report:
+            result = self.cli.handle_user_input("cost")
+            mock_cost_report.assert_called_once()
+            self.assertEqual(result, "")
+
+    def test_handle_user_input_cost_no_workflow_manager(self):
+        """Test handling cost command without workflow manager."""
+        cli = InteractiveCLI()
+        result = cli.handle_user_input("cost")
+        self.assertIn("No active project", result)
+
+    @patch("dev_agent.cli.interactive_cli.console")
+    def test_display_cost_summary(self, mock_console):
+        """Test cost summary display."""
+        from dev_agent.models.cost_tracking import CostReport
+        from dev_agent.models.enums import PhaseType
+        from datetime import datetime
+        
+        # Create a mock cost report
+        mock_report = CostReport(
+            total_prompt_tokens=1000,
+            total_completion_tokens=2000,
+            total_embedding_tokens=500,
+            total_cost=0.15,
+            operations_count=10,
+            by_phase={PhaseType.INDEXING: 0.075},
+            by_operation={},
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        
+        self.mock_workflow_manager.cost_tracker.get_report.return_value = mock_report
+        self.mock_workflow_manager.cost_tracker.check_budget_threshold.return_value = False
+        
+        self.cli.display_cost_summary()
+        
+        # Should call console.print with table
+        mock_console.print.assert_called()
+
+    @patch("dev_agent.cli.interactive_cli.console")
+    def test_display_cost_summary_with_phase(self, mock_console):
+        """Test cost summary display for specific phase."""
+        from dev_agent.models.cost_tracking import CostReport
+        from dev_agent.models.enums import PhaseType
+        from datetime import datetime
+        
+        # Create a mock cost report
+        mock_report = CostReport(
+            total_prompt_tokens=500,
+            total_completion_tokens=1000,
+            total_embedding_tokens=250,
+            total_cost=0.075,
+            operations_count=5,
+            by_phase={PhaseType.INDEXING: 0.075},
+            by_operation={},
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        
+        self.mock_workflow_manager.cost_tracker.get_phase_report.return_value = mock_report
+        self.mock_workflow_manager.cost_tracker.check_budget_threshold.return_value = False
+        
+        self.cli.display_cost_summary(PhaseType.INDEXING)
+        
+        # Should call console.print with table
+        mock_console.print.assert_called()
+
+    @patch("dev_agent.cli.interactive_cli.console")
+    def test_display_cost_summary_with_budget_warning(self, mock_console):
+        """Test cost summary display with budget warning."""
+        from dev_agent.models.cost_tracking import CostReport
+        from datetime import datetime
+        
+        # Create a mock cost report
+        mock_report = CostReport(
+            total_prompt_tokens=10000,
+            total_completion_tokens=20000,
+            total_embedding_tokens=5000,
+            total_cost=15.0,
+            operations_count=100,
+            by_phase={},
+            by_operation={},
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        
+        self.mock_workflow_manager.cost_tracker.get_report.return_value = mock_report
+        self.mock_workflow_manager.cost_tracker.check_budget_threshold.return_value = True
+        self.mock_workflow_manager.cost_tracker.get_current_cost.return_value = 15.0
+        self.mock_workflow_manager.cost_tracker.budget_limit = 20.0
+        
+        self.cli.display_cost_summary()
+        
+        # Should display budget warning
+        mock_console.print.assert_called()
+        # Check that warning was displayed
+        calls = [str(call) for call in mock_console.print.call_args_list]
+        self.assertTrue(any("Budget Warning" in str(call) or "warning" in str(call).lower() for call in calls))
+
+    @patch("dev_agent.cli.interactive_cli.console")
+    def test_display_cost_report(self, mock_console):
+        """Test detailed cost report display."""
+        from dev_agent.models.cost_tracking import CostReport
+        from dev_agent.models.enums import PhaseType, LLMOperationType
+        from datetime import datetime
+        
+        # Create a mock cost report with detailed breakdown
+        mock_report = CostReport(
+            total_prompt_tokens=1000,
+            total_completion_tokens=2000,
+            total_embedding_tokens=500,
+            total_cost=0.15,
+            operations_count=10,
+            by_phase={
+                PhaseType.INDEXING: 0.05,
+                PhaseType.SPECIFICATION: 0.10,
+            },
+            by_operation={
+                LLMOperationType.COMPLETION.value: 5,
+                LLMOperationType.EMBEDDING.value: 5,
+            },
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+        )
+        
+        self.mock_workflow_manager.cost_tracker.get_report.return_value = mock_report
+        
+        self.cli._display_cost_report()
+        
+        # Should call console.print multiple times for different tables
+        self.assertGreater(mock_console.print.call_count, 1)
+
+    def test_display_cost_report_no_workflow_manager(self):
+        """Test cost report display without workflow manager."""
+        cli = InteractiveCLI()
+        
+        with patch("dev_agent.cli.interactive_cli.console") as mock_console:
+            cli._display_cost_report()
+            
+            # Should display "No active project" message
+            mock_console.print.assert_called()
+
+    @patch("dev_agent.cli.interactive_cli.console")
+    def test_display_streaming_progress(self, mock_console):
+        """Test streaming progress display."""
+        from dev_agent.models.enums import PhaseType
+        
+        result = self.cli.display_streaming_progress(PhaseType.SPECIFICATION, "Generating")
+        
+        # Should return progress and task objects
+        self.assertIsNotNone(result)
+
+    def test_handle_user_input_run_with_cost_display(self):
+        """Test run command displays cost summary."""
+        self.mock_workflow_manager.execute_complete_workflow.return_value = True
+        
+        with patch.object(self.cli, "display_cost_summary") as mock_cost_summary:
+            result = self.cli.handle_user_input("run")
+            
+            # Should display cost summary after workflow
+            mock_cost_summary.assert_called_once()
+            self.assertIn("completed successfully", result)
+
+    def test_handle_user_input_phase_with_cost_display(self):
+        """Test phase command displays cost summary."""
+        self.mock_workflow_manager.transition_to_phase.return_value = True
+        
+        # Mock display_cost_summary to avoid actual display logic
+        with patch.object(self.cli, "display_cost_summary") as mock_cost_summary:
+            result = self.cli.handle_user_input("phase INDEXING")
+            
+            # Verify the result indicates success
+            self.assertIn("Successfully transitioned", result)
+            # Cost summary should be called after successful phase transition via _display_cost_summary
+            mock_cost_summary.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

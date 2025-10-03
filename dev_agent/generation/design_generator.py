@@ -1,10 +1,23 @@
 """Design generator for creating DESIGN.md documents."""
 
-from typing import Any
+from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING, Any
+
+from ..errors.llm_exceptions import (
+    LLMAPIError,
+    LLMAuthenticationError,
+    LLMBadRequestError,
+    LLMError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMTokenLimitError,
+)
 from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.generation_interface import IDesignGenerator
+from ..llm.prompt_templates import get_template
 from ..models.analysis import DesignAnalysis
 from ..models.documents import (
     ArchitectureDescription,
@@ -17,29 +30,212 @@ from ..models.documents import (
     TestingStrategy,
 )
 
+if TYPE_CHECKING:
+    from ..indexing.vector_database import VectorDatabase
+    from ..llm.base import ILLMClient
+    from ..llm.cost_tracker import CostTracker
+    from ..llm.token_counter import TokenCounter
+
+logger = logging.getLogger(__name__)
+
 
 class DesignGenerator(IDesignGenerator):
-    """Generates design documents from specifications and codebase analysis."""
+    """Generates design documents from specifications and codebase analysis.
+    
+    This generator uses Azure OpenAI (GPT-4) to create detailed design documents
+    based on specifications, existing architecture, and relevant code patterns
+    retrieved via vector search. It integrates with cost tracking and token
+    management for efficient API usage.
+    
+    Example:
+        ```python
+        from dev_agent.llm.azure_client import AzureOpenAIClient
+        from dev_agent.llm.cost_tracker import CostTracker
+        from dev_agent.llm.token_counter import TokenCounter
+        from dev_agent.indexing.vector_database import VectorDatabase
+        
+        llm_client = AzureOpenAIClient(config)
+        cost_tracker = CostTracker()
+        token_counter = TokenCounter()
+        vector_db = VectorDatabase(index_path, embedding_client)
+        
+        generator = DesignGenerator(
+            codebase_analyzer=analyzer,
+            llm_client=llm_client,
+            cost_tracker=cost_tracker,
+            token_counter=token_counter,
+            vector_db=vector_db,
+        )
+        
+        design = await generator.generate_from_specification_ai(spec, analysis)
+        ```
+    """
 
     def __init__(
         self,
         codebase_analyzer: ICodebaseAnalyzer,
         cli_interface: ICLIInterface | None = None,
+        llm_client: ILLMClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        token_counter: TokenCounter | None = None,
+        vector_db: VectorDatabase | None = None,
     ):
         """Initialize the design generator.
 
         Args:
             codebase_analyzer: Codebase analyzer for architecture analysis
             cli_interface: Optional CLI interface for user interaction
+            llm_client: LLM client for AI-powered generation (optional for backward compatibility)
+            cost_tracker: Cost tracker for monitoring API usage (optional)
+            token_counter: Token counter for validation (optional)
+            vector_db: Vector database for context retrieval (optional)
         """
         self.codebase_analyzer = codebase_analyzer
         self.cli_interface = cli_interface
+        self.llm_client = llm_client
+        self.cost_tracker = cost_tracker
+        self.token_counter = token_counter
+        self.vector_db = vector_db
         self.version = "1.0"
+
+        if llm_client:
+            logger.info("DesignGenerator initialized with LLM client")
+        else:
+            logger.warning(
+                "DesignGenerator initialized without LLM client - "
+                "AI-powered generation will not be available"
+            )
+
+    async def generate_from_specification_ai(
+        self,
+        spec: SpecificationDocument,
+        analysis: DesignAnalysis,
+    ) -> DesignDocument:
+        """Generate design document using AI from specification and codebase analysis.
+        
+        This method uses Azure OpenAI (GPT-4) to generate a comprehensive
+        design document based on the specification, existing architecture,
+        and relevant code patterns retrieved via vector search.
+
+        Args:
+            spec: Specification document
+            analysis: Design analysis from codebase
+
+        Returns:
+            Generated design document
+            
+        Raises:
+            ValueError: If LLM client is not configured
+            LLMError: If AI generation fails
+        """
+        if not self.llm_client:
+            raise ValueError(
+                "LLM client not configured. Initialize DesignGenerator "
+                "with an ILLMClient instance for AI-powered generation."
+            )
+
+        logger.info("Generating AI-powered design document from specification")
+
+        try:
+            # Retrieve relevant architecture patterns via vector search
+            relevant_patterns = await self._retrieve_architecture_patterns(spec)
+
+            # Build context for prompt template
+            context = self._build_design_context(
+                spec=spec,
+                analysis=analysis,
+                relevant_patterns=relevant_patterns,
+            )
+
+            # Get design template
+            template = get_template("design")
+
+            # Validate token limits before generation
+            if self.token_counter:
+                system_prompt, user_prompt = template.render(context, self.token_counter)
+                prompt_tokens = self.token_counter.count_tokens(user_prompt)
+                system_tokens = self.token_counter.count_tokens(system_prompt)
+                total_prompt_tokens = prompt_tokens + system_tokens
+
+                is_valid, error_msg = self.token_counter.validate_context_window(
+                    prompt_tokens=total_prompt_tokens,
+                    max_completion_tokens=template.max_tokens,
+                )
+
+                if not is_valid:
+                    raise LLMTokenLimitError(error_msg)
+
+                logger.info(
+                    f"Token validation passed: {total_prompt_tokens} prompt tokens, "
+                    f"{template.max_tokens} max completion tokens"
+                )
+            else:
+                system_prompt, user_prompt = template.render(context)
+
+            # Generate design using LLM
+            logger.info("Calling Azure OpenAI for design generation...")
+            design_content = await self.llm_client.generate_completion(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=template.temperature,
+                max_tokens=template.max_tokens,
+            )
+
+            # Track cost if tracker available
+            if self.cost_tracker and self.token_counter:
+                prompt_tokens = self.token_counter.count_tokens(user_prompt + system_prompt)
+                completion_tokens = self.token_counter.count_tokens(design_content)
+                cost = self.cost_tracker.record_completion(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    model=self.token_counter.get_model_name(),
+                )
+                logger.info(
+                    f"Design generation cost: ${cost:.4f} "
+                    f"({prompt_tokens} + {completion_tokens} tokens)"
+                )
+
+            # Parse AI-generated content into structured document
+            design_doc = self._parse_ai_design(design_content, spec, analysis)
+
+            logger.info("AI-powered design document generated successfully")
+            return design_doc
+
+        except LLMAuthenticationError as e:
+            logger.error(f"Authentication failed: {e}")
+            raise
+        except LLMRateLimitError as e:
+            logger.warning(f"Rate limit hit: {e}")
+            raise
+        except LLMTimeoutError as e:
+            logger.error(f"Request timed out: {e}")
+            raise
+        except LLMBadRequestError as e:
+            logger.error(f"Bad request: {e}")
+            raise
+        except LLMTokenLimitError as e:
+            logger.error(f"Token limit exceeded: {e}")
+            raise
+        except LLMAPIError as e:
+            logger.error(f"API error: {e}")
+            raise
+        except LLMError as e:
+            logger.error(f"LLM error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during AI generation: {e}")
+            raise LLMAPIError(
+                f"Failed to generate design: {e}",
+                "Check logs for details and verify Azure OpenAI configuration"
+            ) from e
 
     def generate_from_specification(
         self, spec: SpecificationDocument, analysis: DesignAnalysis
     ) -> DesignDocument:
         """Generate design document from specification and codebase analysis.
+        
+        This is the legacy method that uses rule-based generation.
+        For AI-powered generation, use generate_from_specification_ai().
 
         Args:
             spec: Specification document
@@ -880,3 +1076,247 @@ class DesignGenerator(IDesignGenerator):
                 return f"{major}.1"
         except (ValueError, IndexError):
             return "1.1"
+
+    async def _retrieve_architecture_patterns(
+        self,
+        spec: SpecificationDocument,
+    ) -> list[dict[str, Any]]:
+        """Retrieve relevant architecture patterns via vector search.
+        
+        Args:
+            spec: Specification document to search for patterns
+            
+        Returns:
+            List of relevant code chunks with architecture patterns
+        """
+        if not self.vector_db:
+            logger.warning("Vector database not available, skipping pattern retrieval")
+            return []
+
+        try:
+            # Build search query from specification
+            query_parts = [spec.introduction]
+            query_parts.extend(spec.key_features[:3])  # Top 3 features
+            query = " ".join(query_parts)
+
+            # Search for relevant architecture patterns
+            results = await self.vector_db.search(
+                query=query,
+                top_k=5,
+                filter_metadata={"type": "architecture"},  # Prefer architecture-related code
+            )
+
+            logger.info(f"Retrieved {len(results)} relevant architecture patterns")
+            return results
+
+        except Exception as e:
+            logger.warning(f"Failed to retrieve architecture patterns: {e}")
+            return []
+
+    def _build_design_context(
+        self,
+        spec: SpecificationDocument,
+        analysis: DesignAnalysis,
+        relevant_patterns: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Build context dictionary for design prompt template.
+        
+        Args:
+            spec: Specification document
+            analysis: Design analysis from codebase
+            relevant_patterns: Relevant code patterns from vector search
+            
+        Returns:
+            Context dictionary for prompt template
+        """
+        # Format specification
+        spec_text = self._format_specification_for_context(spec)
+
+        # Format existing architecture
+        architecture_text = self._format_architecture_for_context(analysis)
+
+        # Format code patterns
+        patterns_text = self._format_patterns_for_context(analysis, relevant_patterns)
+
+        # Format similar implementations
+        similar_impl_text = self._format_similar_implementations(relevant_patterns)
+
+        context = {
+            "specification": spec_text,
+            "existing_architecture": architecture_text,
+            "code_patterns": patterns_text,
+            "similar_implementations": similar_impl_text,
+        }
+
+        return context
+
+    def _format_specification_for_context(self, spec: SpecificationDocument) -> str:
+        """Format specification for prompt context.
+        
+        Args:
+            spec: Specification document
+            
+        Returns:
+            Formatted specification text
+        """
+        lines = []
+
+        lines.append(f"**Introduction:** {spec.introduction}")
+        lines.append("")
+
+        if spec.key_features:
+            lines.append("**Key Features:**")
+            for feature in spec.key_features[:5]:  # Top 5 features
+                lines.append(f"- {feature}")
+            lines.append("")
+
+        if spec.functional_requirements:
+            lines.append("**Functional Requirements:**")
+            for req in spec.functional_requirements[:10]:  # Top 10 requirements
+                lines.append(f"- {req.id}: {req.user_story}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _format_architecture_for_context(self, analysis: DesignAnalysis) -> str:
+        """Format existing architecture for prompt context.
+        
+        Args:
+            analysis: Design analysis from codebase
+            
+        Returns:
+            Formatted architecture text
+        """
+        lines = []
+
+        if analysis.architecture_overview:
+            lines.append(f"**Overview:** {analysis.architecture_overview}")
+            lines.append("")
+
+        if analysis.design_patterns:
+            lines.append("**Design Patterns:**")
+            for pattern in analysis.design_patterns:
+                lines.append(f"- {pattern}")
+            lines.append("")
+
+        if analysis.components:
+            lines.append("**Existing Components:**")
+            for comp in analysis.components[:5]:  # Top 5 components
+                lines.append(f"- {comp.name}: {comp.purpose}")
+            lines.append("")
+
+        if analysis.quality_metrics:
+            lines.append("**Quality Metrics:**")
+            for metric, value in list(analysis.quality_metrics.items())[:3]:
+                lines.append(f"- {metric}: {value}")
+            lines.append("")
+
+        return "\n".join(lines) if lines else "No existing architecture information available."
+
+    def _format_patterns_for_context(
+        self,
+        analysis: DesignAnalysis,
+        relevant_patterns: list[dict[str, Any]],
+    ) -> str:
+        """Format code patterns for prompt context.
+        
+        Args:
+            analysis: Design analysis from codebase
+            relevant_patterns: Relevant patterns from vector search
+            
+        Returns:
+            Formatted patterns text
+        """
+        lines = []
+
+        # Add patterns from analysis
+        if analysis.design_patterns:
+            lines.append("**Detected Patterns:**")
+            for pattern in analysis.design_patterns:
+                lines.append(f"- {pattern}")
+            lines.append("")
+
+        # Add patterns from vector search
+        if relevant_patterns:
+            lines.append("**Code Examples:**")
+            for i, pattern in enumerate(relevant_patterns[:3], 1):
+                content = pattern.get("content", "")
+                file_path = pattern.get("metadata", {}).get("file_path", "unknown")
+                lines.append(f"\n**Example {i}** (from {file_path}):")
+                lines.append(f"```python\n{content[:500]}...\n```")  # Truncate long examples
+            lines.append("")
+
+        return "\n".join(lines) if lines else "No specific patterns detected."
+
+    def _format_similar_implementations(
+        self,
+        relevant_patterns: list[dict[str, Any]],
+    ) -> str:
+        """Format similar implementations for prompt context.
+        
+        Args:
+            relevant_patterns: Relevant patterns from vector search
+            
+        Returns:
+            Formatted similar implementations text
+        """
+        if not relevant_patterns:
+            return "No similar implementations found in codebase."
+
+        lines = []
+        lines.append("**Similar Implementations in Codebase:**")
+
+        for i, pattern in enumerate(relevant_patterns[:3], 1):
+            content = pattern.get("content", "")
+            metadata = pattern.get("metadata", {})
+            file_path = metadata.get("file_path", "unknown")
+
+            lines.append(f"\n**Implementation {i}** (from {file_path}):")
+            lines.append(f"```python\n{content[:400]}...\n```")  # Truncate for context
+
+        return "\n".join(lines)
+
+    def _parse_ai_design(
+        self,
+        design_content: str,
+        spec: SpecificationDocument,
+        analysis: DesignAnalysis,
+    ) -> DesignDocument:
+        """Parse AI-generated design content into structured document.
+        
+        Args:
+            design_content: Raw design content from AI
+            spec: Original specification document
+            analysis: Design analysis from codebase
+            
+        Returns:
+            Structured design document
+        """
+        # For now, use the rule-based generation as fallback
+        # In a production system, you would parse the AI-generated markdown
+        # into structured components
+        logger.info("Parsing AI-generated design content")
+
+        # Use rule-based generation to create structure
+        # The AI content would be used to enhance the descriptions
+        design = self.generate_from_specification(spec, analysis)
+
+        # Enhance with AI-generated content
+        # In a full implementation, you would parse sections from design_content
+        # and update the structured document accordingly
+
+        # For now, prepend AI overview to the generated overview
+        if "## Overview" in design_content or "# Overview" in design_content:
+            # Extract overview section (simplified parsing)
+            overview_start = design_content.find("Overview")
+            if overview_start != -1:
+                overview_end = design_content.find("##", overview_start + 10)
+                if overview_end == -1:
+                    overview_end = len(design_content)
+                ai_overview = design_content[overview_start:overview_end].strip()
+                # Clean up markdown headers
+                ai_overview = ai_overview.replace("## Overview", "").replace("# Overview", "").strip()
+                if ai_overview:
+                    design.overview = ai_overview[:1000]  # Use AI overview
+
+        return design

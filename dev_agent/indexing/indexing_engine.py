@@ -1,13 +1,16 @@
 """High-performance indexing engine for codebase analysis."""
 
+from __future__ import annotations
+
 import json
+import logging
 import mmap
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..interfaces.indexing_interface import IIndexingEngine
 from ..models.indexing import ASTIndex, CodeChunk, SymbolInfo
@@ -17,16 +20,32 @@ from .code_chunker import CodeChunker
 from .tree_sitter_parser import TreeSitterParser
 from .vector_database import VectorDatabase
 
+if TYPE_CHECKING:
+    from ..llm.base import IEmbeddingClient
+    from ..llm.cost_tracker import CostTracker
+
+logger = logging.getLogger(__name__)
+
 
 class IndexingEngine(IIndexingEngine):
     """High-performance indexing engine that orchestrates AST parsing and embeddings."""
 
-    def __init__(self, project_path: str, index_path: str | None = None):
+    def __init__(
+        self,
+        project_path: str,
+        index_path: str | None = None,
+        embedding_client: IEmbeddingClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        batch_size: int = 16,
+    ):
         """Initialize the indexing engine.
 
         Args:
             project_path: Path to the project root
             index_path: Custom path for index storage (optional)
+            embedding_client: Embedding client for generating embeddings (optional)
+            cost_tracker: Cost tracker for monitoring token usage (optional)
+            batch_size: Number of chunks to process per embedding batch (default: 16)
         """
         self.project_path = Path(project_path)
         self.index_path = (
@@ -40,7 +59,15 @@ class IndexingEngine(IIndexingEngine):
 
         # Initialize components
         self.tree_sitter_parser = TreeSitterParser()
-        self.vector_db = VectorDatabase(str(self.index_path))
+        self.embedding_client = embedding_client
+        self.cost_tracker = cost_tracker
+        self.batch_size = batch_size
+        
+        # Initialize vector database with embedding client if provided
+        self.vector_db = VectorDatabase(
+            str(self.index_path),
+            embedding_client=embedding_client,
+        )
         self.code_chunker = CodeChunker(max_chunk_size=512, overlap_size=50)
 
         # Index state
@@ -65,6 +92,7 @@ class IndexingEngine(IIndexingEngine):
         self.progress_callback = None
         self.current_progress = 0.0
         self.total_files = 0
+        self.chunks_processed = 0
 
         # Load existing index if available
         self._load_existing_index()
@@ -159,7 +187,7 @@ class IndexingEngine(IIndexingEngine):
             all_chunks = self.code_chunker.optimize_chunks(all_chunks)
             print(f"Optimized to {len(all_chunks)} chunks")
 
-            # Step 4: Generate and store embeddings
+            # Step 4: Generate and store embeddings with progress tracking
             print("Generating embeddings...")
             self._update_progress(
                 3 * len(source_files) // 4,
@@ -169,9 +197,21 @@ class IndexingEngine(IIndexingEngine):
 
             embeddings_count = 0
             if all_chunks:
-                chunk_ids = self.vector_db.store_embeddings(all_chunks)
+                # Store embeddings with progress tracking (async)
+                import asyncio
+                
+                chunk_ids = asyncio.run(self._store_embeddings_with_progress(all_chunks))
                 embeddings_count = len(chunk_ids)
                 print(f"Generated {embeddings_count} embeddings")
+                
+                # Log cost tracking summary if available
+                if self.cost_tracker:
+                    current_cost = self.cost_tracker.get_current_cost()
+                    total_tokens = self.cost_tracker.get_total_tokens()
+                    logger.info(
+                        f"Embedding generation complete: {total_tokens} tokens, "
+                        f"${current_cost:.4f} estimated cost"
+                    )
 
             # Step 5: Save index to disk
             print("Saving index to disk...")
@@ -424,6 +464,70 @@ class IndexingEngine(IIndexingEngine):
             # Fallback to regular parsing
             return self.tree_sitter_parser.parse_file(str(file_path), language)
 
+    async def _store_embeddings_with_progress(
+        self, code_chunks: list[CodeChunk]
+    ) -> list[str]:
+        """Store embeddings with progress tracking and cost monitoring.
+
+        This method wraps the vector database's store_embeddings method to add
+        progress tracking every 100 chunks and integrate with cost tracking.
+
+        Args:
+            code_chunks: List of code chunks to embed and store
+
+        Returns:
+            List of chunk IDs that were stored
+
+        Raises:
+            Exception: If embedding generation fails critically
+        """
+        if not code_chunks:
+            return []
+
+        total_chunks = len(code_chunks)
+        logger.info(f"Starting embedding generation for {total_chunks} chunks")
+
+        # Process in batches with progress tracking
+        chunk_ids = []
+        self.chunks_processed = 0
+
+        for i in range(0, total_chunks, self.batch_size):
+            batch = code_chunks[i : i + self.batch_size]
+            batch_size_actual = len(batch)
+
+            try:
+                # Store batch through vector database (async call)
+                batch_ids = await self.vector_db.store_embeddings(batch)
+                chunk_ids.extend(batch_ids)
+
+                self.chunks_processed += batch_size_actual
+
+                # Progress tracking every 100 chunks
+                if self.chunks_processed % 100 == 0 or self.chunks_processed == total_chunks:
+                    progress_msg = f"Generated embeddings for {self.chunks_processed}/{total_chunks} chunks"
+                    print(progress_msg)
+                    logger.info(progress_msg)
+
+                    # Log cost tracking if available
+                    if self.cost_tracker:
+                        current_cost = self.cost_tracker.get_current_cost()
+                        logger.debug(
+                            f"Current embedding cost: ${current_cost:.4f} "
+                            f"({self.chunks_processed} chunks processed)"
+                        )
+
+            except Exception as e:
+                error_msg = f"Error generating embeddings for batch at index {i}: {e}"
+                logger.error(error_msg)
+                print(f"Warning: {error_msg}")
+                # Continue with next batch rather than failing completely
+
+        logger.info(
+            f"Embedding generation complete: {len(chunk_ids)}/{total_chunks} chunks stored"
+        )
+
+        return chunk_ids
+
     def generate_embeddings(self, code_chunks: list[CodeChunk]) -> list[Any]:
         """Generate vector embeddings for code chunks.
 
@@ -494,7 +598,8 @@ class IndexingEngine(IIndexingEngine):
             List of CodeMatch objects
         """
         try:
-            return self.vector_db.query_similar(query, k=limit)
+            import asyncio
+            return asyncio.run(self.vector_db.query_similar(query, k=limit))
         except Exception as e:
             print(f"Error querying similar code: {e}")
             return []

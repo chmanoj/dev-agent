@@ -32,34 +32,25 @@ class AzureVectorDatabase:
         self.config = config
         self.index_path.mkdir(parents=True, exist_ok=True)
 
-        # Initialize Azure OpenAI service if configured
+        # Initialize Azure OpenAI service (required)
         self.use_azure_embeddings = config.indexing.use_azure_embeddings
         self.azure_service: AzureOpenAIService | None = None
 
-        if self.use_azure_embeddings:
-            try:
-                self.azure_service = AzureOpenAIService(config.azure_openai)
-                logger.info("Azure OpenAI embeddings enabled")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Azure OpenAI service: {e}")
-                logger.info("Falling back to local embeddings")
-                self.use_azure_embeddings = False
-
-        # Fallback to local embeddings
         if not self.use_azure_embeddings:
-            try:
-                from sentence_transformers import SentenceTransformer
+            raise IndexingError(
+                "Azure OpenAI embeddings are required. "
+                "Please configure Azure OpenAI with: dev-agent azure configure"
+            )
 
-                self.local_model = SentenceTransformer(config.indexing.embedding_model)
-                logger.info(
-                    f"Using local embeddings model: {config.indexing.embedding_model}"
-                )
-            except ImportError:
-                raise IndexingError(
-                    "sentence-transformers not available and Azure OpenAI not configured. "
-                    "Please install with: pip install 'dev-agent[local-embeddings]' "
-                    "or configure Azure OpenAI."
-                )
+        try:
+            self.azure_service = AzureOpenAIService(config.azure_openai)
+            logger.info("Azure OpenAI embeddings enabled")
+        except Exception as e:
+            logger.error(f"Failed to initialize Azure OpenAI service: {e}")
+            raise IndexingError(
+                "Failed to initialize Azure OpenAI service. "
+                "Please verify your Azure OpenAI configuration with: dev-agent azure test"
+            ) from e
 
         # FAISS index
         self.faiss_index: faiss.Index | None = None
@@ -70,7 +61,7 @@ class AzureVectorDatabase:
         self._load_existing_index()
 
     def _get_embedding_dimension(self) -> int:
-        """Get the dimension of embeddings."""
+        """Get the dimension of embeddings from Azure OpenAI."""
         if self.embedding_dimension is not None:
             return self.embedding_dimension
 
@@ -78,16 +69,14 @@ class AzureVectorDatabase:
         test_embeddings = self._generate_embeddings_batch(["test"])
         if test_embeddings and test_embeddings[0] is not None:
             self.embedding_dimension = len(test_embeddings[0])
-        # Default dimensions for common models
-        elif self.use_azure_embeddings:
-            self.embedding_dimension = 1536  # text-embedding-ada-002 dimension
         else:
-            self.embedding_dimension = 384  # all-MiniLM-L6-v2 dimension
+            # Default dimension for Azure OpenAI text-embedding-ada-002
+            self.embedding_dimension = 1536
 
         return self.embedding_dimension
 
     def _generate_embeddings_batch(self, texts: list[str]) -> list[list[float] | None]:
-        """Generate embeddings for a batch of texts.
+        """Generate embeddings for a batch of texts using Azure OpenAI.
 
         Args:
             texts: List of texts to embed
@@ -98,16 +87,14 @@ class AzureVectorDatabase:
         if not texts:
             return []
 
-        try:
-            if self.use_azure_embeddings and self.azure_service:
-                # Use Azure OpenAI embeddings
-                response = self.azure_service.generate_embeddings(texts)
-                return response.embeddings
-            else:
-                # Use local embeddings
-                embeddings = self.local_model.encode(texts, convert_to_numpy=True)
-                return [embedding.tolist() for embedding in embeddings]
+        if not self.azure_service:
+            logger.error("Azure OpenAI service not initialized")
+            return [None] * len(texts)
 
+        try:
+            # Use Azure OpenAI embeddings
+            response = self.azure_service.generate_embeddings(texts)
+            return response.embeddings
         except Exception as e:
             logger.error(f"Failed to generate embeddings: {e}")
             # Return None for all texts to indicate failure
@@ -130,8 +117,8 @@ class AzureVectorDatabase:
         # Extract texts for embedding
         texts = [chunk.content for chunk in code_chunks]
 
-        # Generate embeddings in batches
-        batch_size = 20 if self.use_azure_embeddings else 50
+        # Generate embeddings in batches (Azure OpenAI batch size)
+        batch_size = 20
         all_embeddings = []
         successful_chunks = []
 
@@ -291,11 +278,7 @@ class AzureVectorDatabase:
                 "use_azure_embeddings": self.use_azure_embeddings,
                 "embedding_dimension": self.embedding_dimension,
                 "total_chunks": len(self.chunk_metadata),
-                "embedding_model": (
-                    self.config.azure_openai.embedding_model
-                    if self.use_azure_embeddings
-                    else self.config.indexing.embedding_model
-                ),
+                "embedding_model": self.config.azure_openai.embedding_model,
             }
             with open(config_path, "w") as f:
                 json.dump(config_data, f, indent=2)

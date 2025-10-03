@@ -4,11 +4,11 @@ AI-powered development workflow assistant that implements a four-phase developme
 
 ## Features
 
+- **Azure OpenAI Integration**: Enterprise-grade AI powered by GPT-4 and text-embedding-ada-002 using your Azure OpenAI deployments
 - **Interactive CLI**: Chat-based command-line interface with user approval workflows built with Typer and Rich
-- **Azure OpenAI Integration**: Enterprise-grade AI-powered generation using your Azure OpenAI deployments
-- **High-Performance Indexing**: Analyzes large codebases using Tree-sitter and vector embeddings
-- **AI-Powered Generation**: Intelligent specification, design, and task generation using GPT models
-- **Enhanced Code Embeddings**: Better code similarity search with Azure OpenAI embeddings
+- **High-Performance Indexing**: Analyzes large codebases using Tree-sitter and Azure OpenAI embeddings
+- **AI-Powered Generation**: Intelligent specification, design, and task generation using GPT-4
+- **Semantic Code Search**: Advanced code similarity search with Azure OpenAI embeddings
 - **Context-Aware Code Generation**: Generates Python code consistent with existing patterns
 - **Session Management**: Persistent state across CLI sessions
 - **Modern Python Stack**: Built with Pydantic v2, FastAPI, and modern tooling
@@ -49,14 +49,9 @@ uv run dev-agent --help
 
 ### Installation Options
 
-**Default (Azure OpenAI only):**
+**Default installation:**
 ```bash
 pip install dev-agent
-```
-
-**With local embeddings support:**
-```bash
-pip install 'dev-agent[local-embeddings]'
 ```
 
 **Development installation:**
@@ -64,7 +59,7 @@ pip install 'dev-agent[local-embeddings]'
 pip install -e '.[dev]'
 ```
 
-> **Note:** The default installation requires Azure OpenAI configuration. For offline usage or when Azure OpenAI isn't available, install with `[local-embeddings]` to enable sentence-transformers fallback.
+> **Note:** Azure OpenAI configuration is required for all AI-powered features. See the Azure OpenAI Configuration section below for setup instructions.
 
 ## Usage
 
@@ -83,28 +78,35 @@ uv run dev-agent resume [path]
 uv run dev-agent [path]
 ```
 
-### Azure OpenAI Configuration
+### Azure OpenAI Configuration (Required)
 
-Configure Azure OpenAI for enhanced AI-powered features:
+dev-agent requires Azure OpenAI for all AI-powered features including code analysis, specification generation, design creation, and code generation.
 
+**Interactive configuration:**
 ```bash
-# Interactive configuration
+# Configure Azure OpenAI credentials
 uv run dev-agent azure configure
 
-# Test connection
+# Test your connection
 uv run dev-agent azure test
 
-# Check status
+# Check configuration status
 uv run dev-agent azure status
 ```
 
-Or set environment variables:
+**Environment variables (recommended for production):**
 ```bash
 export AZURE_OPENAI_API_KEY="your-api-key"
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 export AZURE_OPENAI_CHAT_MODEL="gpt-4"
 export AZURE_OPENAI_EMBEDDING_MODEL="text-embedding-ada-002"
 ```
+
+**Required Azure OpenAI deployments:**
+- GPT-4 (or GPT-4 Turbo) for code generation and specifications
+- text-embedding-ada-002 for code embeddings and similarity search
+
+For detailed setup instructions, see the [Azure OpenAI documentation](docs/azure-openai-integration.md).
 
 ### Configuration management
 ```bash
@@ -160,13 +162,14 @@ make pre-commit-run
 
 ## Technology Stack
 
+- **AI Provider**: Azure OpenAI (GPT-4 + text-embedding-ada-002) - required for all AI operations
 - **Build System**: `uv` for dependency management, `hatchling` for building
 - **CLI Framework**: Typer with Rich for enhanced terminal output
 - **Data Models**: Pydantic v2 for data validation and settings
+- **Code Analysis**: Tree-sitter for AST parsing, FAISS for vector storage
 - **Code Quality**: Ruff with comprehensive rule set (formatting, linting, security, performance)
 - **Type Checking**: mypy with strict configuration
 - **Web Framework**: FastAPI with uvicorn (for future API features)
-- **Code Quality**: Ruff (replaces black, isort, flake8), mypy for type checking
 - **Testing**: pytest with coverage, mock, and asyncio support
 - **Python**: 3.10+ (supports 3.10, 3.11, 3.12, 3.13)
 
