@@ -341,7 +341,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Create `docs/api/onboarding.md` for onboarding module
   - _Requirements: 8.7_
 
-- [ ] 27. Create cleanup summary documentation
+- [x] 27. Create cleanup summary documentation
   - Create `docs/development/cleanup-summary.md`
   - Document all removed files with reasons
   - Document moved files with new locations
@@ -349,7 +349,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Include before/after statistics
   - _Requirements: 2.8, 8.8_
 
-- [ ] 28. Update CHANGELOG.md
+- [x] 28. Update CHANGELOG.md
   - Add new version section
   - Document all new features (audit, cleanup, setup wizard)
   - Document all CLI enhancements
@@ -357,14 +357,14 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Document breaking changes (if any)
   - _Requirements: 8.8_
 
-- [ ] 29. Write comprehensive tests for audit system
+- [x] 29. Write comprehensive tests for audit system
   - Create `tests/test_audit_engine.py` with tests for all audit methods
   - Mock Azure OpenAI calls in tests
   - Test audit report generation
   - Test CLI audit command
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8_
 
-- [ ] 30. Write comprehensive tests for cleanup system
+- [x] 30. Write comprehensive tests for cleanup system
   - Create `tests/test_cleanup_manager.py` with tests for all cleanup methods
   - Test cleanup plan generation
   - Test dry-run mode
@@ -373,7 +373,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Test CLI cleanup commands
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8_
 
-- [ ] 31. Write comprehensive tests for setup wizard
+- [x] 31. Write comprehensive tests for setup wizard
   - Create `tests/test_setup_wizard.py` with tests for wizard flow
   - Test Azure OpenAI configuration
   - Test connection testing
@@ -381,7 +381,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Test CLI setup command
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8_
 
-- [ ] 32. Write comprehensive tests for user journeys
+- [x] 32. Write comprehensive tests for user journeys
   - Create `tests/test_user_journeys.py` with end-to-end journey tests
   - Test new project journey from start to finish
   - Test existing codebase journey from start to finish

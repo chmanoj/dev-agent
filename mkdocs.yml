@@ -98,6 +98,7 @@ nav:
     - LLM Integration: development/llm-integration.md
     - Testing: development/testing.md
     - Deployment: development/deployment.md
+    - Cleanup Summary: development/cleanup-summary.md
   - Examples:
     - Azure Setup: examples/azure-setup.md
     - Basic Usage: examples/basic-usage.md
