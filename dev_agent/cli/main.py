@@ -249,6 +249,187 @@ def interactive(
 
 
 @app.command()
+def audit(
+    skip_azure: Annotated[
+        bool, typer.Option("--skip-azure", help="Skip Azure OpenAI integration tests")
+    ] = False,
+    save_report: Annotated[
+        bool, typer.Option("--save-report/--no-save-report", help="Save detailed report to file")
+    ] = True,
+    report_path: Annotated[
+        str | None, typer.Option("--report-path", help="Path to save audit report")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Run comprehensive audit of dev-agent functionality.
+
+    This command performs systematic checks of all core features including:
+    - Indexing phase (Tree-sitter, FAISS, embeddings)
+    - Specification phase (GPT-4 generation, document structure)
+    - Design phase (design generation, formatting)
+    - Implementation phase (task generation)
+    - State management (persistence, recovery)
+    - Azure OpenAI integration (API connectivity, cost tracking)
+    - Error handling (graceful degradation, recovery)
+    """
+    import asyncio
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.text import Text
+
+    try:
+        setup_cli_logging(verbose, False)
+
+        console.print(Panel.fit(
+            "[bold blue]Dev-Agent Comprehensive Audit[/bold blue]\n"
+            "Verifying all core functionality...",
+            border_style="blue"
+        ))
+        console.print()
+
+        # Import audit engine
+        from dev_agent.audit.audit_engine import AuditEngine
+        from dev_agent.audit.models import AuditConfig
+
+        # Configure audit
+        audit_config = AuditConfig(
+            skip_azure_tests=skip_azure,
+            verbose=verbose,
+            save_report=save_report,
+            report_path=report_path or ".dev_agent/audit_report.md",
+        )
+
+        if skip_azure:
+            console.print("[yellow]⚠ Skipping Azure OpenAI integration tests[/yellow]")
+            console.print()
+
+        # Create audit engine
+        engine = AuditEngine(audit_config)
+
+        # Run audit with progress display
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+
+            # Create progress task
+            audit_task = progress.add_task(
+                "[cyan]Running audit checks...",
+                total=7 if not skip_azure else 6
+            )
+
+            # Run the audit (this will take some time)
+            async def run_with_progress():
+                # We'll update progress as we go
+                report = await engine.run_audit()
+                return report
+
+            # Run async audit
+            report = asyncio.run(run_with_progress())
+            progress.update(audit_task, completed=7 if not skip_azure else 6)
+
+        console.print()
+
+        # Display results summary
+        status_color = {
+            "pass": "green",
+            "warning": "yellow",
+            "fail": "red",
+        }[report.overall_status]
+
+        status_emoji = {
+            "pass": "✅",
+            "warning": "⚠️",
+            "fail": "❌",
+        }[report.overall_status]
+
+        console.print(Panel.fit(
+            f"[bold {status_color}]{status_emoji} Overall Status: {report.overall_status.upper()}[/bold {status_color}]",
+            border_style=status_color
+        ))
+        console.print()
+
+        # Display statistics
+        stats_table = Table(title="Audit Statistics", show_header=True, header_style="bold cyan")
+        stats_table.add_column("Metric", style="cyan")
+        stats_table.add_column("Count", justify="right", style="white")
+
+        stats_table.add_row("Total Checks", str(report.total_checks))
+        stats_table.add_row("Passed", f"[green]{report.passed_checks}[/green]")
+        stats_table.add_row("Failed", f"[red]{report.failed_checks}[/red]")
+        stats_table.add_row("Warnings", f"[yellow]{report.warnings}[/yellow]")
+
+        console.print(stats_table)
+        console.print()
+
+        # Display detailed results
+        results_table = Table(title="Detailed Results", show_header=True, header_style="bold cyan")
+        results_table.add_column("Component", style="cyan", width=30)
+        results_table.add_column("Status", justify="center", width=10)
+        results_table.add_column("Message", width=60)
+
+        for result in report.results:
+            status_display = {
+                "pass": "[green]✅ PASS[/green]",
+                "warning": "[yellow]⚠️  WARN[/yellow]",
+                "fail": "[red]❌ FAIL[/red]",
+            }[result.status]
+
+            results_table.add_row(
+                result.component,
+                status_display,
+                result.message
+            )
+
+        console.print(results_table)
+        console.print()
+
+        # Display recommendations if any
+        all_recommendations = []
+        for result in report.results:
+            if result.recommendations:
+                all_recommendations.extend([
+                    f"[{result.component}] {rec}"
+                    for rec in result.recommendations
+                ])
+
+        if all_recommendations:
+            console.print("[bold yellow]Recommendations:[/bold yellow]")
+            for i, rec in enumerate(all_recommendations, 1):
+                console.print(f"  {i}. {rec}")
+            console.print()
+
+        # Display report save location
+        if save_report:
+            console.print(f"[dim]📄 Detailed report saved to: {audit_config.report_path}[/dim]")
+            console.print()
+
+        # Exit with appropriate code
+        if report.overall_status == "fail":
+            console.print("[red]Audit failed. Please address the issues above.[/red]")
+            raise typer.Exit(1)
+        elif report.overall_status == "warning":
+            console.print("[yellow]Audit completed with warnings. Review recommendations above.[/yellow]")
+            raise typer.Exit(0)
+        else:
+            console.print("[green]✅ All checks passed! Dev-agent is fully functional.[/green]")
+            raise typer.Exit(0)
+
+    except Exception as e:
+        error_msg = f"Failed to run audit: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@app.command()
 def cost_report(
     project_path: Annotated[
         str | None, typer.Argument(help="Project directory path")
@@ -281,7 +462,7 @@ def cost_report(
 
         cli = EnhancedCLI()
         workflow_manager = WorkflowManager(cli)
-        
+
         try:
             workflow_manager.resume_project(project_path)
         except Exception:
@@ -303,7 +484,7 @@ def cost_report(
             console.print("[bold blue]Complete Cost Report[/bold blue]")
 
         console.print("=" * 60)
-        
+
         # Display summary
         console.print(f"[cyan]Total Operations:[/cyan] {report.operations_count}")
         console.print(f"[cyan]Total Tokens:[/cyan] {report.total_prompt_tokens + report.total_completion_tokens + report.total_embedding_tokens:,}")
@@ -311,19 +492,19 @@ def cost_report(
         console.print(f"  - Completion Tokens: {report.total_completion_tokens:,}")
         console.print(f"  - Embedding Tokens: {report.total_embedding_tokens:,}")
         console.print(f"[green]Total Cost:[/green] ${report.total_cost:.4f}")
-        
+
         # Display by phase
         if not phase and report.by_phase:
             console.print("\n[bold]Cost by Phase:[/bold]")
             for phase_type, cost in report.by_phase.items():
                 console.print(f"  {phase_type.value}: ${cost:.4f}")
-        
+
         # Display by operation type
         if report.by_operation:
             console.print("\n[bold]Operations by Type:[/bold]")
             for op_type, count in report.by_operation.items():
                 console.print(f"  {op_type}: {count}")
-        
+
         # Display time range
         console.print(f"\n[dim]Period: {report.start_time.strftime('%Y-%m-%d %H:%M:%S')} to {report.end_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
         console.print("=" * 60)
@@ -640,7 +821,7 @@ def scaffold_create(
             console.print("Available languages:")
             for i, lang in enumerate(template.supported_languages, 1):
                 console.print(f"  {i}. {lang.value}")
-            
+
             while True:
                 try:
                     choice = typer.prompt("Select language number", default="1")
@@ -659,7 +840,7 @@ def scaffold_create(
             console.print("Available project types:")
             for i, ptype in enumerate(template.project_types, 1):
                 console.print(f"  {i}. {ptype.value}")
-            
+
             while True:
                 try:
                     choice = typer.prompt("Select project type number", default="1")
@@ -690,7 +871,7 @@ def scaffold_create(
 
         # Create the project
         console.print(f"[blue]Creating project '{name}' using template '{template.name}'...[/blue]")
-        
+
         result = template_system.create_project_scaffold(project_spec, output_path)
 
         if result.success:
@@ -770,19 +951,19 @@ def scaffold_microservices(
         else:
             # Interactive service configuration
             console.print("[bold blue]Configure Microservices:[/bold blue]")
-            
+
             while True:
                 service_name = typer.prompt("Service name (or 'done' to finish)")
                 if service_name.lower() == "done":
                     break
-                
+
                 service_description = typer.prompt(
                     "Service description",
                     default=f"{service_name.replace('-', ' ').title()} service"
                 )
-                
+
                 port = typer.prompt("Service port", default=str(8000 + len(service_specs)))
-                
+
                 service_specs.append(
                     MicroserviceSpec(
                         name=service_name,
@@ -813,7 +994,7 @@ def scaffold_microservices(
         scaffolder = MicroservicesScaffolder(template_system)
 
         console.print(f"[blue]Creating microservices architecture '{name}'...[/blue]")
-        
+
         result = scaffolder.scaffold_microservices_architecture(architecture, output_path)
 
         if result.success:
