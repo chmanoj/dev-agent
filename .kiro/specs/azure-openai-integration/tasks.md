@@ -538,14 +538,14 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Test streaming responses
   - _Requirements: 9.6, 9.7, 9.8_
 
-- [-] 23. Create example scripts demonstrating Azure OpenAI integration
+- [x] 23. Create example scripts demonstrating Azure OpenAI integration
   - Create specification generation example
   - Create code generation example
   - Create embedding example
   - Create cost tracking example
   - _Requirements: 10.6_
 
-- [-] 23.1 Create example scripts in `examples/`
+- [x] 23.1 Create example scripts in `examples/`
   - Create `azure_specification_example.py` demonstrating spec generation
   - Create `azure_code_generation_example.py` demonstrating code generation
   - Create `azure_embedding_example.py` demonstrating embedding and search
@@ -554,41 +554,41 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Add comprehensive comments
   - _Requirements: 10.6_
 
-- [ ] 24. Update existing tests to use new mocking patterns
+- [x] 24. Update existing tests to use new mocking patterns
   - Update all tests to mock new LLM clients
   - Remove local model mocks
   - Ensure >90% coverage
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.8_
 
-- [ ] 24.1 Update test fixtures in `tests/conftest.py`
+- [x] 24.1 Update test fixtures in `tests/conftest.py`
   - Create `mock_llm_client` fixture
   - Create `mock_embedding_client` fixture
   - Create `mock_cost_tracker` fixture
   - Create `mock_token_counter` fixture
   - _Requirements: 9.1, 9.2_
 
-- [ ] 24.2 Update existing test files to use new fixtures
+- [x] 24.2 Update existing test files to use new fixtures
   - Update all generation tests
   - Update all indexing tests
   - Update all workflow tests
   - Remove sentence-transformers mocks
   - _Requirements: 9.1, 9.2, 9.8_
 
-- [ ] 25. Performance optimization and final testing
+- [x] 25. Performance optimization and final testing
   - Optimize batch processing
   - Optimize cache performance
   - Run performance benchmarks
   - Verify all requirements met
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8_
 
-- [ ] 25.1 Optimize batch processing and caching
+- [x] 25.1 Optimize batch processing and caching
   - Tune embedding batch size for optimal performance
   - Implement concurrent batch processing (up to 3 parallel)
   - Optimize cache lookup performance
   - Add cache warming for common queries
   - _Requirements: 12.1, 12.2, 12.3, 12.6_
 
-- [ ] 25.2 Run performance benchmarks
+- [x] 25.2 Run performance benchmarks
   - Benchmark embedding generation (<5s per 100 chunks)
   - Benchmark completion generation (<10s for 1000 tokens)
   - Benchmark vector search (<100ms for 100K chunks)
@@ -596,7 +596,7 @@ This implementation plan breaks down the Azure OpenAI integration into discrete,
   - Document performance results
   - _Requirements: 12.1, 12.2, 12.3, 12.5, 12.6, 12.7, 12.8_
 
-- [ ] 25.3 Final integration testing and validation
+- [x] 25.3 Final integration testing and validation
   - Run full test suite and verify >90% coverage
   - Run integration tests with real Azure OpenAI API
   - Test all workflow phases end-to-end

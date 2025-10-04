@@ -278,7 +278,9 @@ class AzureEmbeddingClient(IEmbeddingClient):
         embeddings_result: list[list[float] | None],
         batch_size: int,
     ) -> None:
-        """Process texts in batches and update results.
+        """Process texts in batches with concurrent processing.
+        
+        This method processes up to 3 batches concurrently for optimal performance.
         
         Args:
             texts_to_embed: List of (index, text) tuples to process
@@ -287,19 +289,31 @@ class AzureEmbeddingClient(IEmbeddingClient):
         """
         total_batches = (len(texts_to_embed) + batch_size - 1) // batch_size
         
-        for batch_num in range(total_batches):
-            start_idx = batch_num * batch_size
-            end_idx = min(start_idx + batch_size, len(texts_to_embed))
-            batch = texts_to_embed[start_idx:end_idx]
-            
-            # Log progress for large batches
-            if batch_num > 0 and batch_num % 10 == 0:
-                logger.info(
-                    f"Progress: {batch_num}/{total_batches} batches "
-                    f"({batch_num/total_batches*100:.1f}%)"
-                )
-            
-            await self._process_single_batch(batch, embeddings_result)
+        # Process batches with controlled concurrency (up to 3 parallel)
+        max_concurrent = 3
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def process_batch_with_semaphore(batch_num: int) -> None:
+            """Process a single batch with semaphore control."""
+            async with semaphore:
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(texts_to_embed))
+                batch = texts_to_embed[start_idx:end_idx]
+                
+                # Log progress for large batches
+                if batch_num > 0 and batch_num % 10 == 0:
+                    logger.info(
+                        f"Progress: {batch_num}/{total_batches} batches "
+                        f"({batch_num/total_batches*100:.1f}%)"
+                    )
+                
+                await self._process_single_batch(batch, embeddings_result)
+        
+        # Create tasks for all batches
+        tasks = [process_batch_with_semaphore(i) for i in range(total_batches)]
+        
+        # Execute with controlled concurrency
+        await asyncio.gather(*tasks)
 
     async def _process_single_batch(
         self,
