@@ -2,6 +2,12 @@
 
 This guide walks you through setting up Azure OpenAI integration for dev-agent, from creating Azure resources to configuring your local environment.
 
+> **Note on Screenshots**: This guide includes references to screenshots that illustrate key steps in the Azure Portal. To add actual screenshots:
+> 1. Create a `docs/images/` directory
+> 2. Take screenshots while following the setup steps
+> 3. Save them with the filenames referenced in this guide (e.g., `azure-portal-home.png`)
+> 4. The screenshots will automatically appear in the documentation
+
 ## Prerequisites
 
 - An active Azure subscription
@@ -17,22 +23,40 @@ This guide walks you through setting up Azure OpenAI integration for dev-agent, 
    - Go to [portal.azure.com](https://portal.azure.com)
    - Sign in with your Azure account
 
+   ![Azure Portal Home](../images/azure-portal-home.png)
+   *Screenshot: Azure Portal home page*
+
 2. **Create a new Azure OpenAI resource**
-   - Click "Create a resource"
-   - Search for "Azure OpenAI"
+   - Click "Create a resource" in the top-left corner
+   - Search for "Azure OpenAI" in the search bar
+   - Select "Azure OpenAI" from the results
    - Click "Create"
+
+   ![Create Azure OpenAI Resource](../images/azure-create-resource.png)
+   *Screenshot: Creating a new Azure OpenAI resource*
 
 3. **Configure the resource**
    - **Subscription**: Select your Azure subscription
-   - **Resource Group**: Create new or select existing
-   - **Region**: Choose a region that supports GPT-4 (e.g., East US, West Europe)
+   - **Resource Group**: Create new or select existing (e.g., `dev-agent-rg`)
+   - **Region**: Choose a region that supports GPT-4 (e.g., East US, West Europe, Sweden Central)
+     - **Important**: Not all regions support GPT-4. Check [region availability](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/concepts/models#model-summary-table-and-region-availability)
    - **Name**: Choose a unique name (e.g., `my-dev-agent-openai`)
+     - Must be globally unique across Azure
+     - Use lowercase letters, numbers, and hyphens only
    - **Pricing Tier**: Select Standard S0
+     - This is the only tier available for Azure OpenAI
+
+   ![Configure Azure OpenAI Resource](../images/azure-configure-resource.png)
+   *Screenshot: Configuring the Azure OpenAI resource*
 
 4. **Review and Create**
    - Review your configuration
    - Click "Create"
    - Wait for deployment to complete (usually 1-2 minutes)
+   - Click "Go to resource" when deployment is complete
+
+   ![Deployment Complete](../images/azure-deployment-complete.png)
+   *Screenshot: Successful deployment notification*
 
 ### Using Azure CLI
 
@@ -66,23 +90,50 @@ Azure OpenAI requires you to deploy models before using them. dev-agent needs tw
    - Click "Model deployments" in the left menu
    - Click "Manage Deployments" (opens Azure OpenAI Studio)
 
+   ![Model Deployments](../images/azure-model-deployments.png)
+   *Screenshot: Model deployments page in Azure Portal*
+
 2. **Deploy GPT-4**
-   - Click "Create new deployment"
-   - **Model**: Select `gpt-4` (or `gpt-4-turbo` for better performance)
+   - Click "Create new deployment" or "Deployments" → "Create new deployment"
+   - **Model**: Select `gpt-4` (or `gpt-4-turbo` for better performance and lower cost)
+     - **gpt-4**: Original GPT-4 model (8K context)
+     - **gpt-4-32k**: Extended context window (32K tokens)
+     - **gpt-4-turbo**: Faster and cheaper (128K context)
    - **Deployment name**: `gpt-4` (recommended) or your custom name
-   - **Model version**: Select the latest available
+     - Use a simple, memorable name
+     - This name will be used in your environment variables
+   - **Model version**: Select the latest available (e.g., `0613`, `1106-Preview`)
    - **Deployment type**: Standard
    - **Tokens per minute rate limit**: 10K (adjust based on your needs)
+     - Start with 10K for development
+     - Increase for production workloads
+     - Maximum depends on your quota
    - Click "Create"
+
+   ![Deploy GPT-4](../images/azure-deploy-gpt4.png)
+   *Screenshot: Creating a GPT-4 deployment*
 
 3. **Deploy text-embedding-ada-002**
    - Click "Create new deployment" again
    - **Model**: Select `text-embedding-ada-002`
    - **Deployment name**: `text-embedding-ada-002` (recommended)
-   - **Model version**: Select the latest available
+   - **Model version**: Select the latest available (usually `2`)
    - **Deployment type**: Standard
-   - **Tokens per minute rate limit**: 120K (embeddings are cheaper)
+   - **Tokens per minute rate limit**: 120K (embeddings are cheaper and faster)
+     - Embeddings use fewer tokens
+     - Higher limits allow batch processing
    - Click "Create"
+
+   ![Deploy Embeddings](../images/azure-deploy-embeddings.png)
+   *Screenshot: Creating an embeddings deployment*
+
+4. **Verify Deployments**
+   - Wait for both deployments to show "Succeeded" status
+   - Note down your deployment names (you'll need them for configuration)
+   - Test deployments using the "Playground" feature
+
+   ![Deployment List](../images/azure-deployment-list.png)
+   *Screenshot: List of successful deployments*
 
 ### Using Azure CLI
 
@@ -115,14 +166,24 @@ az cognitiveservices account deployment create \
 ### Using Azure Portal
 
 1. **Get the endpoint URL**
-   - Navigate to your Azure OpenAI resource
-   - Click "Keys and Endpoint" in the left menu
+   - Navigate to your Azure OpenAI resource in the Azure Portal
+   - Click "Keys and Endpoint" in the left menu under "Resource Management"
    - Copy the "Endpoint" value (e.g., `https://my-dev-agent-openai.openai.azure.com/`)
+   - **Important**: The endpoint URL must end with a trailing slash (`/`)
+
+   ![Keys and Endpoint](../images/azure-keys-endpoint.png)
+   *Screenshot: Keys and Endpoint page showing endpoint URL and API keys*
 
 2. **Get the API key**
    - On the same "Keys and Endpoint" page
-   - Copy either "KEY 1" or "KEY 2"
+   - Copy either "KEY 1" or "KEY 2" (both work identically)
+   - Click the "Show Keys" button if keys are hidden
+   - Use the copy icon to copy the key to clipboard
    - **Important**: Keep this key secure and never commit it to version control
+   - **Best Practice**: Use KEY 1 for production and KEY 2 for development, or rotate between them
+
+   ![API Keys](../images/azure-api-keys.png)
+   *Screenshot: API keys with copy buttons*
 
 ### Using Azure CLI
 
@@ -311,49 +372,424 @@ uv run python test_azure.py
 
 ## Troubleshooting
 
-### Common Issues
+### Common API Errors
 
-#### "Authentication failed" Error
+#### Authentication Errors
 
-**Problem**: Invalid API key or endpoint
+##### "401 Unauthorized" or "Authentication failed"
 
-**Solution**:
-1. Verify your API key is correct (check Azure Portal)
-2. Ensure endpoint URL ends with `/`
-3. Check that the endpoint matches your resource name
-4. Try regenerating the API key in Azure Portal
+**Problem**: Invalid API key or endpoint configuration
 
-#### "Deployment not found" Error
+**Symptoms**:
+```
+Error: Authentication failed
+Status Code: 401
+Message: Access denied due to invalid subscription key
+```
 
-**Problem**: Deployment name doesn't match
+**Solutions**:
+1. **Verify API key**:
+   - Check Azure Portal → Your Resource → Keys and Endpoint
+   - Ensure you copied the entire key (no extra spaces)
+   - Try using the other key (KEY 2 instead of KEY 1)
+   
+2. **Check endpoint URL**:
+   - Must end with trailing slash: `https://your-resource.openai.azure.com/`
+   - Must match your resource name exactly
+   - Should use HTTPS, not HTTP
 
-**Solution**:
-1. Check deployment names in Azure OpenAI Studio
-2. Ensure deployment names match exactly (case-sensitive)
-3. Verify deployments are in "Succeeded" state
-4. Wait a few minutes if deployments were just created
+3. **Regenerate API key**:
+   ```bash
+   az cognitiveservices account keys regenerate \
+     --name my-dev-agent-openai \
+     --resource-group dev-agent-rg \
+     --key-name key1
+   ```
 
-#### "Rate limit exceeded" Error
+4. **Verify environment variables**:
+   ```bash
+   echo $AZURE_OPENAI_ENDPOINT
+   echo $AZURE_OPENAI_API_KEY
+   ```
 
-**Problem**: Too many requests to Azure OpenAI
+##### "403 Forbidden"
 
-**Solution**:
-1. Increase rate limits in Azure OpenAI Studio
-2. Reduce concurrent requests in your code
-3. Implement exponential backoff (dev-agent does this automatically)
-4. Consider upgrading to higher tier
+**Problem**: API key is valid but lacks permissions
 
-#### "Timeout" Error
+**Solutions**:
+1. Check Azure RBAC permissions on the resource
+2. Ensure your subscription is active
+3. Verify the resource is not in a restricted region
+4. Check if network restrictions are blocking your IP
 
-**Problem**: Request took too long
+#### Deployment Errors
 
-**Solution**:
-1. Increase `AZURE_OPENAI_TIMEOUT` value
-2. Check your network connection
-3. Verify Azure OpenAI service status
-4. Try a different Azure region
+##### "404 Not Found" or "Deployment not found"
 
-For more troubleshooting help, see the [Troubleshooting Guide](troubleshooting.md).
+**Problem**: Deployment name doesn't match or doesn't exist
+
+**Symptoms**:
+```
+Error: The API deployment for this resource does not exist
+Status Code: 404
+Deployment: gpt-4
+```
+
+**Solutions**:
+1. **Verify deployment names**:
+   - Go to Azure OpenAI Studio → Deployments
+   - Copy the exact deployment name (case-sensitive)
+   - Update your environment variables to match
+
+2. **Check deployment status**:
+   - Ensure deployment shows "Succeeded" status
+   - Wait 2-3 minutes if just created
+   - Try redeploying if status is "Failed"
+
+3. **Verify API version**:
+   - Some deployments require specific API versions
+   - Try `2024-02-15-preview` or later
+   - Check [API version compatibility](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/api-version-deprecation)
+
+4. **Test with Azure CLI**:
+   ```bash
+   az cognitiveservices account deployment list \
+     --name my-dev-agent-openai \
+     --resource-group dev-agent-rg
+   ```
+
+##### "Model not available in region"
+
+**Problem**: Selected model not supported in your Azure region
+
+**Solutions**:
+1. Check [model availability by region](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/concepts/models#model-summary-table-and-region-availability)
+2. Create a new resource in a supported region (e.g., East US, Sweden Central)
+3. Use an alternative model (e.g., `gpt-35-turbo` instead of `gpt-4`)
+
+#### Rate Limiting Errors
+
+##### "429 Too Many Requests" or "Rate limit exceeded"
+
+**Problem**: Exceeded tokens-per-minute (TPM) or requests-per-minute (RPM) quota
+
+**Symptoms**:
+```
+Error: Rate limit is exceeded
+Status Code: 429
+Retry-After: 20 seconds
+```
+
+**Solutions**:
+1. **Wait and retry** (dev-agent does this automatically):
+   - Check `Retry-After` header for wait time
+   - Implement exponential backoff
+   - dev-agent uses tenacity for automatic retries
+
+2. **Increase rate limits**:
+   - Go to Azure OpenAI Studio → Deployments
+   - Edit deployment → Increase TPM limit
+   - Maximum depends on your quota
+
+3. **Request quota increase**:
+   - Azure Portal → Your Resource → Quotas
+   - Click "Request quota increase"
+   - Provide justification and expected usage
+
+4. **Optimize token usage**:
+   - Reduce `max_tokens` parameter
+   - Use shorter prompts
+   - Implement caching for repeated queries
+   - Batch embedding requests
+
+5. **Monitor usage**:
+   ```bash
+   # Check current usage
+   uv run dev-agent cost --phase indexing
+   ```
+
+#### Timeout Errors
+
+##### "408 Request Timeout" or "Connection timeout"
+
+**Problem**: Request took too long to complete
+
+**Symptoms**:
+```
+Error: Request timed out
+Status Code: 408
+Timeout: 60 seconds
+```
+
+**Solutions**:
+1. **Increase timeout**:
+   ```bash
+   export AZURE_OPENAI_TIMEOUT=120  # 2 minutes
+   ```
+
+2. **Check network connectivity**:
+   ```bash
+   # Test endpoint reachability
+   curl -I https://your-resource.openai.azure.com/
+   ```
+
+3. **Reduce request complexity**:
+   - Lower `max_tokens` value
+   - Simplify prompts
+   - Break large requests into smaller chunks
+
+4. **Check Azure service status**:
+   - Visit [Azure Status](https://status.azure.com/)
+   - Check for outages in your region
+
+5. **Try different region**:
+   - Create resource in alternative region
+   - Use geo-redundant setup for production
+
+#### Content Filtering Errors
+
+##### "400 Bad Request" with content filter message
+
+**Problem**: Request or response triggered Azure content filters
+
+**Symptoms**:
+```
+Error: The response was filtered due to the prompt triggering Azure OpenAI's content management policy
+Status Code: 400
+```
+
+**Solutions**:
+1. **Review content policies**:
+   - Check [Azure OpenAI content filtering](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/concepts/content-filter)
+   - Understand what triggers filters (hate, violence, sexual, self-harm)
+
+2. **Modify prompts**:
+   - Rephrase to avoid triggering filters
+   - Remove potentially sensitive content
+   - Use more neutral language
+
+3. **Configure content filters** (if available):
+   - Azure Portal → Your Resource → Content filters
+   - Adjust filter severity levels
+   - Note: Some filters cannot be disabled
+
+4. **Request filter exemption**:
+   - For legitimate use cases
+   - Contact Azure support
+   - Provide detailed justification
+
+#### Token Limit Errors
+
+##### "400 Bad Request" - "Maximum context length exceeded"
+
+**Problem**: Total tokens (prompt + completion) exceed model limit
+
+**Symptoms**:
+```
+Error: This model's maximum context length is 8192 tokens
+Status Code: 400
+Requested: 9500 tokens
+```
+
+**Solutions**:
+1. **Check token counts**:
+   ```python
+   from dev_agent.llm.token_counter import TokenCounter
+   
+   counter = TokenCounter()
+   token_count = counter.count_tokens(your_prompt)
+   print(f"Prompt tokens: {token_count}")
+   ```
+
+2. **Reduce prompt size**:
+   - Shorten context
+   - Remove unnecessary examples
+   - Summarize long code snippets
+
+3. **Reduce max_tokens**:
+   ```bash
+   export AZURE_OPENAI_MAX_TOKENS=2000
+   ```
+
+4. **Use model with larger context**:
+   - `gpt-4-32k`: 32,768 tokens
+   - `gpt-4-turbo`: 128,000 tokens
+   - `gpt-4o`: 128,000 tokens
+
+5. **Implement chunking**:
+   - Split large documents
+   - Process in multiple requests
+   - Combine results
+
+#### Invalid Request Errors
+
+##### "400 Bad Request" - "Invalid parameter"
+
+**Problem**: Request contains invalid parameters
+
+**Common causes**:
+- Invalid `temperature` value (must be 0.0-2.0)
+- Invalid `max_tokens` (must be positive integer)
+- Invalid `top_p` value (must be 0.0-1.0)
+- Unsupported parameter for model
+
+**Solutions**:
+1. **Validate parameters**:
+   ```python
+   # Valid ranges
+   temperature: 0.0 - 2.0
+   max_tokens: 1 - model_max
+   top_p: 0.0 - 1.0
+   frequency_penalty: -2.0 - 2.0
+   presence_penalty: -2.0 - 2.0
+   ```
+
+2. **Check API version compatibility**:
+   - Some parameters require specific API versions
+   - Update `AZURE_OPENAI_API_VERSION` if needed
+
+3. **Review model capabilities**:
+   - Not all models support all parameters
+   - Check model documentation
+
+### Network and Connectivity Issues
+
+#### "Connection refused" or "Name resolution failed"
+
+**Problem**: Cannot reach Azure OpenAI endpoint
+
+**Solutions**:
+1. **Check DNS resolution**:
+   ```bash
+   nslookup your-resource.openai.azure.com
+   ```
+
+2. **Check firewall rules**:
+   - Corporate firewall may block Azure OpenAI
+   - Check proxy settings
+   - Verify outbound HTTPS (443) is allowed
+
+3. **Test connectivity**:
+   ```bash
+   curl -v https://your-resource.openai.azure.com/
+   ```
+
+4. **Check VPN/proxy**:
+   - Disable VPN temporarily to test
+   - Configure proxy settings if required
+
+#### "SSL certificate verification failed"
+
+**Problem**: SSL/TLS certificate issues
+
+**Solutions**:
+1. **Update CA certificates**:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get update && sudo apt-get install ca-certificates
+   
+   # macOS
+   brew install ca-certificates
+   ```
+
+2. **Check system time**:
+   - Ensure system clock is accurate
+   - SSL certificates are time-sensitive
+
+3. **Verify endpoint URL**:
+   - Must use HTTPS
+   - Check for typos in domain name
+
+### Debugging Tips
+
+#### Enable Debug Logging
+
+```bash
+# Set log level to DEBUG
+export DEV_AGENT_LOG_LEVEL=DEBUG
+
+# Run with verbose output
+uv run dev-agent --verbose init
+```
+
+#### Check Configuration
+
+```bash
+# Validate configuration
+uv run dev-agent validate
+
+# Test Azure connection
+uv run dev-agent azure test
+
+# Show current configuration
+uv run dev-agent config show
+```
+
+#### Monitor API Calls
+
+```bash
+# View cost report
+uv run dev-agent cost
+
+# View detailed usage
+uv run dev-agent cost --detailed
+
+# Export usage data
+uv run dev-agent cost --export usage.json
+```
+
+#### Test with Minimal Example
+
+Create `test_minimal.py`:
+```python
+import asyncio
+import os
+from openai import AsyncAzureOpenAI
+
+async def test():
+    client = AsyncAzureOpenAI(
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    )
+    
+    response = await client.chat.completions.create(
+        model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+        messages=[{"role": "user", "content": "Say hello"}],
+        max_tokens=10,
+    )
+    
+    print(response.choices[0].message.content)
+
+asyncio.run(test())
+```
+
+Run:
+```bash
+uv run python test_minimal.py
+```
+
+### Getting Help
+
+If you're still experiencing issues:
+
+1. **Check Azure Service Health**:
+   - [Azure Status Dashboard](https://status.azure.com/)
+   - [Azure OpenAI Service Updates](https://azure.microsoft.com/en-us/updates/?product=cognitive-services)
+
+2. **Review Documentation**:
+   - [Azure OpenAI Documentation](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/)
+   - [API Reference](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/reference)
+
+3. **Contact Support**:
+   - [Azure Support](https://azure.microsoft.com/en-us/support/options/)
+   - [GitHub Issues](https://github.com/your-repo/dev-agent/issues)
+
+4. **Community Resources**:
+   - [Azure OpenAI Community](https://techcommunity.microsoft.com/t5/azure-ai-services/ct-p/AzureAIServices)
+   - [Stack Overflow](https://stackoverflow.com/questions/tagged/azure-openai)
+
+For more general troubleshooting, see the [Troubleshooting Guide](../getting-started/troubleshooting.md).
 
 ## Security Best Practices
 
@@ -402,12 +838,487 @@ For more troubleshooting help, see the [Troubleshooting Guide](troubleshooting.m
    - Track all API calls
    - Implement retention policies
 
+## Cost Estimation and Budgeting
+
+Understanding and managing Azure OpenAI costs is crucial for sustainable usage. This section helps you estimate, track, and optimize your spending.
+
+### Azure OpenAI Pricing Overview
+
+Azure OpenAI charges based on token usage. Tokens are pieces of words used for processing text.
+
+#### Current Pricing (as of 2024)
+
+**GPT-4 Models**:
+| Model | Input (per 1K tokens) | Output (per 1K tokens) | Context Window |
+|-------|----------------------|------------------------|----------------|
+| GPT-4 (8K) | $0.03 | $0.06 | 8,192 tokens |
+| GPT-4-32K | $0.06 | $0.12 | 32,768 tokens |
+| GPT-4 Turbo | $0.01 | $0.03 | 128,000 tokens |
+| GPT-4o | $0.005 | $0.015 | 128,000 tokens |
+
+**GPT-3.5 Models**:
+| Model | Input (per 1K tokens) | Output (per 1K tokens) | Context Window |
+|-------|----------------------|------------------------|----------------|
+| GPT-3.5 Turbo | $0.0005 | $0.0015 | 16,385 tokens |
+| GPT-3.5 Turbo 16K | $0.001 | $0.002 | 16,385 tokens |
+
+**Embeddings**:
+| Model | Price (per 1K tokens) | Dimensions |
+|-------|----------------------|------------|
+| text-embedding-ada-002 | $0.0001 | 1,536 |
+| text-embedding-3-small | $0.00002 | 1,536 |
+| text-embedding-3-large | $0.00013 | 3,072 |
+
+**Note**: Prices may vary by region and are subject to change. Check [Azure OpenAI Pricing](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/) for current rates.
+
+### Understanding Token Usage
+
+#### What are Tokens?
+
+Tokens are pieces of words. As a rough rule of thumb:
+- 1 token ≈ 4 characters in English
+- 1 token ≈ ¾ of a word
+- 100 tokens ≈ 75 words
+- 1,000 tokens ≈ 750 words
+
+#### Token Counting Examples
+
+```python
+# Use dev-agent's token counter
+from dev_agent.llm.token_counter import TokenCounter
+
+counter = TokenCounter()
+
+# Example texts
+short_text = "Hello, world!"
+print(counter.count_tokens(short_text))  # ~4 tokens
+
+code_snippet = """
+def hello_world():
+    print("Hello, world!")
+    return True
+"""
+print(counter.count_tokens(code_snippet))  # ~20 tokens
+
+long_document = "..." # 1000 words
+print(counter.count_tokens(long_document))  # ~1,333 tokens
+```
+
+#### Token Usage by Operation
+
+**Indexing Phase** (per file):
+- Small file (100 lines): ~500 tokens for embedding
+- Medium file (500 lines): ~2,500 tokens for embedding
+- Large file (2000 lines): ~10,000 tokens for embedding
+
+**Specification Phase**:
+- Context retrieval: ~2,000 tokens (input)
+- Specification generation: ~3,000 tokens (output)
+- Total per specification: ~5,000 tokens
+
+**Design Phase**:
+- Context + specification: ~5,000 tokens (input)
+- Design document: ~4,000 tokens (output)
+- Total per design: ~9,000 tokens
+
+**Implementation Phase**:
+- Context + design: ~6,000 tokens (input)
+- Code generation: ~2,000 tokens (output)
+- Total per implementation: ~8,000 tokens
+
+### Cost Estimation for Common Scenarios
+
+#### Small Project (10 files, ~1,000 lines total)
+
+**Indexing**:
+- Embeddings: 10,000 tokens × $0.0001/1K = $0.001
+
+**Specification**:
+- GPT-4 Turbo: (2K input + 3K output) × 1 spec = 5K tokens
+- Cost: (2K × $0.01/1K) + (3K × $0.03/1K) = $0.11
+
+**Design**:
+- GPT-4 Turbo: (5K input + 4K output) × 1 design = 9K tokens
+- Cost: (5K × $0.01/1K) + (4K × $0.03/1K) = $0.17
+
+**Implementation**:
+- GPT-4 Turbo: (6K input + 2K output) × 5 tasks = 40K tokens
+- Cost: (30K × $0.01/1K) + (10K × $0.03/1K) = $0.60
+
+**Total Estimated Cost**: ~$0.88
+
+#### Medium Project (100 files, ~10,000 lines total)
+
+**Indexing**:
+- Embeddings: 100,000 tokens × $0.0001/1K = $0.01
+
+**Specification**:
+- GPT-4 Turbo: 5K tokens × 3 specs = 15K tokens
+- Cost: $0.33
+
+**Design**:
+- GPT-4 Turbo: 9K tokens × 3 designs = 27K tokens
+- Cost: $0.51
+
+**Implementation**:
+- GPT-4 Turbo: 8K tokens × 20 tasks = 160K tokens
+- Cost: $2.40
+
+**Total Estimated Cost**: ~$3.25
+
+#### Large Project (1,000 files, ~100,000 lines total)
+
+**Indexing**:
+- Embeddings: 1,000,000 tokens × $0.0001/1K = $0.10
+
+**Specification**:
+- GPT-4 Turbo: 5K tokens × 10 specs = 50K tokens
+- Cost: $1.10
+
+**Design**:
+- GPT-4 Turbo: 9K tokens × 10 designs = 90K tokens
+- Cost: $1.70
+
+**Implementation**:
+- GPT-4 Turbo: 8K tokens × 50 tasks = 400K tokens
+- Cost: $6.00
+
+**Total Estimated Cost**: ~$8.90
+
+### Cost Tracking with dev-agent
+
+dev-agent automatically tracks all token usage and costs.
+
+#### View Current Costs
+
+```bash
+# Show overall cost summary
+uv run dev-agent cost
+
+# Output:
+# Cost Summary
+# ════════════════════════════════════════
+# Total Tokens: 125,430
+# Total Cost: $2.45
+# 
+# By Phase:
+# - Indexing: $0.01 (1,000 tokens)
+# - Specification: $0.33 (15,000 tokens)
+# - Design: $0.51 (27,000 tokens)
+# - Implementation: $1.60 (82,430 tokens)
+```
+
+#### View Phase-Specific Costs
+
+```bash
+# Cost for specific phase
+uv run dev-agent cost --phase indexing
+uv run dev-agent cost --phase specification
+uv run dev-agent cost --phase design
+uv run dev-agent cost --phase implementation
+```
+
+#### Export Cost Data
+
+```bash
+# Export to JSON for analysis
+uv run dev-agent cost --export costs.json
+
+# Export to CSV
+uv run dev-agent cost --export costs.csv --format csv
+```
+
+#### Cost Report Structure
+
+```json
+{
+  "total_cost": 2.45,
+  "total_tokens": 125430,
+  "by_phase": {
+    "indexing": {
+      "tokens": 1000,
+      "cost": 0.01,
+      "operations": 10
+    },
+    "specification": {
+      "prompt_tokens": 6000,
+      "completion_tokens": 9000,
+      "cost": 0.33,
+      "operations": 3
+    }
+  },
+  "by_model": {
+    "gpt-4-turbo": {
+      "tokens": 124430,
+      "cost": 2.44
+    },
+    "text-embedding-ada-002": {
+      "tokens": 1000,
+      "cost": 0.01
+    }
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+### Setting Up Budget Alerts
+
+#### Environment Variable Budget
+
+```bash
+# Set budget threshold (in USD)
+export AZURE_OPENAI_BUDGET_THRESHOLD=10.00
+
+# Enable budget warnings
+export AZURE_OPENAI_BUDGET_WARNINGS=true
+```
+
+When costs approach or exceed the threshold:
+```
+⚠️  Warning: Budget threshold approaching
+Current cost: $9.50 / $10.00 (95%)
+Remaining: $0.50
+```
+
+#### Azure Cost Management
+
+Set up cost alerts in Azure Portal:
+
+1. **Navigate to Cost Management**:
+   - Azure Portal → Cost Management + Billing
+   - Select your subscription
+   - Click "Cost alerts"
+
+2. **Create Budget**:
+   - Click "Add" → "Budget"
+   - Name: "Azure OpenAI Monthly Budget"
+   - Amount: $50 (adjust as needed)
+   - Reset period: Monthly
+   - Start date: First day of month
+
+3. **Configure Alerts**:
+   - Alert condition: Actual cost
+   - Alert threshold: 80% of budget ($40)
+   - Action group: Email notification
+   - Add additional thresholds: 90%, 100%
+
+4. **Monitor Usage**:
+   - View cost analysis dashboard
+   - Download usage reports
+   - Set up automated reports
+
+### Cost Optimization Strategies
+
+#### 1. Use Appropriate Models
+
+**For Simple Tasks** (use GPT-3.5 Turbo):
+- Simple code formatting
+- Basic documentation
+- Straightforward refactoring
+- Cost: ~10x cheaper than GPT-4
+
+**For Complex Tasks** (use GPT-4 Turbo):
+- Architecture design
+- Complex code generation
+- Specification writing
+- Cost: Best balance of quality and price
+
+**For Maximum Quality** (use GPT-4):
+- Critical production code
+- Security-sensitive implementations
+- Complex algorithms
+- Cost: Highest, but best quality
+
+#### 2. Optimize Token Usage
+
+**Reduce Prompt Size**:
+```python
+# ❌ Inefficient - includes unnecessary context
+prompt = f"""
+Here is the entire codebase:
+{entire_codebase}  # 50,000 tokens!
+
+Generate a function to add two numbers.
+"""
+
+# ✅ Efficient - only relevant context
+prompt = f"""
+Relevant examples:
+{relevant_snippets}  # 500 tokens
+
+Generate a function to add two numbers.
+"""
+```
+
+**Use Caching**:
+- dev-agent caches embeddings automatically
+- Avoid re-indexing unchanged files
+- Reuse generated specifications
+
+**Batch Operations**:
+```python
+# ✅ Efficient - batch embeddings
+embeddings = await client.embed_batch(texts, batch_size=16)
+
+# ❌ Inefficient - individual requests
+embeddings = [await client.embed_text(text) for text in texts]
+```
+
+#### 3. Set Token Limits
+
+```bash
+# Limit maximum tokens per request
+export AZURE_OPENAI_MAX_TOKENS=2000
+
+# Reduce temperature for more focused output
+export AZURE_OPENAI_TEMPERATURE=0.3
+```
+
+#### 4. Use Incremental Development
+
+```bash
+# Generate one task at a time
+uv run dev-agent phase implementation --task 1
+
+# Review before generating next task
+uv run dev-agent phase implementation --task 2
+```
+
+#### 5. Monitor and Analyze
+
+```bash
+# Regular cost reviews
+uv run dev-agent cost --detailed
+
+# Identify expensive operations
+uv run dev-agent cost --by-operation
+
+# Compare costs across projects
+uv run dev-agent cost --export project1.json
+uv run dev-agent cost --export project2.json
+```
+
+### Cost Comparison: Azure OpenAI vs Alternatives
+
+| Provider | GPT-4 Equivalent | Cost (per 1M tokens) | Notes |
+|----------|------------------|---------------------|-------|
+| Azure OpenAI | GPT-4 Turbo | $10-30 | Enterprise features, SLA |
+| OpenAI Direct | GPT-4 Turbo | $10-30 | No enterprise features |
+| AWS Bedrock | Claude 3 Opus | $15-75 | Different pricing model |
+| Local Models | Llama 3 70B | $0 (compute only) | Requires GPU infrastructure |
+
+**Azure OpenAI Advantages**:
+- Enterprise SLA and support
+- Data residency and compliance
+- Integration with Azure services
+- Managed infrastructure
+- No GPU costs
+
+### Sample Monthly Budgets
+
+#### Individual Developer
+- **Light usage**: $10-25/month
+  - Small projects
+  - Occasional code generation
+  - Learning and experimentation
+
+- **Regular usage**: $25-100/month
+  - Multiple projects
+  - Daily code generation
+  - Full workflow usage
+
+#### Small Team (3-5 developers)
+- **Budget**: $100-500/month
+  - Shared Azure OpenAI resource
+  - Multiple concurrent projects
+  - Regular specification and design generation
+
+#### Enterprise Team (10+ developers)
+- **Budget**: $500-2,000+/month
+  - High-volume usage
+  - Large codebases
+  - Continuous integration
+  - Production workloads
+
+### Cost Monitoring Best Practices
+
+1. **Set up alerts early**:
+   - Configure Azure cost alerts
+   - Set dev-agent budget thresholds
+   - Review weekly
+
+2. **Track by project**:
+   - Use separate Azure resources per project
+   - Tag resources appropriately
+   - Generate per-project cost reports
+
+3. **Regular audits**:
+   - Monthly cost review meetings
+   - Identify optimization opportunities
+   - Adjust budgets as needed
+
+4. **Educate team members**:
+   - Share cost awareness
+   - Provide optimization guidelines
+   - Celebrate cost savings
+
+5. **Plan for growth**:
+   - Start with conservative budgets
+   - Scale based on actual usage
+   - Negotiate enterprise agreements for high volume
+
+### Cost Estimation Tools
+
+#### Built-in Estimator
+
+```bash
+# Estimate cost before running
+uv run dev-agent estimate --files 100 --lines 10000
+
+# Output:
+# Cost Estimation
+# ════════════════════════════════════════
+# Project Size: 100 files, ~10,000 lines
+# 
+# Estimated Costs:
+# - Indexing: $0.01
+# - Specification (3 specs): $0.33
+# - Design (3 designs): $0.51
+# - Implementation (20 tasks): $2.40
+# 
+# Total Estimated: $3.25
+# 
+# Proceed? [y/N]:
+```
+
+#### Custom Cost Calculator
+
+Create `calculate_cost.py`:
+```python
+from dev_agent.llm.cost_tracker import CostCalculator
+
+calculator = CostCalculator()
+
+# Estimate for your project
+estimate = calculator.estimate_project_cost(
+    num_files=100,
+    avg_lines_per_file=100,
+    num_specifications=3,
+    num_designs=3,
+    num_tasks=20,
+    model="gpt-4-turbo"
+)
+
+print(f"Estimated cost: ${estimate.total_cost:.2f}")
+print(f"Breakdown: {estimate.breakdown}")
+```
+
 ## Next Steps
 
 - [Cost Management Guide](../usage/cost-management.md) - Learn how to track and optimize costs
 - [Usage Examples](../examples/azure-setup.md) - See practical examples
 - [API Documentation](../api/llm.md) - Explore the LLM integration API
-- [Troubleshooting Guide](troubleshooting.md) - Solve common issues
+- [Troubleshooting Guide](../getting-started/troubleshooting.md) - Solve common issues
 
 ## Additional Resources
 

@@ -4,6 +4,7 @@ AI-powered development workflow assistant that implements a four-phase developme
 
 ## Features
 
+### Core Capabilities
 - **Azure OpenAI Integration**: Enterprise-grade AI powered by GPT-4 and text-embedding-ada-002 using your Azure OpenAI deployments
 - **Interactive CLI**: Chat-based command-line interface with user approval workflows built with Typer and Rich
 - **High-Performance Indexing**: Analyzes large codebases using Tree-sitter and Azure OpenAI embeddings
@@ -13,6 +14,21 @@ AI-powered development workflow assistant that implements a four-phase developme
 - **Session Management**: Persistent state across CLI sessions
 - **Modern Python Stack**: Built with Pydantic v2, FastAPI, and modern tooling
 - **Python-First**: Focused on Python development with plans for multi-language support
+
+### Enhanced User Experience
+- **Setup Wizard**: Guided first-time setup with Azure OpenAI configuration and connection testing
+- **User Journey Optimization**: Tailored workflows for new projects and existing codebases
+- **Progress Display**: Real-time progress indicators with Rich terminal output
+- **Streaming Responses**: Live display of AI-generated content as it's created
+- **Cost Tracking**: Monitor token usage and API costs per operation and phase
+- **Enhanced Error Handling**: User-friendly error messages with actionable solutions
+- **Contextual Help**: Comprehensive help system with examples and command-specific guidance
+
+### Maintenance & Quality
+- **Audit System**: Comprehensive functionality verification across all workflow phases
+- **Cleanup Tools**: Identify and remove temporary files, obsolete code, and unused dependencies
+- **Validation Commands**: Verify configuration, connectivity, and environment setup
+- **Performance Optimizations**: Efficient indexing, batch processing, and caching strategies
 
 ## Installation
 
@@ -61,21 +77,214 @@ pip install -e '.[dev]'
 
 > **Note:** Azure OpenAI configuration is required for all AI-powered features. See the Azure OpenAI Configuration section below for setup instructions.
 
+### Troubleshooting Installation
+
+**Issue: `uv` command not found**
+```bash
+# Install uv using pip
+pip install uv
+
+# Or use the official installer
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Verify installation
+uv --version
+```
+
+**Issue: Python version mismatch**
+```bash
+# Check your Python version (must be 3.10+)
+python --version
+
+# Install Python 3.10+ if needed
+# On macOS with Homebrew:
+brew install python@3.11
+
+# On Ubuntu/Debian:
+sudo apt-get install python3.11
+```
+
+**Issue: Azure OpenAI connection fails**
+```bash
+# Verify your configuration
+uv run dev-agent azure status
+
+# Test connection
+uv run dev-agent azure test
+
+# Reconfigure if needed
+uv run dev-agent azure configure
+```
+
+**Issue: Permission errors during installation**
+```bash
+# Use virtual environment (recommended)
+uv sync --dev
+
+# Or install with user flag
+pip install --user dev-agent
+```
+
+**Issue: Tree-sitter compilation errors**
+```bash
+# Install build tools
+# On macOS:
+xcode-select --install
+
+# On Ubuntu/Debian:
+sudo apt-get install build-essential
+
+# On Windows:
+# Install Visual Studio Build Tools
+```
+
+For more troubleshooting help, see the [documentation](docs/getting-started/troubleshooting.md) or open an issue on GitHub.
+
 ## Usage
 
-### Initialize a new project
+### First-Time Setup
+
+When you run dev-agent for the first time, you'll be guided through an interactive setup wizard:
+
+```bash
+# Run the setup wizard
+uv run dev-agent setup
+
+# The wizard will guide you through:
+# 1. Azure OpenAI configuration (endpoint, API key, deployments)
+# 2. Connection testing
+# 3. Workflow explanation
+# 4. Project type selection (new project or existing codebase)
+```
+
+You can also run the setup wizard later to reconfigure:
+```bash
+# Check setup status
+uv run dev-agent setup --status
+
+# Re-run setup wizard
+uv run dev-agent setup
+```
+
+### Quick Start Commands
+
+**Initialize a new project:**
 ```bash
 uv run dev-agent init [path]
 ```
 
-### Resume an existing project
+**Resume an existing project:**
 ```bash
 uv run dev-agent resume [path]
 ```
 
-### Interactive mode (default)
+**Interactive mode (default):**
 ```bash
 uv run dev-agent [path]
+```
+
+**Check project status:**
+```bash
+uv run dev-agent status
+uv run dev-agent status --detailed  # verbose output
+```
+
+**Validate environment:**
+```bash
+uv run dev-agent validate
+```
+
+### New Project Workflow
+
+Starting a new project from scratch with dev-agent:
+
+```bash
+# 1. Create project directory
+mkdir my-new-project
+cd my-new-project
+
+# 2. Initialize dev-agent (runs setup wizard if first time)
+uv run dev-agent init
+
+# 3. The system will:
+#    - Create .dev_agent/ directory structure
+#    - Guide you through Azure OpenAI configuration
+#    - Explain the four-phase workflow
+#    - Offer template selection (optional)
+
+# 4. Create initial specification
+uv run dev-agent phase specification
+# Describe your project when prompted
+# Review and approve the generated specification
+
+# 5. Generate design document
+uv run dev-agent phase design
+# Review and approve the generated design
+
+# 6. Generate implementation tasks
+uv run dev-agent phase implementation
+# Review the task breakdown
+
+# 7. Start implementing
+# Follow the generated tasks in .dev_agent/documents/tasks.md
+```
+
+**Example: Creating a REST API project**
+```bash
+mkdir my-api-project
+cd my-api-project
+uv run dev-agent init
+
+# When prompted, describe your project:
+# "Create a REST API for managing user accounts with authentication,
+#  CRUD operations, and PostgreSQL database integration"
+
+# Follow the workflow phases to generate specifications,
+# design documents, and implementation tasks
+```
+
+### Existing Codebase Workflow
+
+Analyzing and documenting an existing codebase:
+
+```bash
+# 1. Navigate to your existing project
+cd /path/to/existing/project
+
+# 2. Initialize dev-agent
+uv run dev-agent init
+
+# 3. The system will:
+#    - Detect existing code automatically
+#    - Display codebase summary (languages, file count)
+#    - Start indexing with progress display
+#    - Show indexing summary (patterns found, languages detected)
+
+# 4. Generate specification from existing code
+uv run dev-agent phase specification
+# The AI will analyze your codebase and generate documentation
+
+# 5. Generate design documentation
+uv run dev-agent phase design
+# Creates technical design docs based on existing architecture
+
+# 6. Generate enhancement tasks
+uv run dev-agent phase implementation
+# Suggests improvements and generates implementation tasks
+```
+
+**Example: Documenting a legacy project**
+```bash
+cd /path/to/legacy-project
+uv run dev-agent init
+
+# Watch as dev-agent:
+# - Indexes 1,247 Python files
+# - Detects patterns: Flask app, SQLAlchemy models, pytest tests
+# - Identifies architecture: MVC pattern with service layer
+# - Generates comprehensive specification document
+
+# Review generated documentation in .dev_agent/documents/
 ```
 
 ### Azure OpenAI Configuration (Required)
@@ -108,11 +317,78 @@ export AZURE_OPENAI_EMBEDDING_MODEL="text-embedding-ada-002"
 
 For detailed setup instructions, see the [Azure OpenAI documentation](docs/azure-openai-integration.md).
 
-### Configuration management
+### CLI Commands Reference
+
+#### Workflow Commands
 ```bash
+# Run complete workflow
+uv run dev-agent run
+
+# Execute specific phase
+uv run dev-agent phase indexing
+uv run dev-agent phase specification
+uv run dev-agent phase design
+uv run dev-agent phase implementation
+
+# Retry failed phase
+uv run dev-agent retry
+```
+
+#### Status and Monitoring
+```bash
+# Show project status
+uv run dev-agent status
+uv run dev-agent status --detailed
+
+# Show cost report
+uv run dev-agent cost
+uv run dev-agent cost --phase indexing
+uv run dev-agent cost --export report.json
+```
+
+#### Maintenance Commands
+```bash
+# Run comprehensive audit
+uv run dev-agent audit
+
+# Cleanup operations
+uv run dev-agent cleanup --scan           # Show cleanup plan
+uv run dev-agent cleanup --dry-run        # Simulate cleanup
+uv run dev-agent cleanup --execute        # Execute cleanup
+uv run dev-agent cleanup --category temp  # Clean specific category
+```
+
+#### Configuration Management
+```bash
+# General configuration
 uv run dev-agent config show
 uv run dev-agent config set logging.level DEBUG
 uv run dev-agent config reset
+
+# Azure OpenAI configuration
+uv run dev-agent azure configure
+uv run dev-agent azure test
+uv run dev-agent azure status
+```
+
+#### Help and Documentation
+```bash
+# General help
+uv run dev-agent help
+uv run dev-agent --help
+
+# Command-specific help
+uv run dev-agent help <command>
+uv run dev-agent <command> --help
+
+# Show usage examples
+uv run dev-agent examples
+```
+
+#### Validation
+```bash
+# Validate environment and configuration
+uv run dev-agent validate
 ```
 
 ## Development

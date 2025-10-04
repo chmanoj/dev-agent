@@ -89,6 +89,9 @@ nav:
     - Models: api/models.md
     - Workflow: api/workflow.md
     - Analysis: api/analysis.md
+    - Audit: api/audit.md
+    - Cleanup: api/cleanup.md
+    - Onboarding: api/onboarding.md
   - Development:
     - Contributing: development/contributing.md
     - Architecture: development/architecture.md
