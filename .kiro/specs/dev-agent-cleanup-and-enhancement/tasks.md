@@ -202,14 +202,14 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
     - Encrypt API key in config file
     - _Requirements: 7.6_
 
-- [ ] 10. Create CLI setup command
+- [x] 10. Create CLI setup command
   - Add `setup` command to `dev_agent/cli/main.py`
   - Run setup wizard on first invocation
   - Allow re-running setup with `dev-agent setup`
   - Display setup status with `dev-agent setup --status`
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7_
 
-- [ ] 11. Implement journey manager
+- [x] 11. Implement journey manager
   - Create `dev_agent/onboarding/journey_manager.py`
   - Implement `detect_project_type()` method that checks for existing code
   - Implement `is_first_run()` method that checks for config file
@@ -217,7 +217,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Implement `guide_user_through_phase()` method with contextual tips
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8_
 
-- [ ] 12. Enhance init command for new projects
+- [x] 12. Enhance init command for new projects
   - Modify `init` command in `dev_agent/cli/main.py`
   - Detect if directory is empty (new project scenario)
   - Show setup wizard if not configured
@@ -225,7 +225,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Guide through initial specification creation
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-- [ ] 13. Enhance init command for existing codebases
+- [x] 13. Enhance init command for existing codebases
   - Modify `init` command to detect existing code
   - Display codebase detection summary (languages, file count)
   - Show indexing progress with file-by-file updates
@@ -233,7 +233,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Explain next steps for specification generation
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8_
 
-- [ ] 14. Create progress display system
+- [x] 14. Create progress display system
   - Create `dev_agent/cli/progress_display.py`
   - Implement `show_indexing_progress()` with Rich progress bar
   - Implement `show_streaming_response()` for LLM output
@@ -241,7 +241,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Implement `show_cost_summary()` with cost breakdown
   - _Requirements: 5.9, 5.10, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7_
 
-- [ ] 15. Enhance status command
+- [x] 15. Enhance status command
   - Modify `status` command in `dev_agent/cli/main.py`
   - Display current phase with progress percentage
   - Show completed phases with checkmarks
@@ -250,7 +250,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Add `--detailed` flag for verbose output
   - _Requirements: 5.3_
 
-- [ ] 16. Enhance cost-report command
+- [x] 16. Enhance cost-report command
   - Modify `cost_report` command in `dev_agent/cli/main.py`
   - Add `--phase` option to filter by phase
   - Add `--export` option to save as JSON
@@ -259,7 +259,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Add budget warnings if thresholds exceeded
   - _Requirements: 5.4_
 
-- [ ] 17. Create validate command
+- [x] 17. Create validate command
   - Add `validate` command to `dev_agent/cli/main.py`
   - Check Azure OpenAI configuration
   - Test API connectivity
@@ -268,7 +268,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Display validation results with suggestions
   - _Requirements: 6.6_
 
-- [ ] 18. Enhance help system
+- [x] 18. Enhance help system
   - Modify help display in `dev_agent/cli/main.py`
   - Add contextual help for each command
   - Include usage examples in help text

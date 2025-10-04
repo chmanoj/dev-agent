@@ -72,3 +72,18 @@ class SetupResult:
     ready_to_use: bool = False
     errors: list[str] = field(default_factory=list)
     skipped_steps: list[str] = field(default_factory=list)
+
+
+@dataclass
+class OnboardingFlow:
+    """Onboarding flow with steps and guidance.
+
+    Attributes:
+        steps: List of onboarding steps
+        tips: List of helpful tips
+        warnings: List of warnings or important notes
+    """
+
+    steps: list[OnboardingStep] = field(default_factory=list)
+    tips: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
