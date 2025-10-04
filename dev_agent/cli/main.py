@@ -275,10 +275,16 @@ def audit(
     - Error handling (graceful degradation, recovery)
     """
     import asyncio
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-    from rich.table import Table
+
     from rich.panel import Panel
-    from rich.text import Text
+    from rich.progress import (
+        BarColumn,
+        Progress,
+        SpinnerColumn,
+        TaskProgressColumn,
+        TextColumn,
+    )
+    from rich.table import Table
 
     try:
         setup_cli_logging(verbose, False)
@@ -555,6 +561,10 @@ app.add_typer(azure_app, name="azure")
 scaffold_app = typer.Typer(name="scaffold", help="Project scaffolding and templates")
 app.add_typer(scaffold_app, name="scaffold")
 
+# Cleanup command group
+cleanup_app = typer.Typer(name="cleanup", help="Repository cleanup and maintenance")
+app.add_typer(cleanup_app, name="cleanup")
+
 
 @config_app.command("show")
 def config_show() -> None:
@@ -689,7 +699,7 @@ def scaffold_list(
         project_type_filter = None
         if project_type:
             try:
-                project_type_filter = ProjectType(project_type.lower().replace('-', '_'))
+                project_type_filter = ProjectType(project_type.lower().replace("-", "_"))
             except ValueError:
                 console.print(f"[red]Invalid project type: {project_type}[/red]")
                 console.print(f"Available types: {', '.join([t.value for t in ProjectType])}")
@@ -769,6 +779,7 @@ def scaffold_create(
     """Create a new project from a template."""
     try:
         from pathlib import Path
+
         from ..generation.template_system import TemplateSystem
         from ..models.enums import CICDPlatform, LanguageType, ProjectType
         from ..models.templates import ProjectSpec
@@ -859,7 +870,7 @@ def scaffold_create(
         project_spec = ProjectSpec(
             name=name,
             description=description,
-            project_type=ProjectType(project_type.replace('-', '_')),
+            project_type=ProjectType(project_type.replace("-", "_")),
             primary_language=LanguageType(language),
             frameworks=template.supported_frameworks[:3],  # Use first 3 frameworks
             include_ci_cd=include_ci_cd,
@@ -890,7 +901,7 @@ def scaffold_create(
                     console.print(f"  {i}. {step}")
 
         else:
-            console.print(f"[red]✗ Project creation failed[/red]")
+            console.print("[red]✗ Project creation failed[/red]")
             for error in result.errors:
                 console.print(f"  [red]✗ {error}[/red]")
             raise typer.Exit(1)
@@ -918,9 +929,10 @@ def scaffold_microservices(
     """Create a microservices architecture."""
     try:
         from pathlib import Path
+
         from ..generation.microservices_scaffolder import (
-            MicroserviceSpec,
             MicroservicesArchitecture,
+            MicroserviceSpec,
             MicroservicesScaffolder,
         )
         from ..generation.template_system import TemplateSystem
@@ -1014,7 +1026,7 @@ def scaffold_microservices(
                     console.print(f"  {i}. {step}")
 
         else:
-            console.print(f"[red]✗ Architecture creation failed[/red]")
+            console.print("[red]✗ Architecture creation failed[/red]")
             for error in result.errors:
                 console.print(f"  [red]✗ {error}[/red]")
             raise typer.Exit(1)
@@ -1028,3 +1040,560 @@ def scaffold_microservices(
 
 if __name__ == "__main__":
     app()
+
+
+@cleanup_app.command("scan")
+def cleanup_scan(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    safety_level: Annotated[
+        str,
+        typer.Option(
+            "--safety-level",
+            "-s",
+            help="Safety level: safe, moderate, or aggressive",
+        ),
+    ] = "safe",
+    category: Annotated[
+        str | None,
+        typer.Option(
+            "--category",
+            "-c",
+            help="Specific category to scan: temp, generated, artifacts, examples, deps",
+        ),
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Scan for cleanup candidates and show cleanup plan.
+
+    This command scans the project directory for files and directories
+    that can be cleaned up, including temporary files, generated files,
+    development artifacts, obsolete examples, and unused dependencies.
+
+    Safety levels:
+    - safe: Only temporary and generated files
+    - moderate: Also includes development artifacts
+    - aggressive: Also includes obsolete examples and unused dependencies
+    """
+    from pathlib import Path
+
+    from rich.panel import Panel
+    from rich.table import Table
+
+    try:
+        setup_cli_logging(verbose, False, project_path)
+
+        if project_path is None:
+            project_path = os.getcwd()
+
+        project_path = os.path.abspath(project_path)
+
+        if not os.path.exists(project_path):
+            console.print(
+                f"[red]Error: Project path does not exist: {project_path}[/red]"
+            )
+            raise typer.Exit(1)
+
+        # Validate safety level
+        if safety_level not in ["safe", "moderate", "aggressive"]:
+            console.print(
+                f"[red]Invalid safety level: {safety_level}[/red]\n"
+                "Valid options: safe, moderate, aggressive"
+            )
+            raise typer.Exit(1)
+
+        # Validate category if provided
+        valid_categories = ["temp", "generated", "artifacts", "examples", "deps"]
+        if category and category not in valid_categories:
+            console.print(
+                f"[red]Invalid category: {category}[/red]\n"
+                f"Valid options: {', '.join(valid_categories)}"
+            )
+            raise typer.Exit(1)
+
+        console.print(
+            Panel.fit(
+                f"[bold blue]Scanning for Cleanup Candidates[/bold blue]\n"
+                f"Project: {project_path}\n"
+                f"Safety Level: {safety_level}",
+                border_style="blue",
+            )
+        )
+        console.print()
+
+        # Import cleanup manager
+        from dev_agent.cleanup.cleanup_manager import CleanupManager
+
+        # Create cleanup manager
+        manager = CleanupManager(Path(project_path), safety_level=safety_level)
+
+        # Scan for cleanup candidates
+        with console.status("[cyan]Scanning project...", spinner="dots"):
+            if category:
+                # Scan specific category only
+                plan = manager.scan_for_cleanup_candidates()
+                # Filter plan based on category
+                if category == "temp":
+                    plan.directories_to_remove = [
+                        d
+                        for d in plan.directories_to_remove
+                        if any(
+                            p in str(d)
+                            for p in [
+                                "__pycache__",
+                                ".pytest_cache",
+                                ".mypy_cache",
+                                ".ruff_cache",
+                            ]
+                        )
+                    ]
+                    plan.files_to_move = {}
+                    plan.dependencies_to_remove = []
+                elif category == "generated":
+                    plan.files_to_remove = [
+                        f for f in plan.files_to_remove if "TASK_" in str(f)
+                    ]
+                    plan.directories_to_remove = [
+                        d for d in plan.directories_to_remove if "site" in str(d)
+                    ]
+                    plan.files_to_move = {}
+                    plan.dependencies_to_remove = []
+                elif category == "artifacts":
+                    plan.files_to_remove = []
+                    plan.directories_to_remove = []
+                    plan.dependencies_to_remove = []
+                elif category == "examples":
+                    plan.files_to_remove = [
+                        f for f in plan.files_to_remove if "examples" in str(f)
+                    ]
+                    plan.directories_to_remove = []
+                    plan.files_to_move = {}
+                    plan.dependencies_to_remove = []
+                elif category == "deps":
+                    plan.files_to_remove = []
+                    plan.directories_to_remove = []
+                    plan.files_to_move = {}
+            else:
+                plan = manager.scan_for_cleanup_candidates()
+
+        # Display summary
+        summary = plan.get_summary()
+
+        console.print("[bold green]Scan Complete![/bold green]")
+        console.print()
+
+        # Create summary table
+        summary_table = Table(
+            title="Cleanup Plan Summary", show_header=True, header_style="bold cyan"
+        )
+        summary_table.add_column("Category", style="cyan")
+        summary_table.add_column("Count", justify="right", style="white")
+
+        summary_table.add_row("Files to Remove", str(summary["files_to_remove"]))
+        summary_table.add_row(
+            "Directories to Remove", str(summary["directories_to_remove"])
+        )
+        summary_table.add_row("Files to Move", str(summary["files_to_move"]))
+        summary_table.add_row(
+            "Dependencies to Remove", str(summary["dependencies_to_remove"])
+        )
+        summary_table.add_row("", "")
+        summary_table.add_row(
+            "[bold]Total Items[/bold]", f"[bold]{summary['total_items']}[/bold]"
+        )
+        summary_table.add_row(
+            "[bold]Size Reduction[/bold]",
+            f"[bold]{summary['size_reduction_mb']} MB[/bold]",
+        )
+        summary_table.add_row(
+            "[bold]Estimated Time[/bold]", f"[bold]{summary['estimated_time']}[/bold]"
+        )
+
+        console.print(summary_table)
+        console.print()
+
+        # Show sample files
+        if plan.files_to_remove:
+            console.print("[bold yellow]Sample Files to Remove:[/bold yellow]")
+            for file_path in list(plan.files_to_remove)[:10]:
+                try:
+                    rel_path = file_path.relative_to(Path(project_path))
+                    console.print(f"  - {rel_path}")
+                except ValueError:
+                    console.print(f"  - {file_path}")
+            if len(plan.files_to_remove) > 10:
+                console.print(
+                    f"  [dim]... and {len(plan.files_to_remove) - 10} more files[/dim]"
+                )
+            console.print()
+
+        if plan.directories_to_remove:
+            console.print("[bold yellow]Directories to Remove:[/bold yellow]")
+            for dir_path in list(plan.directories_to_remove)[:10]:
+                try:
+                    rel_path = dir_path.relative_to(Path(project_path))
+                    console.print(f"  - {rel_path}/")
+                except ValueError:
+                    console.print(f"  - {dir_path}/")
+            if len(plan.directories_to_remove) > 10:
+                console.print(
+                    f"  [dim]... and {len(plan.directories_to_remove) - 10} more directories[/dim]"
+                )
+            console.print()
+
+        if plan.files_to_move:
+            console.print("[bold yellow]Files to Move:[/bold yellow]")
+            for src, dst in list(plan.files_to_move.items())[:5]:
+                try:
+                    src_rel = src.relative_to(Path(project_path))
+                    dst_rel = dst.relative_to(Path(project_path))
+                    console.print(f"  - {src_rel} → {dst_rel}")
+                except ValueError:
+                    console.print(f"  - {src} → {dst}")
+            if len(plan.files_to_move) > 5:
+                console.print(
+                    f"  [dim]... and {len(plan.files_to_move) - 5} more files[/dim]"
+                )
+            console.print()
+
+        if plan.dependencies_to_remove:
+            console.print("[bold yellow]Dependencies to Remove:[/bold yellow]")
+            for dep in plan.dependencies_to_remove:
+                console.print(f"  - {dep}")
+            console.print()
+
+        # Show next steps
+        console.print("[bold blue]Next Steps:[/bold blue]")
+        console.print("  1. Review the cleanup plan above")
+        console.print(
+            "  2. Run [cyan]dev-agent cleanup --dry-run[/cyan] to simulate cleanup"
+        )
+        console.print(
+            "  3. Run [cyan]dev-agent cleanup --execute[/cyan] to perform cleanup"
+        )
+        console.print()
+
+    except Exception as e:
+        error_msg = f"Failed to scan for cleanup candidates: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@cleanup_app.command("dry-run")
+def cleanup_dry_run(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    safety_level: Annotated[
+        str,
+        typer.Option(
+            "--safety-level",
+            "-s",
+            help="Safety level: safe, moderate, or aggressive",
+        ),
+    ] = "safe",
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Simulate cleanup without making any changes.
+
+    This command performs a dry-run of the cleanup operation, showing
+    exactly what would be removed or moved without actually making any
+    changes to the filesystem.
+    """
+    from pathlib import Path
+
+    from rich.panel import Panel
+
+    try:
+        setup_cli_logging(verbose, False, project_path)
+
+        if project_path is None:
+            project_path = os.getcwd()
+
+        project_path = os.path.abspath(project_path)
+
+        if not os.path.exists(project_path):
+            console.print(
+                f"[red]Error: Project path does not exist: {project_path}[/red]"
+            )
+            raise typer.Exit(1)
+
+        # Validate safety level
+        if safety_level not in ["safe", "moderate", "aggressive"]:
+            console.print(
+                f"[red]Invalid safety level: {safety_level}[/red]\n"
+                "Valid options: safe, moderate, aggressive"
+            )
+            raise typer.Exit(1)
+
+        console.print(
+            Panel.fit(
+                "[bold yellow]Cleanup Dry-Run Mode[/bold yellow]\n"
+                "[dim]No changes will be made to the filesystem[/dim]",
+                border_style="yellow",
+            )
+        )
+        console.print()
+
+        # Import cleanup manager
+        from dev_agent.cleanup.cleanup_manager import CleanupManager
+
+        # Create cleanup manager
+        manager = CleanupManager(Path(project_path), safety_level=safety_level)
+
+        # Scan for cleanup candidates
+        with console.status("[cyan]Scanning project...", spinner="dots"):
+            plan = manager.scan_for_cleanup_candidates()
+
+        # Execute dry-run
+        console.print("[bold blue]Executing dry-run...[/bold blue]")
+        console.print()
+
+        # Execute cleanup in dry-run mode (result not used, just for logging)
+        _ = manager.execute_cleanup(plan, dry_run=True)
+
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold green]Dry-run Complete[/bold green]\n"
+                "[dim]No changes were made[/dim]",
+                border_style="green",
+            )
+        )
+        console.print()
+
+        # Show what would happen
+        console.print("[bold blue]Summary of Changes:[/bold blue]")
+        console.print(f"  - Would remove {len(plan.files_to_remove)} files")
+        console.print(f"  - Would remove {len(plan.directories_to_remove)} directories")
+        console.print(f"  - Would move {len(plan.files_to_move)} files")
+        console.print(
+            f"  - Would remove {len(plan.dependencies_to_remove)} dependencies"
+        )
+        console.print(f"  - Size reduction: {plan.size_reduction_mb:.2f} MB")
+        console.print()
+
+        console.print("[bold blue]To execute cleanup:[/bold blue]")
+        console.print("  Run [cyan]dev-agent cleanup --execute[/cyan]")
+        console.print()
+
+    except Exception as e:
+        error_msg = f"Failed to perform dry-run: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@cleanup_app.command("execute")
+def cleanup_execute(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    safety_level: Annotated[
+        str,
+        typer.Option(
+            "--safety-level",
+            "-s",
+            help="Safety level: safe, moderate, or aggressive",
+        ),
+    ] = "safe",
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            "-y",
+            help="Skip confirmation prompts",
+        ),
+    ] = False,
+    save_report: Annotated[
+        bool,
+        typer.Option(
+            "--save-report/--no-save-report",
+            help="Save cleanup report to file",
+        ),
+    ] = True,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Execute cleanup operations with confirmation prompts.
+
+    This command performs the actual cleanup operation, removing or moving
+    files as specified in the cleanup plan. A backup is created before
+    any changes are made.
+
+    WARNING: This operation will modify your filesystem. Always review
+    the cleanup plan with --scan or --dry-run first.
+    """
+    from pathlib import Path
+
+    from rich.panel import Panel
+    from rich.prompt import Confirm
+
+    try:
+        setup_cli_logging(verbose, False, project_path)
+
+        if project_path is None:
+            project_path = os.getcwd()
+
+        project_path = os.path.abspath(project_path)
+
+        if not os.path.exists(project_path):
+            console.print(
+                f"[red]Error: Project path does not exist: {project_path}[/red]"
+            )
+            raise typer.Exit(1)
+
+        # Validate safety level
+        if safety_level not in ["safe", "moderate", "aggressive"]:
+            console.print(
+                f"[red]Invalid safety level: {safety_level}[/red]\n"
+                "Valid options: safe, moderate, aggressive"
+            )
+            raise typer.Exit(1)
+
+        console.print(
+            Panel.fit(
+                "[bold red]⚠️  Cleanup Execution Mode[/bold red]\n"
+                "[yellow]This will modify your filesystem![/yellow]",
+                border_style="red",
+            )
+        )
+        console.print()
+
+        # Import cleanup manager
+        from dev_agent.cleanup.cleanup_manager import CleanupManager
+
+        # Create cleanup manager
+        manager = CleanupManager(Path(project_path), safety_level=safety_level)
+
+        # Scan for cleanup candidates
+        with console.status("[cyan]Scanning project...", spinner="dots"):
+            plan = manager.scan_for_cleanup_candidates()
+
+        # Show summary
+        summary = plan.get_summary()
+        console.print("[bold blue]Cleanup Plan Summary:[/bold blue]")
+        console.print(f"  - Files to remove: {summary['files_to_remove']}")
+        console.print(f"  - Directories to remove: {summary['directories_to_remove']}")
+        console.print(f"  - Files to move: {summary['files_to_move']}")
+        console.print(
+            f"  - Dependencies to remove: {summary['dependencies_to_remove']}"
+        )
+        console.print(f"  - Total items: {summary['total_items']}")
+        console.print(f"  - Size reduction: {summary['size_reduction_mb']} MB")
+        console.print(f"  - Safety level: {summary['safety_level']}")
+        console.print()
+
+        # Confirmation prompt
+        if not yes:
+            console.print(
+                "[yellow]⚠️  A backup will be created before cleanup[/yellow]"
+            )
+            console.print()
+
+            if not Confirm.ask(
+                "[bold]Do you want to proceed with cleanup?[/bold]", default=False
+            ):
+                console.print("[yellow]Cleanup cancelled by user[/yellow]")
+                raise typer.Exit(0)
+
+        # Execute cleanup
+        console.print()
+        console.print("[bold blue]Executing cleanup...[/bold blue]")
+        console.print()
+
+        with console.status("[cyan]Cleaning up...", spinner="dots"):
+            result = manager.execute_cleanup(plan, dry_run=False)
+
+        console.print()
+
+        # Display results
+        if result.error_count == 0:
+            console.print(
+                Panel.fit(
+                    "[bold green]✅ Cleanup Complete![/bold green]\n"
+                    f"Successfully processed {result.success_count} items",
+                    border_style="green",
+                )
+            )
+        else:
+            console.print(
+                Panel.fit(
+                    "[bold yellow]⚠️  Cleanup Complete with Errors[/bold yellow]\n"
+                    f"Successful: {result.success_count}, Errors: {result.error_count}",
+                    border_style="yellow",
+                )
+            )
+
+        console.print()
+
+        # Show summary
+        result_summary = result.get_summary()
+        console.print("[bold blue]Cleanup Results:[/bold blue]")
+        console.print(f"  - Removed files: {result_summary['removed_files']}")
+        console.print(
+            f"  - Removed directories: {result_summary['removed_directories']}"
+        )
+        console.print(f"  - Moved files: {result_summary['moved_files']}")
+        console.print(
+            f"  - Removed dependencies: {result_summary['removed_dependencies']}"
+        )
+        console.print(f"  - Size reduction: {result_summary['size_reduction_mb']} MB")
+        console.print(f"  - Execution time: {result_summary['execution_time']} seconds")
+        console.print(f"  - Success rate: {result_summary['success_rate']}%")
+        console.print()
+
+        # Show errors if any
+        if result.errors:
+            console.print("[bold red]Errors:[/bold red]")
+            for error in result.errors[:10]:
+                console.print(f"  [red]✗ {error}[/red]")
+            if len(result.errors) > 10:
+                console.print(f"  [dim]... and {len(result.errors) - 10} more errors[/dim]")
+            console.print()
+
+        # Generate and save report
+        if save_report:
+            report_path = Path(project_path) / "CLEANUP_REPORT.md"
+            report_content = manager.generate_cleanup_report(result)
+
+            with report_path.open("w", encoding="utf-8") as f:
+                f.write(report_content)
+
+            console.print(f"[dim]📄 Cleanup report saved to: {report_path}[/dim]")
+            console.print()
+
+        # Exit with appropriate code
+        if result.error_count > 0:
+            raise typer.Exit(1)
+        else:
+            raise typer.Exit(0)
+
+    except Exception as e:
+        error_msg = f"Failed to execute cleanup: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@cleanup_app.callback()
+def cleanup_callback() -> None:
+    """Repository cleanup and maintenance commands.
+
+    These commands help maintain a clean repository by identifying and
+    removing temporary files, generated files, development artifacts,
+    obsolete examples, and unused dependencies.
+
+    Use --scan to see what would be cleaned, --dry-run to simulate,
+    and --execute to perform the actual cleanup.
+    """

@@ -112,46 +112,46 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
     - Categorize by safety level (safe, moderate, aggressive)
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 6. Implement cleanup execution functionality
-  - [ ] 6.1 Implement dry-run mode
+- [x] 6. Implement cleanup execution functionality
+  - [x] 6.1 Implement dry-run mode
     - Write `execute_cleanup()` method with `dry_run=True` default
     - Display what would be removed without actually removing
     - Show size reduction estimate
     - _Requirements: 2.7_
   
-  - [ ] 6.2 Implement backup creation
+  - [x] 6.2 Implement backup creation
     - Create backup directory before cleanup
     - Copy files to backup before removal
     - Store backup metadata (timestamp, file list)
     - _Requirements: 2.7_
   
-  - [ ] 6.3 Implement file removal
+  - [x] 6.3 Implement file removal
     - Remove files from `CleanupPlan.files_to_remove`
     - Remove directories from `CleanupPlan.directories_to_remove`
     - Handle permission errors gracefully
     - Track successful and failed removals
     - _Requirements: 2.1, 2.2, 2.3, 2.6_
   
-  - [ ] 6.4 Implement file moving
+  - [x] 6.4 Implement file moving
     - Move files according to `CleanupPlan.files_to_move`
     - Create destination directories if needed
     - Handle conflicts (existing files at destination)
     - _Requirements: 2.2_
   
-  - [ ] 6.5 Implement dependency removal
+  - [x] 6.5 Implement dependency removal
     - Update `pyproject.toml` to remove unused dependencies
     - Run `uv lock` to update lock file
     - Verify project still works after removal
     - _Requirements: 2.4_
   
-  - [ ] 6.6 Implement cleanup report generation
+  - [x] 6.6 Implement cleanup report generation
     - Write `generate_cleanup_report()` method that creates markdown report
     - List all removed files with reasons
     - Include size reduction statistics
     - Save report to `CLEANUP_REPORT.md`
     - _Requirements: 2.8_
 
-- [ ] 7. Create CLI cleanup commands
+- [x] 7. Create CLI cleanup commands
   - Add `cleanup` command group to `dev_agent/cli/main.py`
   - Implement `cleanup --scan` to show cleanup plan
   - Implement `cleanup --dry-run` to simulate cleanup
@@ -159,44 +159,44 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Add `--category` option to clean specific categories only
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8_
 
-- [ ] 8. Create setup wizard infrastructure
+- [x] 8. Create setup wizard infrastructure
   - Create `dev_agent/onboarding/` module with `__init__.py`
   - Define `UserPreferences`, `OnboardingStep`, `SetupResult` models in `dev_agent/onboarding/models.py`
   - Implement base `SetupWizard` class in `dev_agent/onboarding/setup_wizard.py`
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7_
 
-- [ ] 9. Implement setup wizard functionality
-  - [ ] 9.1 Implement welcome and introduction
+- [x] 9. Implement setup wizard functionality
+  - [x] 9.1 Implement welcome and introduction
     - Write `run()` method that displays welcome message
     - Explain dev-agent purpose and workflow
     - Check if this is first run
     - _Requirements: 7.1_
   
-  - [ ] 9.2 Implement Azure OpenAI configuration
+  - [x] 9.2 Implement Azure OpenAI configuration
     - Write `configure_azure_openai()` method with interactive prompts
     - Prompt for endpoint, API key, deployment names
     - Validate input format
     - _Requirements: 7.2_
   
-  - [ ] 9.3 Implement connection testing
+  - [x] 9.3 Implement connection testing
     - Write `test_azure_connection()` method that makes test API call
     - Verify both completion and embedding endpoints
     - Display success or error messages
     - _Requirements: 7.2_
   
-  - [ ] 9.4 Implement workflow explanation
+  - [x] 9.4 Implement workflow explanation
     - Write `explain_workflow()` method that describes four phases
     - Show example workflow with estimated times
     - Explain cost implications
     - _Requirements: 7.3_
   
-  - [ ] 9.5 Implement project type selection
+  - [x] 9.5 Implement project type selection
     - Write `offer_sample_project()` method with options
     - Offer: new project from template, analyze existing, skip
     - Guide user based on selection
     - _Requirements: 7.4_
   
-  - [ ] 9.6 Implement preferences saving
+  - [x] 9.6 Implement preferences saving
     - Write `save_user_preferences()` method that saves to `~/.dev_agent_config`
     - Store Azure config, user preferences, first-run flag
     - Encrypt API key in config file

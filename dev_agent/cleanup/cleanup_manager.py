@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import ast
+import json
 import logging
+import shutil
+import subprocess
+import time
+from contextlib import suppress
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -565,7 +571,7 @@ class CleanupManager:
 
     def execute_cleanup(
         self,
-        plan: CleanupPlan,  # noqa: ARG002
+        plan: CleanupPlan,
         dry_run: bool = True,
     ) -> CleanupResult:
         """Execute the cleanup plan.
@@ -577,24 +583,105 @@ class CleanupManager:
         Returns:
             CleanupResult containing execution results
         """
+        start_time = time.time()
         logger.info(f"Executing cleanup plan ({'dry-run' if dry_run else 'actual'})...")
 
         result = CleanupResult()
 
-        # TODO: Implement cleanup execution
-        # This is a stub that will be implemented in task 6
-
         if dry_run:
-            logger.info("Dry-run complete - no changes made")
+            # Dry-run mode: Display what would be removed without actually removing
+            logger.info("=== DRY RUN MODE - No changes will be made ===")
+
+            # Show files that would be removed
+            if plan.files_to_remove:
+                logger.info(f"\nWould remove {len(plan.files_to_remove)} files:")
+                for file_path in plan.files_to_remove[:10]:  # Show first 10
+                    size = 0
+                    if file_path.exists():
+                        with suppress(OSError):
+                            size = file_path.stat().st_size
+                    logger.info(f"  - {file_path} ({size / 1024:.2f} KB)")
+                if len(plan.files_to_remove) > 10:
+                    logger.info(
+                        f"  ... and {len(plan.files_to_remove) - 10} more files"
+                    )
+
+            # Show directories that would be removed
+            if plan.directories_to_remove:
+                logger.info(
+                    f"\nWould remove {len(plan.directories_to_remove)} directories:"
+                )
+                for dir_path in plan.directories_to_remove[:10]:  # Show first 10
+                    size = 0
+                    if dir_path.exists():
+                        with suppress(OSError):
+                            size = sum(
+                                f.stat().st_size
+                                for f in dir_path.rglob("*")
+                                if f.is_file()
+                            )
+                    logger.info(f"  - {dir_path} ({size / (1024 * 1024):.2f} MB)")
+                if len(plan.directories_to_remove) > 10:
+                    logger.info(
+                        f"  ... and {len(plan.directories_to_remove) - 10} more directories"
+                    )
+
+            # Show files that would be moved
+            if plan.files_to_move:
+                logger.info(f"\nWould move {len(plan.files_to_move)} files:")
+                for src, dst in list(plan.files_to_move.items())[:10]:  # Show first 10
+                    logger.info(f"  - {src} -> {dst}")
+                if len(plan.files_to_move) > 10:
+                    logger.info(f"  ... and {len(plan.files_to_move) - 10} more files")
+
+            # Show dependencies that would be removed
+            if plan.dependencies_to_remove:
+                logger.info(
+                    f"\nWould remove {len(plan.dependencies_to_remove)} dependencies:"
+                )
+                for dep in plan.dependencies_to_remove:
+                    logger.info(f"  - {dep}")
+
+            # Show size reduction estimate
+            logger.info(f"\nEstimated size reduction: {plan.size_reduction_mb:.2f} MB")
+            logger.info(f"Estimated time: {plan.estimated_time}")
+            logger.info(f"Safety level: {plan.safety_level}")
+
+            logger.info("\n=== Dry-run complete - no changes made ===")
         else:
+            # Actual cleanup execution
+            logger.info("=== EXECUTING CLEANUP ===")
+
+            # Create backup before cleanup
+            backup_dir = self._create_backup(plan)
+            if backup_dir:
+                logger.info(f"Backup created at: {backup_dir}")
+
+            # Execute file removal
+            self._remove_files(plan, result)
+
+            # Execute directory removal
+            self._remove_directories(plan, result)
+
+            # Execute file moving
+            self._move_files(plan, result)
+
+            # Execute dependency removal
+            self._remove_dependencies(plan, result)
+
+            # Calculate actual size reduction
+            result.size_reduction = self._calculate_actual_size_reduction(result)
+
             logger.info(
-                f"Cleanup complete: {result.success_count} operations succeeded, "
+                f"\nCleanup complete: {result.success_count} operations succeeded, "
                 f"{result.error_count} errors"
             )
+            logger.info(f"Size reduction: {result.size_reduction_mb:.2f} MB")
 
+        result.execution_time = time.time() - start_time
         return result
 
-    def generate_cleanup_report(self, result: CleanupResult) -> str:  # noqa: ARG002
+    def generate_cleanup_report(self, result: CleanupResult) -> str:
         """Generate a markdown cleanup report.
 
         Args:
@@ -605,10 +692,241 @@ class CleanupManager:
         """
         logger.debug("Generating cleanup report...")
 
-        # TODO: Implement cleanup report generation
-        # This is a stub that will be implemented in task 6.6
+        # Build the report
+        lines = [
+            "# Cleanup Report",
+            "",
+            f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**Project:** {self.project_root}",
+            "",
+            "## Summary",
+            "",
+            f"- **Total Operations:** {result.success_count + result.error_count}",
+            f"- **Successful:** {result.success_count}",
+            f"- **Errors:** {result.error_count}",
+            f"- **Success Rate:** {result.success_rate:.1f}%",
+            f"- **Size Reduction:** {result.size_reduction_mb:.2f} MB",
+            f"- **Execution Time:** {result.execution_time:.2f} seconds",
+            "",
+        ]
 
-        report = "# Cleanup Report\n\nReport generation not yet implemented.\n"
+        # Removed files section
+        if result.removed_files:
+            lines.extend(
+                [
+                    "## Removed Files",
+                    "",
+                    f"Total: {len(result.removed_files)} files",
+                    "",
+                ]
+            )
+
+            # Group files by category for better organization
+            temp_files = []
+            generated_files = []
+            other_files = []
+
+            for file_path in result.removed_files:
+                try:
+                    # Resolve paths to handle symlinks
+                    resolved_file = file_path.resolve()
+                    resolved_root = self.project_root.resolve()
+                    file_str = str(resolved_file.relative_to(resolved_root))
+                except ValueError:
+                    # If relative path fails, use absolute path
+                    file_str = str(file_path)
+
+                # Categorize files
+                if any(
+                    pattern in file_str
+                    for pattern in [
+                        ".pyc",
+                        "__pycache__",
+                        ".coverage",
+                        ".cache",
+                        ".pytest_cache",
+                    ]
+                ):
+                    temp_files.append(file_str)
+                elif any(
+                    pattern in file_str
+                    for pattern in ["TASK_", "COMPLETION_SUMMARY", "site/"]
+                ):
+                    generated_files.append(file_str)
+                else:
+                    other_files.append(file_str)
+
+            if temp_files:
+                lines.extend(
+                    [
+                        "### Temporary Files",
+                        "",
+                    ]
+                )
+                lines.extend(f"- `{file_str}`" for file_str in sorted(temp_files)[:50])
+                if len(temp_files) > 50:
+                    lines.append(f"- ... and {len(temp_files) - 50} more")
+                lines.append("")
+
+            if generated_files:
+                lines.extend(
+                    [
+                        "### Generated Files",
+                        "",
+                    ]
+                )
+                lines.extend(
+                    f"- `{file_str}`" for file_str in sorted(generated_files)[:50]
+                )
+                if len(generated_files) > 50:
+                    lines.append(f"- ... and {len(generated_files) - 50} more")
+                lines.append("")
+
+            if other_files:
+                lines.extend(
+                    [
+                        "### Other Files",
+                        "",
+                    ]
+                )
+                lines.extend(f"- `{file_str}`" for file_str in sorted(other_files)[:50])
+                if len(other_files) > 50:
+                    lines.append(f"- ... and {len(other_files) - 50} more")
+                lines.append("")
+
+        # Removed directories section
+        if result.removed_directories:
+            lines.extend(
+                [
+                    "## Removed Directories",
+                    "",
+                    f"Total: {len(result.removed_directories)} directories",
+                    "",
+                ]
+            )
+
+            for dir_path in sorted(result.removed_directories):
+                try:
+                    # Resolve paths to handle symlinks
+                    resolved_dir = dir_path.resolve()
+                    resolved_root = self.project_root.resolve()
+                    dir_str = str(resolved_dir.relative_to(resolved_root))
+                except ValueError:
+                    # If relative path fails, use absolute path
+                    dir_str = str(dir_path)
+                lines.append(f"- `{dir_str}/`")
+
+            lines.append("")
+
+        # Moved files section
+        if result.moved_files:
+            lines.extend(
+                [
+                    "## Moved Files",
+                    "",
+                    f"Total: {len(result.moved_files)} files",
+                    "",
+                ]
+            )
+
+            for src_path, dst_path in sorted(result.moved_files.items()):
+                try:
+                    # Resolve paths to handle symlinks
+                    resolved_src = src_path.resolve()
+                    resolved_dst = dst_path.resolve()
+                    resolved_root = self.project_root.resolve()
+                    src_str = str(resolved_src.relative_to(resolved_root))
+                    dst_str = str(resolved_dst.relative_to(resolved_root))
+                except ValueError:
+                    # If relative path fails, use absolute paths
+                    src_str = str(src_path)
+                    dst_str = str(dst_path)
+                lines.append(f"- `{src_str}` → `{dst_str}`")
+
+            lines.append("")
+
+        # Removed dependencies section
+        if result.removed_dependencies:
+            lines.extend(
+                [
+                    "## Removed Dependencies",
+                    "",
+                    f"Total: {len(result.removed_dependencies)} dependencies",
+                    "",
+                ]
+            )
+
+            lines.extend(f"- `{dep}`" for dep in sorted(result.removed_dependencies))
+
+            lines.append("")
+
+        # Errors section
+        if result.errors:
+            lines.extend(
+                [
+                    "## Errors",
+                    "",
+                    f"Total: {len(result.errors)} errors encountered",
+                    "",
+                ]
+            )
+
+            lines.extend(f"- {error}" for error in result.errors)
+
+            lines.append("")
+
+        # Recommendations section
+        lines.extend(
+            [
+                "## Recommendations",
+                "",
+            ]
+        )
+
+        if result.error_count > 0:
+            lines.append(
+                "- Review errors above and address any permission or access issues"
+            )
+
+        if result.removed_dependencies:
+            lines.extend(
+                [
+                    "- Run tests to verify project still works after dependency removal",
+                    "- Run `uv sync` to ensure environment is up to date",
+                ]
+            )
+
+        if result.moved_files:
+            lines.append(
+                "- Review moved files to ensure they are in the correct locations"
+            )
+
+        lines.extend(
+            [
+                "- Commit changes to version control",
+                "- Consider running the cleanup audit again to verify results",
+                "",
+            ]
+        )
+
+        # Footer
+        lines.extend(
+            [
+                "---",
+                "",
+                "*This report was generated by dev-agent cleanup system*",
+            ]
+        )
+
+        report = "\n".join(lines)
+
+        # Save report to file
+        report_path = self.project_root / "CLEANUP_REPORT.md"
+        try:
+            report_path.write_text(report, encoding="utf-8")
+            logger.info(f"Cleanup report saved to {report_path}")
+        except OSError as e:
+            logger.error(f"Failed to save cleanup report: {e}")
 
         return report
 
@@ -722,3 +1040,439 @@ class CleanupManager:
         if total_items < 200:
             return "1-2 minutes"
         return "2-5 minutes"
+
+    def _create_backup(self, plan: CleanupPlan) -> Path | None:
+        """Create backup directory before cleanup.
+
+        Creates a timestamped backup directory and copies files that will
+        be removed or moved to the backup location. Also stores metadata
+        about the backup.
+
+        Args:
+            plan: CleanupPlan containing files to backup
+
+        Returns:
+            Path to backup directory, or None if backup creation failed
+        """
+        try:
+            # Create backup directory with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = self.project_root / ".cleanup_backups" / f"backup_{timestamp}"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info(f"Creating backup at {backup_dir}...")
+
+            # Backup files to be removed
+            files_backed_up = 0
+            for file_path in plan.files_to_remove:
+                if not file_path.exists():
+                    continue
+
+                try:
+                    # Calculate relative path from project root
+                    # Resolve both paths to handle symlinks (e.g., /var -> /private/var on macOS)
+                    resolved_file = file_path.resolve()
+                    resolved_root = self.project_root.resolve()
+                    rel_path = resolved_file.relative_to(resolved_root)
+                    backup_path = backup_dir / "removed" / rel_path
+
+                    # Create parent directories
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Copy file to backup
+                    shutil.copy2(file_path, backup_path)
+                    files_backed_up += 1
+
+                except (OSError, ValueError) as e:
+                    logger.warning(f"Could not backup {file_path}: {e}")
+
+            # Backup directories to be removed
+            dirs_backed_up = 0
+            for dir_path in plan.directories_to_remove:
+                if not dir_path.exists():
+                    continue
+
+                try:
+                    # Calculate relative path from project root
+                    # Resolve both paths to handle symlinks
+                    resolved_dir = dir_path.resolve()
+                    resolved_root = self.project_root.resolve()
+                    rel_path = resolved_dir.relative_to(resolved_root)
+                    backup_path = backup_dir / "removed" / rel_path
+
+                    # Copy entire directory tree to backup
+                    shutil.copytree(dir_path, backup_path, dirs_exist_ok=True)
+                    dirs_backed_up += 1
+
+                except (OSError, ValueError) as e:
+                    logger.warning(f"Could not backup {dir_path}: {e}")
+
+            # Backup files to be moved
+            moved_backed_up = 0
+            for src_path in plan.files_to_move:
+                if not src_path.exists():
+                    continue
+
+                try:
+                    # Calculate relative path from project root
+                    # Resolve both paths to handle symlinks
+                    resolved_src = src_path.resolve()
+                    resolved_root = self.project_root.resolve()
+                    rel_path = resolved_src.relative_to(resolved_root)
+                    backup_path = backup_dir / "moved" / rel_path
+
+                    # Create parent directories
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Copy file to backup
+                    shutil.copy2(src_path, backup_path)
+                    moved_backed_up += 1
+
+                except (OSError, ValueError) as e:
+                    logger.warning(f"Could not backup {src_path}: {e}")
+
+            # Store backup metadata
+            metadata = {
+                "timestamp": timestamp,
+                "project_root": str(self.project_root),
+                "safety_level": plan.safety_level,
+                "files_backed_up": files_backed_up,
+                "directories_backed_up": dirs_backed_up,
+                "moved_files_backed_up": moved_backed_up,
+                "total_items": files_backed_up + dirs_backed_up + moved_backed_up,
+                "files_to_remove": [str(f) for f in plan.files_to_remove],
+                "directories_to_remove": [str(d) for d in plan.directories_to_remove],
+                "files_to_move": {
+                    str(k): str(v) for k, v in plan.files_to_move.items()
+                },
+                "dependencies_to_remove": plan.dependencies_to_remove,
+            }
+
+            metadata_path = backup_dir / "backup_metadata.json"
+            with metadata_path.open("w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+
+            logger.info(
+                f"Backup complete: {files_backed_up} files, "
+                f"{dirs_backed_up} directories, {moved_backed_up} moved files"
+            )
+
+            return backup_dir
+
+        except Exception as e:
+            logger.error(f"Failed to create backup: {e}")
+            return None
+
+    def _remove_files(self, plan: CleanupPlan, result: CleanupResult) -> None:
+        """Remove files from the cleanup plan.
+
+        Args:
+            plan: CleanupPlan containing files to remove
+            result: CleanupResult to update with removal results
+        """
+        logger.info(f"Removing {len(plan.files_to_remove)} files...")
+
+        for file_path in plan.files_to_remove:
+            try:
+                if not file_path.exists():
+                    logger.debug(f"File already removed or doesn't exist: {file_path}")
+                    continue
+
+                if not file_path.is_file():
+                    logger.warning(f"Not a file, skipping: {file_path}")
+                    continue
+
+                # Get file size before removal
+                try:
+                    file_size = file_path.stat().st_size
+                except OSError:
+                    file_size = 0
+
+                # Remove the file
+                file_path.unlink()
+                result.removed_files.append(file_path)
+                result.size_reduction += file_size
+
+                logger.debug(f"Removed file: {file_path}")
+
+            except PermissionError as e:
+                error_msg = f"Permission denied removing {file_path}: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+
+            except OSError as e:
+                error_msg = f"Error removing {file_path}: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+
+        logger.info(f"Removed {len(result.removed_files)} files successfully")
+
+    def _remove_directories(self, plan: CleanupPlan, result: CleanupResult) -> None:
+        """Remove directories from the cleanup plan.
+
+        Args:
+            plan: CleanupPlan containing directories to remove
+            result: CleanupResult to update with removal results
+        """
+        logger.info(f"Removing {len(plan.directories_to_remove)} directories...")
+
+        for dir_path in plan.directories_to_remove:
+            try:
+                if not dir_path.exists():
+                    logger.debug(
+                        f"Directory already removed or doesn't exist: {dir_path}"
+                    )
+                    continue
+
+                if not dir_path.is_dir():
+                    logger.warning(f"Not a directory, skipping: {dir_path}")
+                    continue
+
+                # Calculate directory size before removal
+                dir_size = 0
+                with suppress(OSError):
+                    dir_size = sum(
+                        f.stat().st_size for f in dir_path.rglob("*") if f.is_file()
+                    )
+
+                # Remove the directory and all its contents
+                shutil.rmtree(dir_path)
+                result.removed_directories.append(dir_path)
+                result.size_reduction += dir_size
+
+                logger.debug(f"Removed directory: {dir_path}")
+
+            except PermissionError as e:
+                error_msg = f"Permission denied removing {dir_path}: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+
+            except OSError as e:
+                error_msg = f"Error removing {dir_path}: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+
+        logger.info(
+            f"Removed {len(result.removed_directories)} directories successfully"
+        )
+
+    def _move_files(self, plan: CleanupPlan, result: CleanupResult) -> None:
+        """Move files according to the cleanup plan.
+
+        Args:
+            plan: CleanupPlan containing files to move
+            result: CleanupResult to update with move results
+        """
+        logger.info(f"Moving {len(plan.files_to_move)} files...")
+
+        for src_path, dst_path in plan.files_to_move.items():
+            try:
+                if not src_path.exists():
+                    logger.debug(f"Source file doesn't exist: {src_path}")
+                    continue
+
+                if not src_path.is_file():
+                    logger.warning(f"Source is not a file, skipping: {src_path}")
+                    continue
+
+                # Create destination directory if needed
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Handle conflicts (existing files at destination)
+                if dst_path.exists():
+                    if dst_path.is_file():
+                        # Create backup of existing file
+                        backup_path = dst_path.with_suffix(dst_path.suffix + ".backup")
+                        counter = 1
+                        while backup_path.exists():
+                            backup_path = dst_path.with_suffix(
+                                f"{dst_path.suffix}.backup{counter}"
+                            )
+                            counter += 1
+
+                        logger.warning(
+                            f"Destination exists, backing up to {backup_path.name}"
+                        )
+                        shutil.move(str(dst_path), str(backup_path))
+                    else:
+                        error_msg = f"Destination exists and is not a file: {dst_path}"
+                        logger.error(error_msg)
+                        result.errors.append(error_msg)
+                        continue
+
+                # Move the file
+                shutil.move(str(src_path), str(dst_path))
+                result.moved_files[src_path] = dst_path
+
+                logger.debug(f"Moved file: {src_path} -> {dst_path}")
+
+            except PermissionError as e:
+                error_msg = f"Permission denied moving {src_path} to {dst_path}: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+
+            except OSError as e:
+                error_msg = f"Error moving {src_path} to {dst_path}: {e}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+
+        logger.info(f"Moved {len(result.moved_files)} files successfully")
+
+    def _remove_dependencies(self, plan: CleanupPlan, result: CleanupResult) -> None:
+        """Remove unused dependencies from pyproject.toml.
+
+        Args:
+            plan: CleanupPlan containing dependencies to remove
+            result: CleanupResult to update with removal results
+        """
+        if not plan.dependencies_to_remove:
+            logger.debug("No dependencies to remove")
+            return
+
+        logger.info(f"Removing {len(plan.dependencies_to_remove)} dependencies...")
+
+        pyproject_path = self.project_root / "pyproject.toml"
+        if not pyproject_path.exists():
+            error_msg = "pyproject.toml not found, cannot remove dependencies"
+            logger.error(error_msg)
+            result.errors.append(error_msg)
+            return
+
+        if tomllib is None:
+            error_msg = "tomllib/tomli not available, cannot remove dependencies"
+            logger.error(error_msg)
+            result.errors.append(error_msg)
+            return
+
+        try:
+            # Read current pyproject.toml
+            with pyproject_path.open("rb") as f:
+                pyproject_data = tomllib.load(f)
+
+            # Create backup of pyproject.toml
+            backup_path = pyproject_path.with_suffix(".toml.backup")
+            shutil.copy2(pyproject_path, backup_path)
+            logger.info(f"Created backup: {backup_path}")
+
+            # Remove dependencies from the data structure
+            modified = False
+            if (
+                "project" in pyproject_data
+                and "dependencies" in pyproject_data["project"]
+            ):
+                original_deps = pyproject_data["project"]["dependencies"]
+                if isinstance(original_deps, list):
+                    # Filter out dependencies to remove
+                    new_deps = []
+                    for dep in original_deps:
+                        if isinstance(dep, str):
+                            # Extract package name
+                            dep_name = (
+                                dep.split("[")[0]
+                                .split(">=")[0]
+                                .split("==")[0]
+                                .split("<")[0]
+                                .split(">")[0]
+                                .strip()
+                            )
+
+                            if dep_name in plan.dependencies_to_remove:
+                                logger.info(f"Removing dependency: {dep_name}")
+                                result.removed_dependencies.append(dep_name)
+                                modified = True
+                            else:
+                                new_deps.append(dep)
+                        else:
+                            new_deps.append(dep)
+
+                    pyproject_data["project"]["dependencies"] = new_deps
+
+            if not modified:
+                logger.warning(
+                    "No dependencies were actually removed from pyproject.toml"
+                )
+                return
+
+            # Write updated pyproject.toml
+            # Note: We need to use toml library for writing, not tomllib
+            try:
+                import toml  # type: ignore[import-not-found]  # noqa: PLC0415
+
+                with pyproject_path.open("w", encoding="utf-8") as f:
+                    toml.dump(pyproject_data, f)
+
+                logger.info("Updated pyproject.toml")
+
+            except ImportError:
+                # If toml library not available, write manually (basic approach)
+                logger.warning("toml library not available, using basic TOML writing")
+                # For now, just log that we can't write
+                error_msg = (
+                    "Cannot write pyproject.toml without toml library. "
+                    "Dependencies identified but not removed."
+                )
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+                # Restore backup
+                shutil.copy2(backup_path, pyproject_path)
+                return
+
+            # Run uv lock to update lock file
+            logger.info("Updating lock file with uv lock...")
+            try:
+                subprocess.run(
+                    ["uv", "lock"],
+                    cwd=self.project_root,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                logger.info("Lock file updated successfully")
+
+            except subprocess.CalledProcessError as e:
+                error_msg = f"Failed to update lock file: {e.stderr}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+                # Restore backup
+                shutil.copy2(backup_path, pyproject_path)
+                result.removed_dependencies.clear()
+
+            except subprocess.TimeoutExpired:
+                error_msg = "Lock file update timed out"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+                # Restore backup
+                shutil.copy2(backup_path, pyproject_path)
+                result.removed_dependencies.clear()
+
+            except FileNotFoundError:
+                error_msg = "uv command not found, cannot update lock file"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
+                # Keep the changes but warn user
+                logger.warning(
+                    "Dependencies removed from pyproject.toml but lock file not updated"
+                )
+
+        except Exception as e:
+            error_msg = f"Error removing dependencies: {e}"
+            logger.error(error_msg)
+            result.errors.append(error_msg)
+
+        logger.info(
+            f"Removed {len(result.removed_dependencies)} dependencies successfully"
+        )
+
+    def _calculate_actual_size_reduction(self, result: CleanupResult) -> int:
+        """Calculate actual size reduction from cleanup result.
+
+        Args:
+            result: CleanupResult containing removed items
+
+        Returns:
+            Total size reduction in bytes
+        """
+        # Size reduction is already tracked in result.size_reduction
+        # during file and directory removal
+        return result.size_reduction
