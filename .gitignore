@@ -229,3 +229,5 @@ site/
 *.temp
 .DS_Store
 Thumbs.db
+
+.cleanup_backups/*
