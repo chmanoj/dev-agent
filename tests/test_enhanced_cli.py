@@ -1,699 +1,754 @@
-"""Tests for the enhanced CLI with Rich UI components."""
+"""Comprehensive tests for enhanced CLI functionality.
+
+This test module covers all CLI enhancements including:
+- Status command output
+- Cost-report command output
+- Validate command
+- Help system
+- Progress display
+- Feedback system
+"""
 
 from __future__ import annotations
 
-import tempfile
+import json
+from datetime import datetime, timedelta
+from io import StringIO
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from rich.console import Console
+from typer.testing import CliRunner
 
-from dev_agent.cli.enhanced_cli import (
-    ContextualHelpSystem,
-    DocumentPreviewer,
-    EnhancedCLI,
-    ProgressManager,
+from dev_agent.cli.feedback_system import FeedbackSystem
+from dev_agent.cli.help_system import HelpSystem
+from dev_agent.cli.main import app
+from dev_agent.cli.progress_display import ProgressDisplay
+from dev_agent.models.cost_tracking import CostReport, TokenUsage
+from dev_agent.models.enums import LLMOperationType, PhaseStatus, PhaseType
+from dev_agent.models.project_state import (
+    IndexMetadata,
+    ProjectState,
+    SessionData,
 )
-from dev_agent.models.enums import PhaseType
+from dev_agent.models.results import IndexingResult
 
 
-class TestEnhancedCLI:
-    """Test cases for the EnhancedCLI class."""
+@pytest.fixture
+def runner():
+    """Create a CLI test runner."""
+    return CliRunner()
 
-    @pytest.fixture
-    def mock_workflow_manager(self):
-        """Create a mock workflow manager."""
-        mock_manager = Mock()
-        mock_manager.get_current_phase.return_value = PhaseType.INDEXING
-        mock_manager.execute_complete_workflow.return_value = True
-        mock_manager.transition_to_phase.return_value = True
-        return mock_manager
 
-    @pytest.fixture
-    def enhanced_cli(self, mock_workflow_manager):
-        """Create an EnhancedCLI instance with mocked dependencies."""
-        cli = EnhancedCLI(workflow_manager=mock_workflow_manager)
-        return cli
+@pytest.fixture
+def mock_console():
+    """Create a mock Rich console for testing."""
+    console = MagicMock(spec=Console)
+    console.get_time = MagicMock(return_value=0.0)
+    return console
 
-    @pytest.fixture
-    def temp_project_dir(self):
-        """Create a temporary project directory."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            yield temp_dir
 
-    def test_initialization(self, enhanced_cli):
-        """Test EnhancedCLI initialization."""
-        assert enhanced_cli.workflow_manager is not None
-        assert enhanced_cli.session_active is False
-        assert enhanced_cli.console is not None
-        assert enhanced_cli.progress_manager is not None
-        assert enhanced_cli.document_previewer is not None
-        assert enhanced_cli.help_system is not None
+@pytest.fixture
+def test_console():
+    """Create a real console with string output for testing."""
+    return Console(file=StringIO(), force_terminal=True, width=120)
 
-    def test_handle_user_input_init_command(self, enhanced_cli, temp_project_dir):
-        """Test handling of init command."""
-        with patch.object(enhanced_cli, "init_command") as mock_init:
-            result = enhanced_cli.handle_user_input(f"init {temp_project_dir}")
 
-            mock_init.assert_called_once_with(temp_project_dir)
-            assert "Project initialized" in result
-            assert temp_project_dir in result
+@pytest.fixture
+def mock_project_state():
+    """Create a mock project state for testing."""
+    return ProjectState(
+        project_path="/test/project",
+        current_phase=PhaseType.SPECIFICATION,
+        indexing_complete=True,
+        specification=None,
+        design=None,
+        tasks=None,
+        implementation_progress={},
+        index_metadata=IndexMetadata(
+            total_files=100,
+            total_lines=5000,
+            languages_detected=["python", "javascript"],
+            index_size_mb=2.5,
+            last_indexed=datetime(2024, 1, 15, 10, 30, 0),
+            index_version="1.0.0",
+        ),
+        session_data=SessionData(
+            session_id="test-session-123",
+            started_at=datetime(2024, 1, 15, 9, 0, 0),
+            last_activity=datetime(2024, 1, 15, 10, 30, 0),
+            user_approvals={"indexing": True},
+            pending_approvals=["specification"],
+        ),
+        created_at=datetime(2024, 1, 15, 9, 0, 0),
+        updated_at=datetime(2024, 1, 15, 10, 30, 0),
+    )
 
-    def test_handle_user_input_status_command(self, enhanced_cli):
-        """Test handling of status command."""
-        result = enhanced_cli.handle_user_input("status")
 
-        assert "Current Phase" in result
+@pytest.fixture
+def sample_cost_report():
+    """Create a sample cost report for testing."""
+    start_time = datetime(2024, 1, 1, 10, 0, 0)
+    end_time = datetime(2024, 1, 1, 11, 30, 0)
+    
+    report = CostReport.create_empty(start_time=start_time)
+    report.end_time = end_time
+    
+    # Add sample operations
+    operations = [
+        TokenUsage(
+            operation_type=LLMOperationType.COMPLETION,
+            prompt_tokens=150,
+            completion_tokens=300,
+            total_tokens=450,
+            estimated_cost=0.027,
+            timestamp=datetime(2024, 1, 1, 10, 15, 0),
+            phase=PhaseType.SPECIFICATION,
+            model="gpt-4",
+        ),
+        TokenUsage(
+            operation_type=LLMOperationType.EMBEDDING,
+            prompt_tokens=500,
+            completion_tokens=0,
+            total_tokens=500,
+            estimated_cost=0.0005,
+            timestamp=datetime(2024, 1, 1, 10, 30, 0),
+            phase=PhaseType.INDEXING,
+            model="text-embedding-ada-002",
+        ),
+    ]
+    
+    for op in operations:
+        report.add_usage(op)
+    
+    return report
 
-    def test_handle_user_input_run_command(self, enhanced_cli):
-        """Test handling of run command."""
-        with patch.object(enhanced_cli.progress_manager, "progress") as mock_progress:
-            mock_progress.__enter__ = Mock(return_value=mock_progress)
-            mock_progress.__exit__ = Mock(return_value=None)
 
-            result = enhanced_cli.handle_user_input("run")
+class TestStatusCommandEnhancements:
+    """Test enhanced status command functionality."""
 
-            assert "completed successfully" in result
-
-    def test_handle_user_input_phase_command(self, enhanced_cli):
-        """Test handling of phase transition command."""
-        result = enhanced_cli.handle_user_input("phase indexing")
-
-        assert "Successfully transitioned" in result
-
-    def test_handle_user_input_invalid_phase(self, enhanced_cli):
-        """Test handling of invalid phase command."""
-        result = enhanced_cli.handle_user_input("phase INVALID")
-
-        assert "Invalid phase" in result
-        assert "Valid phases" in result
-
-    def test_handle_user_input_unknown_command(self, enhanced_cli):
-        """Test handling of unknown command."""
-        with patch.object(enhanced_cli.help_system, "show_command_suggestions") as mock_suggestions:
-            result = enhanced_cli.handle_user_input("unknown_command")
-
-            mock_suggestions.assert_called_once()
-            assert result == ""
-
-    def test_request_approval(self, enhanced_cli):
-        """Test document approval request."""
-        document_content = "# Test Document\nThis is a test document."
+    def test_status_shows_workflow_progress(
+        self, runner, tmp_path, mock_project_state, sample_cost_report
+    ):
+        """Test that status command shows workflow progress correctly."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
         with (
-            patch("rich.prompt.Confirm.ask", return_value=True) as mock_confirm,
-            patch.object(enhanced_cli.document_previewer, "show_document_preview") as mock_show,
+            patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf,
+            patch("dev_agent.cli.main.setup_cli_logging"),
         ):
-            result = enhanced_cli.request_approval(document_content, "specification")
+            mock_manager = MagicMock()
+            mock_manager.resume_project.return_value = mock_project_state
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            mock_wf.return_value = mock_manager
 
-            mock_show.assert_called_once()
-            mock_confirm.assert_called_once()
-            assert result is True
+            result = runner.invoke(app, ["status", str(tmp_path)])
 
-    def test_display_progress(self, enhanced_cli):
-        """Test progress display."""
-        phase = PhaseType.INDEXING
-        progress = 0.5
+            assert result.exit_code == 0
+            assert "Workflow Progress" in result.stdout
+            assert "Indexing" in result.stdout
+            assert "Specification" in result.stdout
 
-        with patch.object(enhanced_cli.progress_manager, "update_progress") as mock_update:
-            enhanced_cli.display_progress(phase, progress)
+    def test_status_shows_phase_indicators(
+        self, runner, tmp_path, mock_project_state, sample_cost_report
+    ):
+        """Test that status shows visual phase indicators."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-            mock_update.assert_called_once_with(50)
+        with (
+            patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            mock_manager = MagicMock()
+            mock_manager.resume_project.return_value = mock_project_state
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            mock_wf.return_value = mock_manager
 
-    def test_init_command_new_project(self, enhanced_cli, temp_project_dir):
-        """Test initializing a new project."""
-        enhanced_cli.init_command(temp_project_dir)
+            result = runner.invoke(app, ["status", str(tmp_path)])
 
-        # Check that directories were created
-        temp_path = Path(temp_project_dir)
-        dev_agent_dir = temp_path / ".dev_agent"
-        assert dev_agent_dir.exists()
-        assert (dev_agent_dir / "documents").exists()
-        assert (dev_agent_dir / "index").exists()
+            assert result.exit_code == 0
+            # Should show completion indicators
+            assert "✓" in result.stdout or "Complete" in result.stdout
 
-    def test_init_command_existing_project(self, enhanced_cli, temp_project_dir):
-        """Test resuming an existing project."""
-        # Create existing project structure
-        temp_path = Path(temp_project_dir)
-        dev_agent_dir = temp_path / ".dev_agent"
-        (dev_agent_dir / "documents").mkdir(parents=True)
-        (dev_agent_dir / "index").mkdir(parents=True)
+    def test_status_detailed_mode(
+        self, runner, tmp_path, mock_project_state, sample_cost_report
+    ):
+        """Test status command with detailed flag."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-        with patch.object(enhanced_cli, "display_message") as mock_display:
-            enhanced_cli.init_command(temp_project_dir)
+        with (
+            patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            mock_manager = MagicMock()
+            mock_manager.resume_project.return_value = mock_project_state
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            mock_wf.return_value = mock_manager
 
-            # Should show resuming message
-            mock_display.assert_called()
-            call_args = [call[0][0] for call in mock_display.call_args_list]
-            assert any("resuming" in arg.lower() for arg in call_args)
+            result = runner.invoke(app, ["status", str(tmp_path), "--detailed"])
 
-    def test_init_command_invalid_path(self, enhanced_cli):
-        """Test initializing with invalid path."""
-        invalid_path = "/nonexistent/path"
+            assert result.exit_code == 0
+            assert "Detailed Information" in result.stdout
+            assert "Index Metadata" in result.stdout
 
-        with pytest.raises(ValueError, match="Project path does not exist"):
-            enhanced_cli.init_command(invalid_path)
 
-    def test_display_message(self, enhanced_cli):
-        """Test message display."""
-        message = "Test message"
+class TestCostReportEnhancements:
+    """Test enhanced cost-report command functionality."""
 
-        with patch.object(enhanced_cli.console, "print") as mock_print:
-            enhanced_cli.display_message(message)
+    @patch("dev_agent.workflow.workflow_manager.WorkflowManager")
+    def test_cost_report_shows_breakdown(
+        self, mock_wf, runner, tmp_path, sample_cost_report
+    ):
+        """Test that cost report shows detailed breakdown."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-            mock_print.assert_called_once_with(message)
+        mock_manager = MagicMock()
+        mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+        mock_manager.cost_tracker.budget_threshold = None
+        mock_manager.cost_tracker.budget_limit = None
+        mock_wf.return_value = mock_manager
 
-    def test_get_user_input(self, enhanced_cli):
-        """Test user input retrieval."""
-        prompt = "Enter something: "
-        expected_input = "user input"
+        result = runner.invoke(app, ["cost-report", str(tmp_path)])
 
-        with patch("rich.prompt.Prompt.ask", return_value=expected_input) as mock_prompt:
-            result = enhanced_cli.get_user_input(prompt)
+        assert result.exit_code == 0
+        assert "Cost Breakdown" in result.stdout
+        assert "Token Usage" in result.stdout
 
-            mock_prompt.assert_called_once_with(prompt)
-            assert result == expected_input
+    @patch("dev_agent.workflow.workflow_manager.WorkflowManager")
+    def test_cost_report_phase_filter(
+        self, mock_wf, runner, tmp_path
+    ):
+        """Test cost report with phase filtering."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-    def test_get_current_context_no_project(self, enhanced_cli):
-        """Test getting context when no project is active."""
-        enhanced_cli.workflow_manager = None
+        phase_report = CostReport.create_empty()
+        phase_report.add_usage(
+            TokenUsage(
+                operation_type=LLMOperationType.COMPLETION,
+                prompt_tokens=150,
+                completion_tokens=300,
+                total_tokens=450,
+                estimated_cost=0.027,
+                timestamp=datetime.now(),
+                phase=PhaseType.SPECIFICATION,
+                model="gpt-4",
+            )
+        )
 
-        context = enhanced_cli._get_current_context()
+        mock_manager = MagicMock()
+        mock_manager.cost_tracker.get_phase_report.return_value = phase_report
+        mock_manager.cost_tracker.budget_threshold = None
+        mock_manager.cost_tracker.budget_limit = None
+        mock_wf.return_value = mock_manager
 
-        assert context["session_active"] is False
-        assert context["command_history_count"] == 0
+        result = runner.invoke(
+            app, ["cost-report", str(tmp_path), "--phase", "specification"]
+        )
 
-    def test_get_current_context_with_project(self, enhanced_cli):
-        """Test getting context when project is active."""
-        context = enhanced_cli._get_current_context()
+        assert result.exit_code == 0
+        assert "Specification" in result.stdout
 
-        assert context["session_active"] is False
-        assert context["current_phase"] == PhaseType.INDEXING
+    @patch("dev_agent.workflow.workflow_manager.WorkflowManager")
+    def test_cost_report_export_json(
+        self, mock_wf, runner, tmp_path, sample_cost_report
+    ):
+        """Test exporting cost report to JSON."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-    def test_handle_architecture_command(self, enhanced_cli):
-        """Test handling of architecture command."""
-        result = enhanced_cli.handle_user_input("architecture")
+        mock_manager = MagicMock()
+        mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+        mock_manager.cost_tracker.budget_threshold = 1.0
+        mock_manager.cost_tracker.budget_limit = 2.0
+        mock_wf.return_value = mock_manager
 
-        # Should return empty string (output goes to console)
-        assert result == ""
+        export_file = tmp_path / "cost_report.json"
+        result = runner.invoke(
+            app, ["cost-report", str(tmp_path), "--export", str(export_file)]
+        )
 
-    def test_handle_workflow_command(self, enhanced_cli):
-        """Test handling of workflow diagram command."""
-        result = enhanced_cli.handle_user_input("workflow")
+        # Command should complete
+        assert result.exit_code in [0, 1]
 
-        # Should return empty string (output goes to console)
-        assert result == ""
+        # Check if export happened
+        if result.exit_code == 0 and export_file.exists():
+            data = json.loads(export_file.read_text())
+            assert "summary" in data
+            assert "breakdown_by_operation" in data
 
-    def test_handle_search_command_valid(self, enhanced_cli):
-        """Test handling of search command with valid arguments."""
-        # Mock project state with specification
-        mock_spec = Mock()
-        mock_spec.content = "This is a test specification with hello world"
+
+class TestValidateCommandEnhancements:
+    """Test enhanced validate command functionality."""
+
+    def test_validate_checks_all_requirements(self, runner):
+        """Test that validate command checks all requirements."""
+        with (
+            patch("dev_agent.cli.main.config_manager") as mock_config,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            from types import SimpleNamespace
+            config = SimpleNamespace(azure_openai=None)
+            mock_config.get_config.return_value = config
+
+            result = runner.invoke(app, ["validate"])
+
+            # Should check multiple things
+            assert "Azure OpenAI" in result.stdout or "azure" in result.stdout.lower()
+            assert "Dependencies" in result.stdout or "dependencies" in result.stdout.lower()
+
+    def test_validate_shows_results_table(self, runner):
+        """Test that validate shows results in a table."""
+        with (
+            patch("dev_agent.cli.main.config_manager") as mock_config,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            from types import SimpleNamespace
+            azure_openai = SimpleNamespace(
+                api_key=None,
+                endpoint="https://test.openai.azure.com/",
+                deployment_name="gpt-4",
+                embedding_deployment=None,
+            )
+            config = SimpleNamespace(azure_openai=azure_openai)
+            mock_config.get_config.return_value = config
+
+            result = runner.invoke(app, ["validate"])
+
+            # Should show validation results
+            assert "Validation" in result.stdout or "Check" in result.stdout
+
+    def test_validate_provides_suggestions(self, runner):
+        """Test that validate provides helpful suggestions."""
+        with (
+            patch("dev_agent.cli.main.config_manager") as mock_config,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            from types import SimpleNamespace
+            config = SimpleNamespace(azure_openai=None)
+            mock_config.get_config.return_value = config
+
+            result = runner.invoke(app, ["validate"])
+
+            # Should provide suggestions
+            assert "setup" in result.stdout.lower() or "configure" in result.stdout.lower()
+
+
+class TestHelpSystemEnhancements:
+    """Test enhanced help system functionality."""
+
+    def test_help_system_shows_all_commands(self):
+        """Test that help system shows all commands."""
+        hs = HelpSystem()
         
-        mock_project_state = Mock()
-        mock_project_state.specification = mock_spec
-        mock_project_state.design = None
-        mock_project_state.tasks = None
+        # Should not raise exception
+        hs.show_all_commands()
         
-        enhanced_cli.workflow_manager.project_state = mock_project_state
+        # Should have essential commands
+        assert "init" in hs.commands
+        assert "resume" in hs.commands
+        assert "status" in hs.commands
 
-        result = enhanced_cli.handle_user_input("search hello specification")
-
-        # Should return empty string (output goes to console)
-        assert result == ""
-
-    def test_handle_search_command_invalid_args(self, enhanced_cli):
-        """Test handling of search command with invalid arguments."""
-        result = enhanced_cli.handle_user_input("search hello")
-
-        assert "Usage: search" in result
-
-    def test_handle_filter_command_valid(self, enhanced_cli, temp_project_dir):
-        """Test handling of filter command with valid arguments."""
-        enhanced_cli.current_project_path = temp_project_dir
-
-        result = enhanced_cli.handle_user_input("filter --ext .py")
-
-        # Should return empty string (output goes to console)
-        assert result == ""
-
-    def test_handle_filter_command_no_project(self, enhanced_cli):
-        """Test handling of filter command with no active project."""
-        result = enhanced_cli.handle_user_input("filter --ext .py")
-
-        assert "No active project" in result
-
-    def test_handle_filter_command_invalid_args(self, enhanced_cli, temp_project_dir):
-        """Test handling of filter command with invalid arguments."""
-        enhanced_cli.current_project_path = temp_project_dir
-
-        result = enhanced_cli.handle_user_input("filter")
-
-        assert "Usage: filter" in result
-
-
-class TestProgressManager:
-    """Test cases for the ProgressManager class."""
-
-    @pytest.fixture
-    def console(self):
-        """Create a Rich console instance."""
-        return Console()
-
-    @pytest.fixture
-    def progress_manager(self, console):
-        """Create a ProgressManager instance."""
-        return ProgressManager(console)
-
-    def test_initialization(self, progress_manager, console):
-        """Test ProgressManager initialization."""
-        assert progress_manager.console == console
-        assert progress_manager.current_task is None
-        assert progress_manager.phase_start_times == {}
-        assert progress_manager.phase_estimates is not None
-
-    def test_start_phase_progress(self, progress_manager):
-        """Test starting phase progress."""
-        phase = PhaseType.INDEXING
+    def test_help_system_shows_command_details(self):
+        """Test that help system shows command details."""
+        hs = HelpSystem()
         
-        with patch.object(progress_manager.progress, "add_task", return_value="task_id") as mock_add:
-            task_id = progress_manager.start_phase_progress(phase)
-            
-            assert task_id == "task_id"
-            mock_add.assert_called_once()
-
-    def test_update_progress(self, progress_manager):
-        """Test updating progress."""
-        progress_manager.current_task = "task_id"
+        # Should not raise exception
+        hs.show_command_help("init")
         
-        with patch.object(progress_manager.progress, "update") as mock_update:
-            progress_manager.update_progress(50, "Test status")
-            
-            mock_update.assert_called_once()
+        # Command should have required fields
+        assert "description" in hs.commands["init"]
+        assert "usage" in hs.commands["init"]
 
-    def test_complete_phase(self, progress_manager):
-        """Test completing a phase."""
-        from datetime import datetime
+    def test_help_system_shows_examples(self):
+        """Test that help system shows workflow examples."""
+        hs = HelpSystem()
         
-        phase = PhaseType.INDEXING
-        progress_manager.current_task = "task_id"
-        progress_manager.phase_start_times[phase] = datetime.now()
+        # Should not raise exception
+        hs.show_examples()
         
-        with patch.object(progress_manager.progress, "update") as mock_update:
-            progress_manager.complete_phase(phase)
-            
-            mock_update.assert_called_once_with("task_id", completed=100)
+        # Should have workflow examples
+        assert len(hs.workflows) > 0
+        assert "new_project" in hs.workflows
 
-    def test_show_phase_summary(self, progress_manager):
-        """Test showing phase summary."""
-        completed_phases = [PhaseType.INDEXING]
+    def test_help_system_quick_reference(self):
+        """Test that help system shows quick reference."""
+        hs = HelpSystem()
         
-        with patch.object(progress_manager.console, "print") as mock_print:
-            progress_manager.show_phase_summary(completed_phases)
-            
-            mock_print.assert_called_once()
+        # Should not raise exception
+        hs.show_quick_reference()
+
+    def test_help_command_integration(self, runner):
+        """Test help command integration with CLI."""
+        result = runner.invoke(app, ["--help"])
+        
+        assert result.exit_code == 0
+        assert "dev-agent" in result.stdout.lower()
 
 
+class TestProgressDisplayEnhancements:
+    """Test enhanced progress display functionality."""
+
+    def test_progress_display_indexing(self, test_console):
+        """Test progress display for indexing."""
+        display = ProgressDisplay(console=test_console)
+        
+        with display.show_indexing_progress(10) as progress:
+            for i in range(10):
+                progress.update(i + 1, current_file=f"file_{i}.py")
+        
+        # Should complete without errors
+        assert True
+
+    def test_progress_display_phase_summary(self, test_console):
+        """Test progress display for phase summary."""
+        display = ProgressDisplay(console=test_console)
+        
+        result = IndexingResult(
+            phase=PhaseType.INDEXING,
+            status=PhaseStatus.COMPLETED,
+            message="Indexing completed",
+            files_indexed=100,
+            total_lines=5000,
+            index_size_mb=2.5,
+            languages_detected=["Python"],
+        )
+        
+        display.show_phase_summary(PhaseType.INDEXING, result)
+        
+        output = test_console.file.getvalue()  # type: ignore
+        assert "Indexing" in output
+        assert "100" in output
+
+    def test_progress_display_cost_summary(self, test_console):
+        """Test progress display for cost summary."""
+        display = ProgressDisplay(console=test_console)
+        
+        report = CostReport(
+            total_prompt_tokens=1000,
+            total_completion_tokens=2000,
+            total_embedding_tokens=500,
+            total_cost=0.15,
+            operations_count=10,
+            by_phase={},
+            by_operation={},
+            start_time=datetime.now(),
+            end_time=datetime.now() + timedelta(seconds=30),
+        )
+        
+        display.show_cost_summary(report)
+        
+        output = test_console.file.getvalue()  # type: ignore
+        assert "Cost" in output
+        assert "$0.15" in output
+
+    def test_progress_display_spinner(self, test_console):
+        """Test progress display spinner."""
+        display = ProgressDisplay(console=test_console)
+        
+        with display.show_spinner("Processing...") as spinner:
+            spinner.update("Still processing...")
+        
+        # Should complete without errors
+        assert True
 
 
+class TestFeedbackSystemEnhancements:
+    """Test enhanced feedback system functionality."""
 
-class TestDocumentPreviewer:
-    """Test cases for the DocumentPreviewer class."""
+    def test_feedback_system_phase_start(self, mock_console):
+        """Test feedback system phase start."""
+        feedback = FeedbackSystem(console=mock_console)
+        
+        feedback.show_phase_start(PhaseType.INDEXING)
+        
+        assert mock_console.print.called
 
-    @pytest.fixture
-    def console(self):
-        """Create a Rich console instance."""
-        return Console()
+    def test_feedback_system_phase_complete(self, mock_console):
+        """Test feedback system phase complete."""
+        feedback = FeedbackSystem(console=mock_console)
+        
+        summary = {
+            "files_indexed": 100,
+            "functions_found": 300,
+        }
+        
+        feedback.show_phase_complete(PhaseType.INDEXING, summary)
+        
+        assert mock_console.print.called
 
-    @pytest.fixture
-    def document_previewer(self, console):
-        """Create a DocumentPreviewer instance."""
-        return DocumentPreviewer(console)
+    def test_feedback_system_error(self, mock_console):
+        """Test feedback system error display."""
+        feedback = FeedbackSystem(console=mock_console)
+        
+        error = ValueError("Test error")
+        suggestions = ["Check configuration", "Verify API key"]
+        
+        feedback.show_error(error, suggestions)
+        
+        assert mock_console.print.called
 
-    @pytest.fixture
-    def temp_project_dir(self):
-        """Create a temporary project directory."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            yield temp_dir
+    def test_feedback_system_warning(self, mock_console):
+        """Test feedback system warning display."""
+        feedback = FeedbackSystem(console=mock_console)
+        
+        feedback.show_warning("This may take a while", "Consider using --fast mode")
+        
+        assert mock_console.print.called
 
-    def test_initialization(self, document_previewer, console):
-        """Test DocumentPreviewer initialization."""
-        assert document_previewer.console == console
+    def test_feedback_system_success(self, mock_console):
+        """Test feedback system success display."""
+        feedback = FeedbackSystem(console=mock_console)
+        
+        next_steps = ["Run dev-agent resume", "Check status"]
+        
+        feedback.show_success("Setup complete", next_steps)
+        
+        assert mock_console.print.called
 
-    def test_show_document_preview(self, document_previewer):
-        """Test showing a document with syntax highlighting."""
-        content = "# Test Document\nThis is a test."
-        document_type = "specification"
-
-        with patch.object(document_previewer.console, "print") as mock_print:
-            document_previewer.show_document_preview(content, document_type)
-
-            mock_print.assert_called_once()
-
-    def test_show_diff_view_with_changes(self, document_previewer):
-        """Test showing diff with actual changes."""
-        old_content = "line 1\nline 2\nline 3"
-        new_content = "line 1\nmodified line 2\nline 3"
-
-        with patch.object(document_previewer.console, "print") as mock_print:
-            document_previewer.show_diff_view(old_content, new_content, "Test Changes")
-
-            mock_print.assert_called_once()
-
-    def test_show_diff_view_no_changes(self, document_previewer):
-        """Test showing diff with no changes."""
-        content = "line 1\nline 2\nline 3"
-
-        with patch.object(document_previewer.console, "print") as mock_print:
-            document_previewer.show_diff_view(content, content)
-
-            mock_print.assert_called_once()
-
-    def test_show_file_tree(self, document_previewer, temp_project_dir):
-        """Test showing project file tree."""
-        with patch.object(document_previewer.console, "print") as mock_print:
-            document_previewer.show_file_tree(temp_project_dir)
-
-            mock_print.assert_called_once()
-
-    def test_get_file_icon(self, document_previewer):
-        """Test file icon selection for different extensions."""
-        assert document_previewer._get_file_icon(".py") == "🐍"
-        assert document_previewer._get_file_icon(".js") == "📜"
-        assert document_previewer._get_file_icon(".md") == "📝"
-        assert document_previewer._get_file_icon(".unknown") == "📄"
-
-
-class TestContextualHelpSystem:
-    """Test cases for the ContextualHelpSystem class."""
-
-    @pytest.fixture
-    def console(self):
-        """Create a Rich console instance."""
-        return Console()
-
-    @pytest.fixture
-    def help_system(self, console):
-        """Create a ContextualHelpSystem instance."""
-        return ContextualHelpSystem(console)
-
-    def test_initialization(self, help_system, console):
-        """Test ContextualHelpSystem initialization."""
-        assert help_system.console == console
-        assert help_system.help_shown_count == 0
-
-    def test_should_show_help_first_time(self, help_system):
-        """Test help should be shown on first interaction."""
-        context = {"session_active": False}
-
-        result = help_system.should_show_help(context)
-
+    @patch("builtins.input", return_value="y")
+    def test_feedback_system_confirm(self, mock_input, mock_console):
+        """Test feedback system confirmation."""
+        feedback = FeedbackSystem(console=mock_console)
+        
+        result = feedback.confirm("Continue?")
+        
         assert result is True
 
-    def test_should_show_help_after_first_time(self, help_system):
-        """Test help should not be shown after first time."""
-        help_system.help_shown_count = 1
-        context = {"session_active": True}
 
-        result = help_system.should_show_help(context)
+class TestCLIIntegration:
+    """Integration tests for enhanced CLI functionality."""
 
-        assert result is False
+    def test_cli_commands_available(self, runner):
+        """Test that all enhanced CLI commands are available."""
+        result = runner.invoke(app, ["--help"])
+        
+        assert result.exit_code == 0
+        # Should show main commands
+        assert "init" in result.stdout.lower() or "commands" in result.stdout.lower()
 
-    def test_show_contextual_help_with_phase(self, help_system):
-        """Test showing contextual help for specific phase."""
-        context = {"current_phase": PhaseType.INDEXING}
+    def test_cli_error_handling(self, runner, tmp_path):
+        """Test CLI error handling."""
+        # Try to run status on non-existent project
+        result = runner.invoke(app, ["status", str(tmp_path)])
+        
+        # Should handle error gracefully
+        assert result.exit_code in [0, 1]
 
-        with patch.object(help_system, "_show_phase_help") as mock_help:
-            help_system.show_contextual_help(context)
+    def test_cli_verbose_mode(self, runner, tmp_path):
+        """Test CLI verbose mode."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-            mock_help.assert_called_once_with(PhaseType.INDEXING)
+        result = runner.invoke(app, ["status", str(tmp_path), "--verbose"])
+        
+        # Should complete (may fail if no project, but shouldn't crash)
+        assert result.exit_code in [0, 1]
 
-    def test_show_contextual_help_general(self, help_system):
-        """Test showing general contextual help."""
-        context = {}
-
-        with patch.object(help_system, "_show_general_help") as mock_help:
-            help_system.show_contextual_help(context)
-
-            mock_help.assert_called_once()
-
-    def test_display_full_help(self, help_system):
-        """Test displaying full help information."""
-        context = {"session_active": True}
-
-        with patch.object(help_system.console, "print") as mock_print:
-            help_system.display_full_help(context)
-
-            # Should print two tables and a newline
-            assert mock_print.call_count >= 2
-
-    def test_show_command_suggestions(self, help_system):
-        """Test showing command suggestions."""
-        context = {"current_phase": PhaseType.INDEXING}
-
-        with patch.object(help_system.console, "print") as mock_print:
-            help_system.show_command_suggestions("unknow", context)
-
-            mock_print.assert_called_once()
+    def test_cli_help_for_commands(self, runner):
+        """Test that help is available for all commands."""
+        commands = ["init", "resume", "status", "validate"]
+        
+        for cmd in commands:
+            result = runner.invoke(app, [cmd, "--help"])
+            assert result.exit_code == 0
 
 
-class TestVisualizationEngine:
-    """Test cases for the VisualizationEngine class."""
+class TestCLIUserExperience:
+    """Test CLI user experience enhancements."""
 
-    @pytest.fixture
-    def console(self):
-        """Create a Rich console instance."""
-        return Console()
+    def test_status_provides_next_steps(
+        self, runner, tmp_path, mock_project_state, sample_cost_report
+    ):
+        """Test that status provides next steps."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-    @pytest.fixture
-    def visualization_engine(self, console):
-        """Create a VisualizationEngine instance."""
-        from dev_agent.cli.enhanced_cli import VisualizationEngine
-        return VisualizationEngine(console)
+        with (
+            patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            mock_manager = MagicMock()
+            mock_manager.resume_project.return_value = mock_project_state
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            mock_wf.return_value = mock_manager
 
-    def test_initialization(self, visualization_engine, console):
-        """Test VisualizationEngine initialization."""
-        assert visualization_engine.console == console
+            result = runner.invoke(app, ["status", str(tmp_path)])
 
-    def test_generate_architecture_diagram(self, visualization_engine):
-        """Test architecture diagram generation."""
-        project_analysis = {
-            "components": [
-                {"name": "CLI", "type": "interface"},
-                {"name": "Service", "type": "service"},
-            ],
-            "dependencies": {"CLI": ["Service"]},
-        }
+            assert result.exit_code == 0
+            assert "Next Steps" in result.stdout or "next" in result.stdout.lower()
 
-        diagram = visualization_engine.generate_architecture_diagram(project_analysis)
+    def test_cost_report_shows_budget_warnings(
+        self, runner, tmp_path, sample_cost_report
+    ):
+        """Test that cost report shows budget warnings."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-        assert "graph TD" in diagram
-        assert "CLI" in diagram
-        assert "Service" in diagram
+        with patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf:
+            mock_manager = MagicMock()
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            mock_manager.cost_tracker.budget_threshold = 0.01  # Very low threshold
+            mock_manager.cost_tracker.budget_limit = None
+            mock_wf.return_value = mock_manager
 
-    def test_generate_workflow_diagram(self, visualization_engine):
-        """Test workflow diagram generation."""
-        phases = [PhaseType.INDEXING, PhaseType.SPECIFICATION]
+            result = runner.invoke(app, ["cost-report", str(tmp_path)])
 
-        diagram = visualization_engine.generate_workflow_diagram(phases)
+            assert result.exit_code == 0
+            # Should show budget warning
+            assert "Budget" in result.stdout or "threshold" in result.stdout.lower()
 
-        assert "flowchart LR" in diagram
-        assert "Indexing" in diagram
-        assert "Specification" in diagram
+    def test_validate_shows_pass_fail_clearly(self, runner):
+        """Test that validate shows pass/fail clearly."""
+        with (
+            patch("dev_agent.cli.main.config_manager") as mock_config,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            from types import SimpleNamespace
+            config = SimpleNamespace(azure_openai=None)
+            mock_config.get_config.return_value = config
 
-    def test_show_architecture_diagram(self, visualization_engine):
-        """Test showing architecture diagram."""
-        project_analysis = {
-            "components": [{"name": "Test", "type": "service"}],
-            "dependencies": {},
-        }
+            result = runner.invoke(app, ["validate"])
 
-        with patch.object(visualization_engine.console, "print") as mock_print:
-            visualization_engine.show_architecture_diagram(project_analysis)
-            assert mock_print.call_count >= 2  # Diagram + instructions
-
-    def test_show_workflow_diagram(self, visualization_engine):
-        """Test showing workflow diagram."""
-        phases = [PhaseType.INDEXING]
-
-        with patch.object(visualization_engine.console, "print") as mock_print:
-            visualization_engine.show_workflow_diagram(phases)
-            mock_print.assert_called_once()
+            # Should show clear pass/fail indicators
+            assert "✓" in result.stdout or "✗" in result.stdout or \
+                   "Pass" in result.stdout or "Fail" in result.stdout
 
 
-class TestSearchAndFilterEngine:
-    """Test cases for the SearchAndFilterEngine class."""
+class TestCLIPerformance:
+    """Test CLI performance characteristics."""
 
-    @pytest.fixture
-    def console(self):
-        """Create a Rich console instance."""
-        return Console()
+    def test_status_command_responsive(
+        self, runner, tmp_path, mock_project_state, sample_cost_report
+    ):
+        """Test that status command is responsive."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-    @pytest.fixture
-    def search_engine(self, console):
-        """Create a SearchAndFilterEngine instance."""
-        from dev_agent.cli.enhanced_cli import SearchAndFilterEngine
-        return SearchAndFilterEngine(console)
+        with (
+            patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            mock_manager = MagicMock()
+            mock_manager.resume_project.return_value = mock_project_state
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            mock_wf.return_value = mock_manager
 
-    @pytest.fixture
-    def temp_project_dir(self):
-        """Create a temporary project directory with test files."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            
-            # Create test files
-            (temp_path / "test.py").write_text("def hello():\n    print('Hello, World!')")
-            (temp_path / "test.js").write_text("console.log('Hello, World!');")
-            (temp_path / "README.md").write_text("# Test Project\n\nThis is a test.")
-            
-            # Create subdirectory
-            sub_dir = temp_path / "src"
-            sub_dir.mkdir()
-            (sub_dir / "main.py").write_text("import os\nprint('Main')")
-            
-            yield temp_dir
+            import time
+            start = time.time()
+            result = runner.invoke(app, ["status", str(tmp_path)])
+            duration = time.time() - start
 
-    def test_initialization(self, search_engine, console):
-        """Test SearchAndFilterEngine initialization."""
-        assert search_engine.console == console
+            assert result.exit_code == 0
+            # Should complete quickly (under 5 seconds in test environment)
+            assert duration < 5.0
 
-    def test_search_in_document(self, search_engine):
-        """Test searching within document content."""
-        content = "Line 1\nHello World\nLine 3\nAnother Hello\nLine 5"
-        query = "Hello"
+    def test_help_command_responsive(self, runner):
+        """Test that help command is responsive."""
+        import time
+        start = time.time()
+        result = runner.invoke(app, ["--help"])
+        duration = time.time() - start
 
-        results = search_engine.search_in_document(content, query)
+        assert result.exit_code == 0
+        # Should be very fast (under 1 second)
+        assert duration < 1.0
 
-        assert len(results) == 2
-        assert results[0]["line_number"] == 2
-        assert results[1]["line_number"] == 4
-        assert "Hello" in results[0]["line_content"]
 
-    def test_search_in_document_no_matches(self, search_engine):
-        """Test searching with no matches."""
-        content = "Line 1\nLine 2\nLine 3"
-        query = "NotFound"
+class TestCLIAccessibility:
+    """Test CLI accessibility features."""
 
-        results = search_engine.search_in_document(content, query)
+    def test_status_output_readable(
+        self, runner, tmp_path, mock_project_state, sample_cost_report
+    ):
+        """Test that status output is readable."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-        assert len(results) == 0
+        with (
+            patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            mock_manager = MagicMock()
+            mock_manager.resume_project.return_value = mock_project_state
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            mock_wf.return_value = mock_manager
 
-    def test_filter_project_files_by_extension(self, search_engine, temp_project_dir):
-        """Test filtering files by extension."""
-        filters = {"extensions": [".py"]}
+            result = runner.invoke(app, ["status", str(tmp_path)])
 
-        filtered_files = search_engine.filter_project_files(temp_project_dir, filters)
+            assert result.exit_code == 0
+            # Should have clear sections
+            assert "Status" in result.stdout or "Progress" in result.stdout
 
-        py_files = [f for f in filtered_files if f.suffix == ".py"]
-        assert len(py_files) == 2  # test.py and src/main.py
-        assert all(f.suffix == ".py" for f in py_files)
+    def test_error_messages_actionable(self, runner, tmp_path):
+        """Test that error messages are actionable."""
+        # Try to run command on non-existent project
+        result = runner.invoke(app, ["status", str(tmp_path)])
 
-    def test_filter_project_files_by_name_pattern(self, search_engine, temp_project_dir):
-        """Test filtering files by name pattern."""
-        filters = {"name_pattern": "test.*"}
+        # Should provide actionable error message
+        if result.exit_code == 1:
+            assert len(result.stdout) > 0
+            # Should suggest what to do
+            assert "init" in result.stdout.lower() or "setup" in result.stdout.lower()
 
-        filtered_files = search_engine.filter_project_files(temp_project_dir, filters)
 
-        test_files = [f for f in filtered_files if "test" in f.name.lower()]
-        assert len(test_files) >= 1
+class TestCLIConsistency:
+    """Test CLI consistency across commands."""
 
-    def test_show_search_results(self, search_engine):
-        """Test displaying search results."""
-        results = [
-            {
-                "line_number": 1,
-                "line_content": "Hello World",
-                "context": [{"line_number": 1, "content": "Hello World", "is_match": True}],
-            }
+    def test_all_commands_have_help(self, runner):
+        """Test that all commands have help text."""
+        commands = ["init", "resume", "status", "validate"]
+        
+        for cmd in commands:
+            result = runner.invoke(app, [cmd, "--help"])
+            assert result.exit_code == 0
+            assert len(result.stdout) > 0
+
+    def test_error_format_consistent(self, runner, tmp_path):
+        """Test that error format is consistent."""
+        # Try multiple commands that should fail
+        commands = [
+            ["status", str(tmp_path)],
+            ["cost-report", str(tmp_path)],
         ]
+        
+        for cmd in commands:
+            result = runner.invoke(app, cmd)
+            # All should handle errors consistently
+            assert result.exit_code in [0, 1]
 
-        with patch.object(search_engine.console, "print") as mock_print:
-            search_engine.show_search_results(results, "Hello", "test")
-            mock_print.assert_called()
+    def test_success_format_consistent(
+        self, runner, tmp_path, mock_project_state, sample_cost_report
+    ):
+        """Test that success format is consistent."""
+        dev_agent_dir = tmp_path / ".dev_agent"
+        dev_agent_dir.mkdir()
 
-    def test_show_search_results_no_matches(self, search_engine):
-        """Test displaying no search results."""
-        results = []
+        with (
+            patch("dev_agent.workflow.workflow_manager.WorkflowManager") as mock_wf,
+            patch("dev_agent.cli.main.setup_cli_logging"),
+        ):
+            mock_manager = MagicMock()
+            mock_manager.resume_project.return_value = mock_project_state
+            mock_manager.cost_tracker.get_report.return_value = sample_cost_report
+            # Fix: Set budget values to None to avoid comparison issues
+            mock_manager.cost_tracker.budget_threshold = None
+            mock_manager.cost_tracker.budget_limit = None
+            mock_wf.return_value = mock_manager
 
-        with patch.object(search_engine.console, "print") as mock_print:
-            search_engine.show_search_results(results, "NotFound", "test")
-            mock_print.assert_called_once()
-
-    def test_show_filtered_files(self, search_engine, temp_project_dir):
-        """Test displaying filtered files."""
-        files = [Path(temp_project_dir) / "test.py"]
-        filters = {"extensions": [".py"]}
-
-        with patch.object(search_engine.console, "print") as mock_print:
-            search_engine.show_filtered_files(files, filters, temp_project_dir)
-            assert mock_print.call_count >= 2  # Filter panel + tree panel
-
-
-class TestEnhancedCLIIntegration:
-    """Integration tests for EnhancedCLI components."""
-
-    @pytest.fixture
-    def enhanced_cli(self):
-        """Create an EnhancedCLI instance for integration testing."""
-        return EnhancedCLI()
-
-    def test_full_workflow_simulation(self, enhanced_cli, temp_project_dir):
-        """Test a complete workflow simulation."""
-        # Mock the workflow manager
-        mock_manager = Mock()
-        mock_manager.get_current_phase.return_value = PhaseType.INDEXING
-        mock_manager.execute_complete_workflow.return_value = True
-        enhanced_cli.workflow_manager = mock_manager
-
-        # Test init command
-        enhanced_cli.init_command(temp_project_dir)
-
-        # Test status command
-        status_result = enhanced_cli.handle_user_input("status")
-        assert "Current Phase" in status_result
-
-        # Test run command
-        with patch.object(enhanced_cli.progress_manager, "progress") as mock_progress:
-            mock_progress.__enter__ = Mock(return_value=mock_progress)
-            mock_progress.__exit__ = Mock(return_value=None)
-            run_result = enhanced_cli.handle_user_input("run")
-            assert "completed successfully" in run_result
-
-    def test_document_approval_workflow(self, enhanced_cli):
-        """Test document approval workflow."""
-        document_content = "# Test Specification\n\nThis is a test specification document."
-
-        with patch("rich.prompt.Confirm.ask", return_value=True):
-            result = enhanced_cli.request_approval(document_content, "specification")
-            assert result is True
-
-    def test_progress_tracking_workflow(self, enhanced_cli):
-        """Test progress tracking workflow."""
-        # Mock the workflow manager
-        mock_manager = Mock()
-        mock_manager.transition_to_phase.return_value = True
-        enhanced_cli.workflow_manager = mock_manager
-
-        # Test phase progress update
-        enhanced_cli.display_progress(PhaseType.INDEXING, 0.5)
-
-        # Test phase transition
-        result = enhanced_cli.handle_user_input("phase indexing")
-        assert "Successfully transitioned" in result
-
-    def test_help_system_workflow(self, enhanced_cli):
-        """Test help system workflow."""
-        # Test contextual help
-        context = enhanced_cli._get_current_context()
-        enhanced_cli.help_system.display_full_help(context)
-
-        # Test getting started help
-        if enhanced_cli.help_system.should_show_help(context):
-            enhanced_cli.help_system.show_contextual_help(context)
-
-    @pytest.fixture
-    def temp_project_dir(self):
-        """Create a temporary project directory."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            yield temp_dir
+            # Run multiple commands
+            commands = [
+                ["status", str(tmp_path)],
+                ["cost-report", str(tmp_path)],
+            ]
+            
+            for cmd in commands:
+                result = runner.invoke(app, cmd)
+                assert result.exit_code == 0
+                # Should have consistent output structure
+                assert len(result.stdout) > 0

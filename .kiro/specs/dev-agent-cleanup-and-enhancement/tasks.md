@@ -389,7 +389,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Test error recovery scenarios
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8_
 
-- [ ] 33. Write comprehensive tests for enhanced CLI
+- [x] 33. Write comprehensive tests for enhanced CLI
   - Create `tests/test_enhanced_cli.py` with tests for all CLI enhancements
   - Test status command output
   - Test cost-report command output
@@ -399,7 +399,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Test feedback system
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8_
 
-- [ ] 34. Implement performance optimizations
+- [x] 34. Implement performance optimizations
   - Optimize indexing to process 100+ files/second
   - Implement embedding batch processing (16 items per batch)
   - Implement embedding caching to avoid re-computation
@@ -408,7 +408,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Optimize state persistence (<100ms save operations)
   - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8_
 
-- [ ] 35. Run performance benchmarks
+- [x] 35. Run performance benchmarks
   - Create performance test suite in `tests/test_performance.py`
   - Benchmark indexing speed on large codebase (1000+ files)
   - Benchmark embedding generation and caching

@@ -1,6 +1,8 @@
 """State management for project state persistence and recovery."""
 
 import json
+import logging
+import os
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +11,12 @@ from typing import Any
 from ..models.documents import DesignDocument, SpecificationDocument, TaskList
 from ..models.enums import DocumentType, PhaseType, TaskStatus
 from ..models.project_state import IndexMetadata, ProjectState, SessionData
+from ..performance.monitor import PerformanceMonitor
+
+logger = logging.getLogger(__name__)
+
+# Global performance monitor for state operations
+_perf_monitor = PerformanceMonitor()
 
 
 class StateManager:
@@ -56,7 +64,10 @@ class StateManager:
         return datetime.fromisoformat(date_str)
 
     def save_project_state(self, state: ProjectState) -> bool:
-        """Save project state to JSON file.
+        """Save project state to JSON file with optimized performance.
+        
+        Uses atomic write with temporary file to ensure data integrity
+        and optimized JSON serialization for <100ms save operations.
 
         Args:
             state: ProjectState object to save
@@ -64,21 +75,49 @@ class StateManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            # Update the updated_at timestamp
-            state.updated_at = datetime.now()
+        import tempfile
+        
+        with _perf_monitor.measure("state_save", warn_threshold_ms=100):
+            try:
+                # Update the updated_at timestamp
+                state.updated_at = datetime.now()
 
-            # Serialize the state
-            state_dict = self._serialize_dataclass(state)
+                # Serialize the state
+                state_dict = self._serialize_dataclass(state)
 
-            # Write to file with proper formatting
-            with open(self.state_file, "w", encoding="utf-8") as f:
-                json.dump(state_dict, f, indent=2, ensure_ascii=False)
+                # Write to temporary file first (atomic operation)
+                temp_fd, temp_path = tempfile.mkstemp(
+                    dir=self.dev_agent_dir,
+                    prefix=".state_",
+                    suffix=".json.tmp"
+                )
+                
+                try:
+                    # Write with minimal formatting for speed (no indent)
+                    # Use separators to minimize whitespace
+                    with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                        json.dump(
+                            state_dict,
+                            f,
+                            ensure_ascii=False,
+                            separators=(',', ':')  # Compact format for speed
+                        )
+                    
+                    # Atomic rename
+                    os.replace(temp_path, self.state_file)
+                    
+                except Exception:
+                    # Clean up temp file on error
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
+                    raise
 
-            return True
-        except Exception as e:
-            print(f"Error saving project state: {e}")
-            return False
+                return True
+            except Exception as e:
+                logger.error(f"Error saving project state: {e}")
+                return False
 
     def load_project_state(self) -> ProjectState | None:
         """Load project state from JSON file.
@@ -479,3 +518,19 @@ class StateManager:
             if state.implementation_progress
             else 0,
         }
+
+    @staticmethod
+    def get_performance_stats() -> dict[str, dict[str, float]]:
+        """Get performance statistics for state operations.
+        
+        Returns:
+            Dictionary with performance statistics for state save/load operations
+            
+        Example:
+            ```python
+            stats = StateManager.get_performance_stats()
+            save_stats = stats.get("state_save", {})
+            print(f"Average save time: {save_stats.get('avg_ms', 0):.1f}ms")
+            ```
+        """
+        return _perf_monitor.get_all_stats()

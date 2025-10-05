@@ -278,19 +278,22 @@ class AzureEmbeddingClient(IEmbeddingClient):
         embeddings_result: list[list[float] | None],
         batch_size: int,
     ) -> None:
-        """Process texts in batches with concurrent processing.
+        """Process texts in batches with optimized concurrent processing.
         
-        This method processes up to 3 batches concurrently for optimal performance.
+        This method processes up to 5 batches concurrently for optimal performance
+        while respecting Azure OpenAI rate limits.
         
         Args:
             texts_to_embed: List of (index, text) tuples to process
             embeddings_result: Result list to update with embeddings
             batch_size: Number of texts per API call
         """
+        import asyncio
+        
         total_batches = (len(texts_to_embed) + batch_size - 1) // batch_size
         
-        # Process batches with controlled concurrency (up to 3 parallel)
-        max_concurrent = 3
+        # Increased concurrency for better throughput (5 parallel batches)
+        max_concurrent = 5
         semaphore = asyncio.Semaphore(max_concurrent)
         
         async def process_batch_with_semaphore(batch_num: int) -> None:
@@ -300,8 +303,8 @@ class AzureEmbeddingClient(IEmbeddingClient):
                 end_idx = min(start_idx + batch_size, len(texts_to_embed))
                 batch = texts_to_embed[start_idx:end_idx]
                 
-                # Log progress for large batches
-                if batch_num > 0 and batch_num % 10 == 0:
+                # Log progress less frequently for better performance
+                if batch_num > 0 and batch_num % 20 == 0:
                     logger.info(
                         f"Progress: {batch_num}/{total_batches} batches "
                         f"({batch_num/total_batches*100:.1f}%)"

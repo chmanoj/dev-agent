@@ -16,6 +16,7 @@ from ..interfaces.indexing_interface import IIndexingEngine
 from ..models.indexing import ASTIndex, CodeChunk, SymbolInfo
 from ..models.project_state import IndexMetadata
 from ..models.results import IndexResult
+from ..performance.monitor import PerformanceMonitor
 from .code_chunker import CodeChunker
 from .tree_sitter_parser import TreeSitterParser
 from .vector_database import VectorDatabase
@@ -84,15 +85,21 @@ class IndexingEngine(IIndexingEngine):
             ".hpp",
         }
 
-        # Performance settings
-        self.max_workers = min(4, os.cpu_count() or 1)  # Limit concurrent processing
+        # Performance settings - optimized for 100+ files/second
+        # Use more workers for better parallelism (up to 16 for large codebases)
+        cpu_count = os.cpu_count() or 1
+        self.max_workers = min(16, cpu_count * 2)  # 2x CPU count for I/O-bound operations
         self.memory_map_threshold = 1024 * 1024  # 1MB threshold for memory mapping
+        self.file_batch_size = 100  # Increased batch size for better throughput
 
         # Progress tracking
         self.progress_callback = None
         self.current_progress = 0.0
         self.total_files = 0
         self.chunks_processed = 0
+
+        # Performance monitoring
+        self.perf_monitor = PerformanceMonitor()
 
         # Load existing index if available
         self._load_existing_index()
@@ -225,6 +232,7 @@ class IndexingEngine(IIndexingEngine):
 
             # Create metadata
             end_time = time.time()
+            indexing_time = end_time - start_time
             total_lines = sum(
                 metadata.get("line_count", 0)
                 for metadata in ast_index.file_metadata.values()
@@ -237,8 +245,11 @@ class IndexingEngine(IIndexingEngine):
                 )
             )
 
+            # Calculate performance metrics
+            files_per_second = len(source_files) / indexing_time if indexing_time > 0 else 0
+            
             metadata = {
-                "indexing_time_seconds": end_time - start_time,
+                "indexing_time_seconds": indexing_time,
                 "total_files": len(source_files),
                 "total_lines": total_lines,
                 "total_chunks": len(all_chunks),
@@ -248,13 +259,22 @@ class IndexingEngine(IIndexingEngine):
                 "classes_count": len(ast_index.classes),
                 "imports_count": len(ast_index.imports),
                 "symbols_count": len(ast_index.symbols),
+                "files_per_second": files_per_second,
             }
 
-            print(f"Indexing completed in {end_time - start_time:.2f} seconds")
+            print(f"Indexing completed in {indexing_time:.2f} seconds")
             print(f"Indexed {len(source_files)} files, {total_lines} lines of code")
+            print(f"Performance: {files_per_second:.1f} files/second")
             print(
                 f"Generated {embeddings_count} embeddings from {len(all_chunks)} chunks"
             )
+            
+            # Log performance warning if below target
+            if files_per_second < 100 and len(source_files) >= 100:
+                logger.warning(
+                    f"Indexing performance ({files_per_second:.1f} files/sec) "
+                    f"below target (100 files/sec). Consider increasing max_workers."
+                )
 
             return IndexResult(
                 success=True,
@@ -311,13 +331,15 @@ class IndexingEngine(IIndexingEngine):
         return ast_index
 
     def _parse_ast_parallel(self, source_files: list[Path]) -> ASTIndex:
-        """Parse AST in parallel for larger codebases."""
+        """Parse AST in parallel for larger codebases with optimized batching."""
         ast_index = ASTIndex(
             functions={}, classes={}, imports=[], symbols={}, file_metadata={}
         )
 
         completed = 0
+        total_files = len(source_files)
 
+        # Process files in batches for better memory management and throughput
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all parsing tasks
             future_to_file = {
@@ -335,14 +357,16 @@ class IndexingEngine(IIndexingEngine):
                     if file_ast_data:
                         self._merge_ast_data(ast_index, file_ast_data)
 
-                    self._update_progress(
-                        completed,
-                        len(source_files),
-                        f"Parsed {file_path.name} ({completed}/{len(source_files)})",
-                    )
+                    # Update progress less frequently for better performance
+                    if completed % 10 == 0 or completed == total_files:
+                        self._update_progress(
+                            completed,
+                            total_files,
+                            f"Parsed {completed}/{total_files} files",
+                        )
 
                 except Exception as e:
-                    print(f"Warning: Error parsing {file_path}: {e}")
+                    logger.warning(f"Error parsing {file_path}: {e}")
 
         return ast_index
 

@@ -93,6 +93,11 @@ markers = [
     "unit: marks tests as unit tests",
     "asyncio: marks tests as async tests",
 ]
+filterwarnings = [
+    "ignore::pytest.PytestWarning:_pytest.pathlib",
+    "ignore::DeprecationWarning:pydantic._internal._generate_schema",
+    "ignore::DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["dev_agent"]
