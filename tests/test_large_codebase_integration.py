@@ -564,7 +564,7 @@ if __name__ == "__main__":
         print(f"Created project: {project_stats}")
 
         # Initialize indexing engine
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Track memory usage
         initial_memory = self.process.memory_info().rss / 1024 / 1024
@@ -630,14 +630,14 @@ if __name__ == "__main__":
         print("✓ Large codebase indexing test passed!")
 
     @pytest.mark.slow
-    def test_memory_usage_profiling(self):
+    def test_memory_usage_profiling(self, mock_embedding_client):
         """Test memory usage during indexing with profiling."""
         print("\n=== Testing Memory Usage Profiling ===")
 
         # Create medium-sized project for detailed memory tracking
         project_stats = self.create_large_python_project(target_lines=50000)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Memory tracking
         memory_samples = []
@@ -702,14 +702,14 @@ if __name__ == "__main__":
 
         print("✓ Memory usage profiling test passed!")
 
-    def test_incremental_indexing_performance(self):
+    def test_incremental_indexing_performance(self, mock_embedding_client):
         """Test performance of incremental indexing updates."""
         print("\n=== Testing Incremental Indexing Performance ===")
 
         # Create initial project
         project_stats = self.create_large_python_project(target_lines=30000)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Initial indexing
         print("Performing initial indexing...")
@@ -781,14 +781,14 @@ def incremental_function_{i}(x: int) -> int:
 
         print("✓ Incremental indexing performance test passed!")
 
-    def test_query_performance_at_scale(self):
+    def test_query_performance_at_scale(self, mock_embedding_client):
         """Test vector similarity query performance on large index."""
         print("\n=== Testing Query Performance at Scale ===")
 
         # Create large project
         project_stats = self.create_large_python_project(target_lines=75000)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Build index
         print("Building index for query testing...")

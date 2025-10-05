@@ -98,12 +98,21 @@ class ErrorHandler:
             ],
         }
 
-    def handle_error(self, error: Exception | DevAgentError) -> RecoveryAction | None:
-        """Main error handling entry point."""
+    def handle_error(
+        self,
+        error: Exception | DevAgentError,
+        context: str | dict[str, Any] | None = None,
+    ) -> RecoveryAction | None:
+        """Main error handling entry point.
+        
+        Args:
+            error: The error to handle
+            context: Optional context information (string or dict)
+        """
         try:
             # Convert standard exceptions to DevAgentError if needed
             if not isinstance(error, DevAgentError):
-                error = self._convert_to_dev_agent_error(error)
+                error = self._convert_to_dev_agent_error(error, context)
 
             # Log the error
             self._log_error(error)
@@ -373,30 +382,55 @@ class ErrorHandler:
         """Clear error history."""
         self.error_history.clear()
 
-    def _convert_to_dev_agent_error(self, error: Exception) -> DevAgentError:
-        """Convert standard exceptions to DevAgentError."""
+    def _convert_to_dev_agent_error(
+        self,
+        error: Exception,
+        context: str | dict[str, Any] | None = None,
+    ) -> DevAgentError:
+        """Convert standard exceptions to DevAgentError.
+        
+        Args:
+            error: The exception to convert
+            context: Optional context information
+        """
+        # Create error context from provided context
+        error_context = None
+        if context:
+            if isinstance(context, str):
+                error_context = ErrorContext(operation=context)
+            elif isinstance(context, dict):
+                error_context = ErrorContext(
+                    operation=context.get("operation", "unknown"),
+                    file_path=context.get("file_path"),
+                    phase=context.get("phase"),
+                    additional_info=context.get("additional_info"),
+                )
+        
+        if not error_context:
+            error_context = ErrorContext(operation="unknown")
+        
         if isinstance(error, FileNotFoundError):
             return SystemError(
                 message=f"File not found: {error!s}",
-                context=ErrorContext(operation="file_access"),
+                context=error_context,
                 severity=ErrorSeverity.HIGH,
             )
         elif isinstance(error, PermissionError):
             return SystemError(
                 message=f"Permission denied: {error!s}",
-                context=ErrorContext(operation="file_access"),
+                context=error_context,
                 severity=ErrorSeverity.HIGH,
             )
         elif isinstance(error, MemoryError):
             return PerformanceError(
                 message=f"Memory error: {error!s}",
-                context=ErrorContext(operation="memory_allocation"),
+                context=error_context,
                 severity=ErrorSeverity.CRITICAL,
             )
         elif isinstance(error, TimeoutError):
             return TimeoutError(
                 message=f"Operation timed out: {error!s}",
-                context=ErrorContext(operation="timeout"),
+                context=error_context,
                 severity=ErrorSeverity.MEDIUM,
             )
         else:
@@ -404,7 +438,7 @@ class ErrorHandler:
                 message=str(error),
                 category=ErrorCategory.SYSTEM,
                 severity=ErrorSeverity.MEDIUM,
-                context=ErrorContext(operation="unknown"),
+                context=error_context,
             )
 
     def _log_error(self, error: DevAgentError) -> None:

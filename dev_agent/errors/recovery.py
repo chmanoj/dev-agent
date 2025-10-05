@@ -1,8 +1,13 @@
 """Recovery action classes for error handling."""
 
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class RecoveryActionType(Enum):
@@ -330,3 +335,209 @@ class PerformanceOptimization(RecoveryAction):
         """Reduce batch processing size."""
         # Implementation would reduce batch sizes
         pass
+
+
+class RecoveryManager:
+    """Manages error recovery strategies and actions."""
+
+    def __init__(self) -> None:
+        """Initialize recovery manager."""
+        self.recovery_history: list[tuple[str, RecoveryAction, bool]] = []
+
+    def suggest_recovery(
+        self,
+        error: Exception,
+        context: dict[str, Any] | None = None,
+    ) -> list[RecoveryAction]:
+        """Suggest recovery actions for an error."""
+        from dev_agent.errors.exceptions import (
+            AnalysisError,
+            ImplementationError,
+            IndexingError,
+            PerformanceError,
+            SystemError,
+        )
+
+        actions: list[RecoveryAction] = []
+
+        if isinstance(error, IndexingError):
+            actions.extend(self._suggest_indexing_recovery(error, context))
+        elif isinstance(error, SystemError):
+            actions.extend(self._suggest_system_recovery(error, context))
+        elif isinstance(error, ImplementationError):
+            actions.extend(self._suggest_implementation_recovery(error, context))
+        elif isinstance(error, PerformanceError):
+            actions.extend(self._suggest_performance_recovery(error, context))
+        elif isinstance(error, AnalysisError):
+            actions.extend(self._suggest_analysis_recovery(error, context))
+
+        return actions
+
+    def _suggest_indexing_recovery(
+        self,
+        error: IndexingError,
+        context: dict[str, Any] | None = None,
+    ) -> list[RecoveryAction]:
+        """Suggest recovery actions for indexing errors."""
+        actions = []
+
+        if error.partial_success:
+            actions.append(
+                IndexingRecoveryAction(
+                    action_type=RecoveryActionType.FALLBACK,
+                    description="Use partial indexing results",
+                    failed_files=error.failed_files,
+                    use_partial_index=True,
+                    automatic=True,
+                    user_message="Some files failed to index, but continuing with partial results.",
+                )
+            )
+
+        if error.failed_files:
+            actions.append(
+                IndexingRecoveryAction(
+                    action_type=RecoveryActionType.RETRY,
+                    description="Retry indexing with failed files skipped",
+                    failed_files=error.failed_files,
+                    automatic=True,
+                    user_message="Retrying indexing while skipping problematic files.",
+                )
+            )
+
+        return actions
+
+    def _suggest_system_recovery(
+        self,
+        error: SystemError,
+        context: dict[str, Any] | None = None,
+    ) -> list[RecoveryAction]:
+        """Suggest recovery actions for system errors."""
+        actions = []
+
+        actions.append(
+            SystemRecoveryAction(
+                action_type=RecoveryActionType.RETRY,
+                description="Check and fix system issues",
+                create_directories=True,
+                check_permissions=True,
+                cleanup_temp_files=True,
+                verify_disk_space=True,
+                automatic=True,
+                user_message="Checking system configuration and retrying...",
+            )
+        )
+
+        return actions
+
+    def _suggest_implementation_recovery(
+        self,
+        error: ImplementationError,
+        context: dict[str, Any] | None = None,
+    ) -> list[RecoveryAction]:
+        """Suggest recovery actions for implementation errors."""
+        actions = []
+
+        if error.syntax_errors:
+            actions.append(
+                ImplementationFix(
+                    action_type=RecoveryActionType.RETRY,
+                    description="Fix syntax errors and retry",
+                    fix_syntax_errors=True,
+                    automatic=True,
+                    user_message="Attempting to fix syntax errors...",
+                )
+            )
+
+        if error.import_errors:
+            actions.append(
+                ImplementationFix(
+                    action_type=RecoveryActionType.RETRY,
+                    description="Fix import errors and retry",
+                    fix_import_errors=True,
+                    automatic=True,
+                    user_message="Attempting to fix import errors...",
+                )
+            )
+
+        actions.append(
+            ImplementationFix(
+                action_type=RecoveryActionType.FALLBACK,
+                description="Use fallback code template",
+                use_fallback_template=True,
+                automatic=False,
+                user_message="Would you like to use a fallback template?",
+            )
+        )
+
+        return actions
+
+    def _suggest_performance_recovery(
+        self,
+        error: PerformanceError,
+        context: dict[str, Any] | None = None,
+    ) -> list[RecoveryAction]:
+        """Suggest recovery actions for performance errors."""
+        actions = []
+
+        actions.append(
+            PerformanceOptimization(
+                action_type=RecoveryActionType.OPTIMIZE,
+                description="Optimize resource usage",
+                reduce_memory_usage=True,
+                use_chunked_processing=True,
+                enable_caching=True,
+                automatic=True,
+                user_message="Optimizing resource usage...",
+            )
+        )
+
+        return actions
+
+    def _suggest_analysis_recovery(
+        self,
+        error: AnalysisError,
+        context: dict[str, Any] | None = None,
+    ) -> list[RecoveryAction]:
+        """Suggest recovery actions for analysis errors."""
+        actions = []
+
+        if hasattr(error, "failed_files") and error.failed_files:
+            actions.append(
+                IndexingRecoveryAction(
+                    action_type=RecoveryActionType.RETRY,
+                    description="Retry analysis with failed files skipped",
+                    failed_files=error.failed_files,
+                    automatic=True,
+                    user_message="Retrying analysis while skipping problematic files.",
+                )
+            )
+
+        return actions
+
+    def execute_recovery(
+        self,
+        action: RecoveryAction,
+        error_id: str,
+    ) -> bool:
+        """Execute a recovery action and track the result."""
+        try:
+            logger.info(f"Executing recovery action: {action.description}")
+            success = action.execute()
+            self.recovery_history.append((error_id, action, success))
+            return success
+        except Exception as e:
+            logger.error(f"Recovery action failed: {e}")
+            self.recovery_history.append((error_id, action, False))
+            return False
+
+    def get_recovery_history(self) -> list[tuple[str, RecoveryAction, bool]]:
+        """Get the history of recovery actions."""
+        return self.recovery_history.copy()
+
+    def get_recovery_strategy(
+        self,
+        error: Exception,
+        context: dict[str, Any] | None = None,
+    ) -> list[RecoveryAction]:
+        """Get recovery strategy for an error (alias for suggest_recovery)."""
+        return self.suggest_recovery(error, context)

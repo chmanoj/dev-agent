@@ -1648,9 +1648,9 @@ class TestClass:
                         )
                     except LLMRateLimitError as e:
                         # Check if error has helpful message
-                        if e.message and e.suggestion:
+                        if e.message and e.resolution:
                             details["llm_error_messages"] = "helpful"
-                            details["llm_error_has_suggestion"] = True
+                            details["llm_error_has_resolution"] = True
                         else:
                             issues.append("LLM errors lack helpful messages or suggestions")
                             details["llm_error_messages"] = "unhelpful"

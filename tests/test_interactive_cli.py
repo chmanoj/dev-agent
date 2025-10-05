@@ -29,24 +29,26 @@ class TestInteractiveCLI(unittest.TestCase):
         self.assertFalse(self.cli.session_active)
 
     @patch("builtins.input")
-    @patch("builtins.print")
-    def test_start_chat_session_exit_command(self, mock_print, mock_input):
+    @patch("dev_agent.cli.interactive_cli.console")
+    def test_start_chat_session_exit_command(self, mock_console, mock_input):
         """Test chat session with exit command."""
         mock_input.return_value = "exit"
 
-        with patch.object(self.cli, "_graceful_exit") as mock_exit:
-            self.cli.start_chat_session()
+        with patch.object(self.cli, "_graceful_exit", side_effect=SystemExit(0)) as mock_exit:
+            with self.assertRaises(SystemExit):
+                self.cli.start_chat_session()
             mock_exit.assert_called_once()
 
     @patch("builtins.input")
-    @patch("builtins.print")
-    def test_start_chat_session_help_command(self, mock_print, mock_input):
+    @patch("dev_agent.cli.interactive_cli.console")
+    def test_start_chat_session_help_command(self, mock_console, mock_input):
         """Test chat session with help command."""
         mock_input.side_effect = ["help", "exit"]
 
-        with patch.object(self.cli, "_graceful_exit") as mock_exit:
+        with patch.object(self.cli, "_graceful_exit", side_effect=SystemExit(0)) as mock_exit:
             with patch.object(self.cli, "_display_help") as mock_help:
-                self.cli.start_chat_session()
+                with self.assertRaises(SystemExit):
+                    self.cli.start_chat_session()
                 mock_help.assert_called_once()
                 mock_exit.assert_called_once()
 

@@ -449,29 +449,7 @@ except LLMTimeoutError as e:
 
 ## Enums
 
-::: dev_agent.models.enums.LLMProvider
-    options:
-      show_source: true
-      heading_level: 3
-
-::: dev_agent.models.enums.LLMOperationType
-    options:
-      show_source: true
-      heading_level: 3
-
-### Enum Usage Example
-
-```python
-from dev_agent.models.enums import LLMProvider, LLMOperationType
-
-# LLM Provider
-provider = LLMProvider.AZURE_OPENAI
-print(f"Using provider: {provider.value}")
-
-# Operation Type
-operation = LLMOperationType.COMPLETION
-print(f"Operation type: {operation.value}")
-```
+See [Models API Reference](models.md#enums) for LLM-related enums including `LLMProvider` and `LLMOperationType`.
 
 ## Best Practices
 

@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from ..interfaces.indexing_interface import IIndexingEngine
 from ..models.indexing import ASTIndex, CodeChunk, SymbolInfo
@@ -104,7 +104,7 @@ class IndexingEngine(IIndexingEngine):
         # Load existing index if available
         self._load_existing_index()
 
-    def set_progress_callback(self, callback) -> None:
+    def set_progress_callback(self, callback: Callable[[int, int, str], None] | None) -> None:
         """Set callback function for progress updates.
 
         Args:

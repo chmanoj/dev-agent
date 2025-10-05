@@ -473,16 +473,16 @@ class TestReactFrameworkDetector:
                 "compilerOptions": {
                     "target": "es5",
                     "lib": ["dom", "dom.iterable"],
-                    "allowJs": true,
-                    "skipLibCheck": true,
-                    "esModuleInterop": true,
-                    "allowSyntheticDefaultImports": true,
-                    "strict": true,
-                    "forceConsistentCasingInFileNames": true,
+                    "allowJs": True,
+                    "skipLibCheck": True,
+                    "esModuleInterop": True,
+                    "allowSyntheticDefaultImports": True,
+                    "strict": True,
+                    "forceConsistentCasingInFileNames": True,
                     "moduleResolution": "node",
-                    "resolveJsonModule": true,
-                    "isolatedModules": true,
-                    "noEmit": true,
+                    "resolveJsonModule": True,
+                    "isolatedModules": True,
+                    "noEmit": True,
                     "jsx": "react-jsx"
                 },
                 "include": ["src"]
@@ -499,6 +499,8 @@ class TestReactFrameworkDetector:
             # Create src directory with components
             src_dir = project_path / "src"
             src_dir.mkdir()
+            components_dir = src_dir / "components"
+            components_dir.mkdir()
             
             (src_dir / "App.jsx").write_text("""
 import React, { useState, useEffect } from 'react';

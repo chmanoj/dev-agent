@@ -212,3 +212,8 @@ module = [
     "tree_sitter.*",
 ]
 ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "psutil>=7.1.0",
+]

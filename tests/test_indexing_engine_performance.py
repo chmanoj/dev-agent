@@ -299,11 +299,11 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
         print(f"Created {num_files} Python files with ~{lines_per_file} lines each")
 
-    def test_small_codebase_performance(self):
+    def test_small_codebase_performance(self, mock_embedding_client):
         """Test indexing performance on a small codebase (10 files)."""
         self.create_large_python_project(num_files=10, lines_per_file=100)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         start_time = time.time()
         result = engine.build_index()
@@ -327,11 +327,11 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         print(f"Classes: {len(result.ast_index.classes)}")
         print(f"Embeddings: {result.embeddings_count}")
 
-    def test_medium_codebase_performance(self):
+    def test_medium_codebase_performance(self, mock_embedding_client):
         """Test indexing performance on a medium codebase (50 files)."""
         self.create_large_python_project(num_files=50, lines_per_file=500)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Track progress
         progress_updates = []
@@ -367,11 +367,11 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         print(f"Progress updates: {len(progress_updates)}")
 
     @pytest.mark.slow
-    def test_large_codebase_performance(self):
+    def test_large_codebase_performance(self, mock_embedding_client):
         """Test indexing performance on a large codebase (100+ files, 100k+ lines)."""
         self.create_large_python_project(num_files=100, lines_per_file=1000)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Monitor memory usage (simplified)
         import psutil
@@ -407,7 +407,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         print(f"Classes: {len(result.ast_index.classes)}")
         print(f"Embeddings: {result.embeddings_count}")
 
-    def test_memory_mapped_file_handling(self):
+    def test_memory_mapped_file_handling(self, mock_embedding_client):
         """Test memory-mapped file handling for large files."""
         # Create a large Python file (>1MB)
         large_file = self.project_path / "large_module.py"
@@ -444,7 +444,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         file_size = large_file.stat().st_size
         assert file_size > 1024 * 1024  # > 1MB
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         start_time = time.time()
         result = engine.build_index()
@@ -467,11 +467,11 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         )
         print(f"Functions found: {len(large_file_functions)}")
 
-    def test_parallel_processing_performance(self):
+    def test_parallel_processing_performance(self, mock_embedding_client):
         """Test parallel processing performance improvement."""
         self.create_large_python_project(num_files=30, lines_per_file=200)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Test with parallel processing (default)
         start_time = time.time()
@@ -479,7 +479,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         parallel_time = time.time() - start_time
 
         # Reset engine for sequential test
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
         engine.max_workers = 1  # Force sequential processing
 
         start_time = time.time()
@@ -507,11 +507,11 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
             speedup = sequential_time / parallel_time
             print(f"Speedup: {speedup:.2f}x")
 
-    def test_index_persistence_performance(self):
+    def test_index_persistence_performance(self, mock_embedding_client):
         """Test index persistence and loading performance."""
         self.create_large_python_project(num_files=20, lines_per_file=300)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Build and save index
         start_time = time.time()
@@ -521,7 +521,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         assert result.success
 
         # Create new engine instance and load existing index
-        engine2 = IndexingEngine(str(self.project_path))
+        engine2 = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         start_time = time.time()
         metadata = engine2.get_index_metadata()
@@ -539,11 +539,11 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         print(f"Index load time: {load_time:.2f} seconds")
         print(f"Load speedup: {build_time / load_time:.2f}x")
 
-    def test_query_performance(self):
+    def test_query_performance(self, mock_embedding_client):
         """Test vector similarity query performance."""
         self.create_large_python_project(num_files=25, lines_per_file=400)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
         result = engine.build_index()
 
         assert result.success
@@ -580,11 +580,11 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Average query time should be very fast
         assert avg_query_time < 0.5
 
-    def test_incremental_indexing_performance(self):
+    def test_incremental_indexing_performance(self, mock_embedding_client):
         """Test performance of incremental indexing updates."""
         self.create_large_python_project(num_files=15, lines_per_file=200)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         # Initial indexing
         start_time = time.time()
@@ -620,7 +620,7 @@ def complex_algorithm(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         print(f"Re-indexing: {reindex_time:.2f} seconds")
         print(f"New functions found: {new_functions}")
 
-    def test_error_handling_performance(self):
+    def test_error_handling_performance(self, mock_embedding_client):
         """Test performance when handling files with errors."""
         # Create project with some problematic files
         self.create_large_python_project(num_files=10, lines_per_file=100)
@@ -643,7 +643,7 @@ class BrokenClass
 """)
             error_files.append(error_file)
 
-        engine = IndexingEngine(str(self.project_path))
+        engine = IndexingEngine(str(self.project_path), embedding_client=mock_embedding_client)
 
         start_time = time.time()
         result = engine.build_index()

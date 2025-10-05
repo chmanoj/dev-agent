@@ -75,6 +75,11 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Installation: installation.md
+  - Getting Started:
+    - First Time Setup: getting-started/first-time-setup.md
+    - New Project: getting-started/new-project.md
+    - Existing Codebase: getting-started/existing-codebase.md
+    - Troubleshooting: getting-started/troubleshooting.md
   - Configuration:
     - Azure OpenAI Setup: configuration/azure-openai.md
     - Troubleshooting: configuration/troubleshooting.md
@@ -83,6 +88,16 @@ nav:
     - Workflow Guide: usage/workflow.md
     - Cost Management: usage/cost-management.md
     - Configuration: usage/configuration.md
+  - User Guides:
+    - Four-Phase Workflow: user-guides/four-phase-workflow.md
+    - Cost Management: user-guides/cost-management.md
+    - Best Practices: user-guides/best-practices.md
+    - Advanced Usage: user-guides/advanced-usage.md
+  - CLI Reference:
+    - Commands: cli-reference/commands.md
+    - Workflow Commands: cli-reference/workflow-commands.md
+    - Utility Commands: cli-reference/utility-commands.md
+    - Examples: cli-reference/examples.md
   - API Reference:
     - LLM Integration: api/llm.md
     - CLI Module: api/cli.md

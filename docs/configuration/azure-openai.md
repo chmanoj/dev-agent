@@ -23,8 +23,7 @@ This guide walks you through setting up Azure OpenAI integration for dev-agent, 
    - Go to [portal.azure.com](https://portal.azure.com)
    - Sign in with your Azure account
 
-   ![Azure Portal Home](../images/azure-portal-home.png)
-   *Screenshot: Azure Portal home page*
+   > **Note**: Navigate to the Azure Portal home page at portal.azure.com
 
 2. **Create a new Azure OpenAI resource**
    - Click "Create a resource" in the top-left corner
@@ -32,8 +31,7 @@ This guide walks you through setting up Azure OpenAI integration for dev-agent, 
    - Select "Azure OpenAI" from the results
    - Click "Create"
 
-   ![Create Azure OpenAI Resource](../images/azure-create-resource.png)
-   *Screenshot: Creating a new Azure OpenAI resource*
+   > **Note**: Use the "Create a resource" button and search for "Azure OpenAI"
 
 3. **Configure the resource**
    - **Subscription**: Select your Azure subscription
@@ -46,8 +44,7 @@ This guide walks you through setting up Azure OpenAI integration for dev-agent, 
    - **Pricing Tier**: Select Standard S0
      - This is the only tier available for Azure OpenAI
 
-   ![Configure Azure OpenAI Resource](../images/azure-configure-resource.png)
-   *Screenshot: Configuring the Azure OpenAI resource*
+   > **Note**: Fill in the resource configuration form with your subscription, resource group, region, and name
 
 4. **Review and Create**
    - Review your configuration
@@ -55,8 +52,7 @@ This guide walks you through setting up Azure OpenAI integration for dev-agent, 
    - Wait for deployment to complete (usually 1-2 minutes)
    - Click "Go to resource" when deployment is complete
 
-   ![Deployment Complete](../images/azure-deployment-complete.png)
-   *Screenshot: Successful deployment notification*
+   > **Note**: Wait for the deployment to complete, then click "Go to resource"
 
 ### Using Azure CLI
 
@@ -90,8 +86,7 @@ Azure OpenAI requires you to deploy models before using them. dev-agent needs tw
    - Click "Model deployments" in the left menu
    - Click "Manage Deployments" (opens Azure OpenAI Studio)
 
-   ![Model Deployments](../images/azure-model-deployments.png)
-   *Screenshot: Model deployments page in Azure Portal*
+   > **Note**: Click "Manage Deployments" to open Azure OpenAI Studio
 
 2. **Deploy GPT-4**
    - Click "Create new deployment" or "Deployments" → "Create new deployment"
@@ -110,8 +105,7 @@ Azure OpenAI requires you to deploy models before using them. dev-agent needs tw
      - Maximum depends on your quota
    - Click "Create"
 
-   ![Deploy GPT-4](../images/azure-deploy-gpt4.png)
-   *Screenshot: Creating a GPT-4 deployment*
+   > **Note**: Select GPT-4 model and configure deployment settings
 
 3. **Deploy text-embedding-ada-002**
    - Click "Create new deployment" again
@@ -124,16 +118,14 @@ Azure OpenAI requires you to deploy models before using them. dev-agent needs tw
      - Higher limits allow batch processing
    - Click "Create"
 
-   ![Deploy Embeddings](../images/azure-deploy-embeddings.png)
-   *Screenshot: Creating an embeddings deployment*
+   > **Note**: Select text-embedding-ada-002 model and configure deployment settings
 
 4. **Verify Deployments**
    - Wait for both deployments to show "Succeeded" status
    - Note down your deployment names (you'll need them for configuration)
    - Test deployments using the "Playground" feature
 
-   ![Deployment List](../images/azure-deployment-list.png)
-   *Screenshot: List of successful deployments*
+   > **Note**: Verify both deployments appear in the deployments list
 
 ### Using Azure CLI
 
@@ -171,8 +163,7 @@ az cognitiveservices account deployment create \
    - Copy the "Endpoint" value (e.g., `https://my-dev-agent-openai.openai.azure.com/`)
    - **Important**: The endpoint URL must end with a trailing slash (`/`)
 
-   ![Keys and Endpoint](../images/azure-keys-endpoint.png)
-   *Screenshot: Keys and Endpoint page showing endpoint URL and API keys*
+   > **Note**: Find the endpoint URL and API keys in the "Keys and Endpoint" section
 
 2. **Get the API key**
    - On the same "Keys and Endpoint" page
@@ -182,8 +173,7 @@ az cognitiveservices account deployment create \
    - **Important**: Keep this key secure and never commit it to version control
    - **Best Practice**: Use KEY 1 for production and KEY 2 for development, or rotate between them
 
-   ![API Keys](../images/azure-api-keys.png)
-   *Screenshot: API keys with copy buttons*
+   > **Note**: Use the copy button next to KEY 1 to copy your API key
 
 ### Using Azure CLI
 

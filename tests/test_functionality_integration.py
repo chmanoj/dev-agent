@@ -66,9 +66,9 @@ if __name__ == "__main__":
 class TestIndexingFunctionality:
     """Test indexing engine functionality."""
 
-    def test_indexing_engine_basic(self, sample_project_dir):
+    def test_indexing_engine_basic(self, sample_project_dir, mock_embedding_client):
         """Test basic indexing functionality."""
-        engine = IndexingEngine(sample_project_dir)
+        engine = IndexingEngine(sample_project_dir, embedding_client=mock_embedding_client)
         result = engine.build_index()
 
         assert result.success, "Indexing should succeed"
@@ -89,9 +89,9 @@ class TestIndexingFunctionality:
             class_names = [cls.name for cls in result.ast_index.classes.values()]
             assert "UserManager" in class_names, "Should find UserManager class"
 
-    def test_vector_search_functionality(self, sample_project_dir):
+    def test_vector_search_functionality(self, sample_project_dir, mock_embedding_client):
         """Test vector similarity search functionality."""
-        engine = IndexingEngine(sample_project_dir)
+        engine = IndexingEngine(sample_project_dir, embedding_client=mock_embedding_client)
         engine.build_index()
 
         # Test similarity search
@@ -112,9 +112,9 @@ class TestIndexingFunctionality:
 class TestAnalysisFunctionality:
     """Test codebase analysis functionality."""
 
-    def test_codebase_analysis_basic(self, sample_project_dir):
+    def test_codebase_analysis_basic(self, sample_project_dir, mock_embedding_client):
         """Test basic codebase analysis functionality."""
-        engine = IndexingEngine(sample_project_dir)
+        engine = IndexingEngine(sample_project_dir, embedding_client=mock_embedding_client)
         analyzer = CodebaseAnalyzer(engine)
 
         # Test specification analysis
@@ -136,9 +136,9 @@ class TestAnalysisFunctionality:
 class TestSpecificationGeneration:
     """Test specification generation functionality."""
 
-    def test_specification_generation_basic(self, sample_project_dir):
+    def test_specification_generation_basic(self, sample_project_dir, mock_embedding_client):
         """Test basic specification generation."""
-        engine = IndexingEngine(sample_project_dir)
+        engine = IndexingEngine(sample_project_dir, embedding_client=mock_embedding_client)
         analyzer = CodebaseAnalyzer(engine)
         generator = SpecificationGenerator()
 
@@ -164,10 +164,10 @@ class TestSpecificationGeneration:
 class TestEndToEndWorkflow:
     """Test complete end-to-end workflow."""
 
-    def test_complete_workflow(self, sample_project_dir):
+    def test_complete_workflow(self, sample_project_dir, mock_embedding_client):
         """Test the complete indexing -> analysis -> specification workflow."""
         # Step 1: Indexing
-        engine = IndexingEngine(sample_project_dir)
+        engine = IndexingEngine(sample_project_dir, embedding_client=mock_embedding_client)
         index_result = engine.build_index()
         assert index_result.success, "Indexing should succeed"
 
@@ -194,13 +194,13 @@ class TestEndToEndWorkflow:
 class TestFunctionalityIntegration:
     """Integration tests for dev-agent functionality."""
 
-    def test_all_components_integration(self, sample_project_dir):
+    def test_all_components_integration(self, sample_project_dir, mock_embedding_client):
         """Test that all major components work together."""
         results = {}
 
         # Test indexing
         try:
-            engine = IndexingEngine(sample_project_dir)
+            engine = IndexingEngine(sample_project_dir, embedding_client=mock_embedding_client)
             result = engine.build_index()
             results["indexing"] = result.success
         except Exception as e:

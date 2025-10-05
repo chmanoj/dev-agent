@@ -216,6 +216,9 @@ class JavaFrameworkDetector(FrameworkDetector):
         # Check pom.xml for Maven projects
         pom_path = project_path / "pom.xml"
         if pom_path.exists():
+            # Presence of pom.xml indicates Maven project
+            frameworks.append(FrameworkType.MAVEN)
+            
             try:
                 with open(pom_path, encoding="utf-8") as f:
                     content = f.read()
@@ -225,7 +228,6 @@ class JavaFrameworkDetector(FrameworkDetector):
                     FrameworkType.SPRING: ["springframework"],
                     FrameworkType.HIBERNATE: ["hibernate"],
                     FrameworkType.JUNIT: ["junit"],
-                    FrameworkType.MAVEN: ["maven"],
                 }
                 
                 for framework, patterns in framework_patterns.items():
@@ -438,8 +440,13 @@ class ReactFrameworkDetector(FrameworkDetector):
                     content = f.read()
                 
                 # Count functional vs class components
+                # Match arrow functions: const Component = () => {}
                 if re.search(r'const\s+\w+\s*=\s*\([^)]*\)\s*=>', content):
                     functional_components += 1
+                # Match function declarations: function Component() {}
+                elif re.search(r'function\s+[A-Z]\w*\s*\([^)]*\)\s*\{', content):
+                    functional_components += 1
+                # Match class components
                 if re.search(r'class\s+\w+\s+extends\s+React\.Component', content):
                     class_components += 1
                 
@@ -524,15 +531,17 @@ class ReactFrameworkDetector(FrameworkDetector):
         """Suggest React improvements."""
         improvements = []
         
-        if compliance < 0.8:
-            if not (project_path / "tsconfig.json").exists():
-                improvements.append(Improvement(
-                    category="Type Safety",
-                    description="Consider migrating to TypeScript for better type safety",
-                    priority="medium",
-                    effort="high",
-                ))
-            
+        # Always check for TypeScript if not present
+        if not (project_path / "tsconfig.json").exists():
+            improvements.append(Improvement(
+                category="Type Safety",
+                description="Consider migrating to TypeScript for better type safety",
+                priority="medium",
+                effort="high",
+            ))
+        
+        # Other improvements if compliance is not perfect
+        if compliance < 1.0:
             eslint_configs = [".eslintrc.js", ".eslintrc.json", ".eslintrc.yml"]
             if not any((project_path / config).exists() for config in eslint_configs):
                 improvements.append(Improvement(

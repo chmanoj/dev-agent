@@ -211,11 +211,15 @@ class VectorDatabase:
                         int(k): v
                         for k, v in mapping_data.get("index_to_chunk", {}).items()
                     }
+                    # Restore next_id from the highest index + 1
+                    if self.index_to_chunk_id:
+                        self._next_id = max(self.index_to_chunk_id.keys()) + 1
         except Exception as e:
             print(f"Warning: Could not load metadata: {e}")
             self.metadata_store = {}
             self.chunk_id_to_index = {}
             self.index_to_chunk_id = {}
+            self._next_id = 0
 
     def _save_metadata(self) -> None:
         """Save metadata and chunk mappings to disk."""
@@ -288,13 +292,15 @@ class VectorDatabase:
         if embedding is None:
             embedding = await self.generate_embedding(chunk.content)
 
-        # Add to FAISS index
-        current_index = self.index.ntotal
-        self.index.add(embedding.reshape(1, -1))
+        # Add to FAISS index with explicit ID
+        # Use add_with_ids for IndexIDMap
+        idx = np.array([self._next_id], dtype=np.int64)
+        self.index.add_with_ids(embedding.reshape(1, -1), idx)
 
         # Update mappings
-        self.chunk_id_to_index[chunk_id] = current_index
-        self.index_to_chunk_id[current_index] = chunk_id
+        self.chunk_id_to_index[chunk_id] = self._next_id
+        self.index_to_chunk_id[self._next_id] = chunk_id
+        self._next_id += 1
 
         # Store metadata
         self.metadata_store[chunk_id] = {

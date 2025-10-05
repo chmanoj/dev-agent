@@ -420,3 +420,95 @@ class ValidationError(DevAgentError):
             f"Validation error: {self.message}. "
             f"Please correct the input and try again."
         )
+
+
+class AnalysisError(DevAgentError):
+    """Errors related to code analysis operations."""
+
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+        context: ErrorContext | None = None,
+        analysis_type: str | None = None,
+        failed_files: list[str] | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.INDEXING,
+            severity=severity,
+            context=context,
+            recoverable=True,
+        )
+        self.analysis_type = analysis_type
+        self.failed_files = failed_files or []
+
+    def _generate_user_message(self) -> str:
+        return (
+            f"Analysis error: {self.message}. "
+            f"The system will continue with available analysis results."
+        )
+
+
+class ProjectNotFoundError(DevAgentError):
+    """Errors related to project not found or invalid project path."""
+
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.HIGH,
+        context: ErrorContext | None = None,
+        project_path: str | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.SYSTEM,
+            severity=severity,
+            context=context,
+            recoverable=False,
+        )
+        self.project_path = project_path
+
+    def _generate_user_message(self) -> str:
+        if self.project_path:
+            return (
+                f"Project not found at path: {self.project_path}. "
+                f"Please check the path and try again."
+            )
+        return (
+            f"Project not found: {self.message}. "
+            f"Please check the project path and try again."
+        )
+
+
+class StateError(DevAgentError):
+    """Errors related to state management operations (alias for StateCorruptionError)."""
+
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.HIGH,
+        context: ErrorContext | None = None,
+        corrupted_files: list[str] | None = None,
+        backup_available: bool = False,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.STATE,
+            severity=severity,
+            context=context,
+            recoverable=backup_available,
+        )
+        self.corrupted_files = corrupted_files or []
+        self.backup_available = backup_available
+
+    def _generate_user_message(self) -> str:
+        if self.backup_available:
+            return (
+                f"State error: {self.message}. "
+                f"The system will attempt to restore from backup."
+            )
+        return (
+            f"State error: {self.message}. "
+            f"You may need to reinitialize the project."
+        )
