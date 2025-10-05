@@ -1,12 +1,13 @@
 """
 dev-agent: A high-performance, indexing-first development agent system.
 
-This package implements a four-phase workflow: Indexing, Specification, Design, and Implementation.
-The system is built Python-first with a focus on analyzing and working with existing large codebases
-through comprehensive local indexing.
+This package implements a four-phase workflow: Indexing, Specification,
+Design, and Implementation. The system is built Python-first with a focus
+on analyzing and working with existing large codebases through comprehensive
+local indexing.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 # Import main components for easier access
 from .analysis.ai_analysis_engine import AIAnalysisEngine
@@ -18,7 +19,7 @@ from .analysis.security_analyzer import SecurityAnalyzer
 __all__ = [
     "AIAnalysisEngine",
     "CodeQualityAnalyzer",
-    "SecurityAnalyzer", 
+    "SecurityAnalyzer",
     "PerformanceAnalyzer",
     "ArchitecturalAnalyzer",
 ]
