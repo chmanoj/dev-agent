@@ -451,7 +451,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
   - Add tests for uncovered code
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8_
 
-- [ ] 40. Final integration testing
+- [x] 40. Final integration testing
   - Test complete new project workflow end-to-end
   - Test complete existing codebase workflow end-to-end
   - Test all CLI commands manually
@@ -462,6 +462,7 @@ This implementation plan breaks down the dev-agent cleanup and enhancement proje
 
 - [ ] 41. Prepare release
   - Update version in `pyproject.toml`
+  - Cleanup the repo using the cleanup system implemented.
   - Update `CHANGELOG.md` with all changes
   - Build documentation and deploy to GitHub Pages
   - Create GitHub release with release notes
