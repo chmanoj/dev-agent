@@ -115,7 +115,9 @@ class ProgressManager:
                 )
 
             if description:
-                self.progress.update(self.current_task, completed=completed, description=description)
+                self.progress.update(
+                    self.current_task, completed=completed, description=description
+                )
             else:
                 self.progress.update(self.current_task, completed=completed)
 
@@ -382,7 +384,7 @@ class CLIVisualizationEngine:
         # Import here to avoid circular imports
         from dev_agent.analysis.visualization_engine import VisualizationEngine
         from dev_agent.models.visualization import VisualizationConfig
-        
+
         config = VisualizationConfig(enable_interactive_features=True)
         self.engine = VisualizationEngine(config)
 
@@ -399,7 +401,7 @@ class CLIVisualizationEngine:
         """
         # Convert analysis dict to ArchitectureInfo if needed
         from dev_agent.models.analysis import ArchitectureInfo
-        
+
         if isinstance(project_analysis, dict):
             architecture_info = ArchitectureInfo(
                 patterns=[],
@@ -408,14 +410,13 @@ class CLIVisualizationEngine:
                 dependencies=project_analysis.get("dependencies", {}),
                 entry_points=project_analysis.get("entry_points", []),
                 data_flow=project_analysis.get("data_flow", {}),
-                technology_stack=project_analysis.get("technology_stack", [])
+                technology_stack=project_analysis.get("technology_stack", []),
             )
         else:
             architecture_info = project_analysis
-            
+
         return self.engine.generate_architecture_diagram(
-            architecture_info, 
-            "Project Architecture"
+            architecture_info, "Project Architecture"
         )
 
     def generate_workflow_diagram(self, phases: list[PhaseType]) -> str:
@@ -446,19 +447,23 @@ class CLIVisualizationEngine:
                 mermaid_lines.append(f'    {node_id}["⚡ {phase_name}"]')
 
         # Connect phases in sequence
-        mermaid_lines.extend([
-            f"    {phase_nodes[i]} --> {phase_nodes[i + 1]}"
-            for i in range(len(phase_nodes) - 1)
-        ])
+        mermaid_lines.extend(
+            [
+                f"    {phase_nodes[i]} --> {phase_nodes[i + 1]}"
+                for i in range(len(phase_nodes) - 1)
+            ]
+        )
 
         # Add styling
-        mermaid_lines.extend([
-            "",
-            "    classDef indexing fill:#fff3e0,stroke:#e65100,stroke-width:2px",
-            "    classDef specification fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px",
-            "    classDef design fill:#e3f2fd,stroke:#1565c0,stroke-width:2px",
-            "    classDef implementation fill:#fce4ec,stroke:#c2185b,stroke-width:2px",
-        ])
+        mermaid_lines.extend(
+            [
+                "",
+                "    classDef indexing fill:#fff3e0,stroke:#e65100,stroke-width:2px",
+                "    classDef specification fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px",
+                "    classDef design fill:#e3f2fd,stroke:#1565c0,stroke-width:2px",
+                "    classDef implementation fill:#fce4ec,stroke:#c2185b,stroke-width:2px",
+            ]
+        )
 
         return "\n".join(mermaid_lines)
 
@@ -490,21 +495,21 @@ class CLIVisualizationEngine:
 
         # Validate the diagram and show results
         validation_result = self.engine.validate_diagram(diagram)
-        
+
         if validation_result.warnings or validation_result.suggestions:
             validation_text = Text()
-            
+
             if validation_result.warnings:
                 validation_text.append("⚠️ Warnings:\n", style="bold yellow")
                 for warning in validation_result.warnings:
                     validation_text.append(f"  • {warning}\n", style="yellow")
                 validation_text.append("\n")
-            
+
             if validation_result.suggestions:
                 validation_text.append("💡 Suggestions:\n", style="bold blue")
                 for suggestion in validation_result.suggestions:
                     validation_text.append(f"  • {suggestion}\n", style="blue")
-            
+
             validation_panel = Panel(
                 validation_text,
                 title="[bold yellow]📊 Diagram Analysis[/bold yellow]",
@@ -518,8 +523,12 @@ class CLIVisualizationEngine:
         instructions.append("💡 To render this diagram:\n", style="bold yellow")
         instructions.append("1. Copy the Mermaid code above\n", style="white")
         instructions.append("2. Paste it into https://mermaid.live/\n", style="white")
-        instructions.append("3. Or use a Mermaid-enabled markdown viewer\n", style="white")
-        instructions.append("4. Use 'export diagram' command to save to file\n", style="white")
+        instructions.append(
+            "3. Or use a Mermaid-enabled markdown viewer\n", style="white"
+        )
+        instructions.append(
+            "4. Use 'export diagram' command to save to file\n", style="white"
+        )
 
         info_panel = Panel(
             instructions,
@@ -531,47 +540,47 @@ class CLIVisualizationEngine:
         self.console.print(info_panel)
 
     def export_diagram_to_file(
-        self, 
-        diagram: str, 
-        output_path: str,
-        format_type: str = "mermaid"
+        self, diagram: str, output_path: str, format_type: str = "mermaid"
     ) -> None:
         """Export diagram to file with user feedback.
-        
+
         Args:
             diagram: Mermaid diagram string
             output_path: Path to save the diagram
             format_type: Export format (mermaid, html, json)
         """
         try:
-            from dev_agent.models.visualization import DiagramExportOptions, ExportFormat
-            
+            from dev_agent.models.visualization import (
+                DiagramExportOptions,
+                ExportFormat,
+            )
+
             format_map = {
                 "mermaid": ExportFormat.MERMAID,
                 "html": ExportFormat.HTML,
-                "json": ExportFormat.JSON
+                "json": ExportFormat.JSON,
             }
-            
+
             if format_type not in format_map:
                 self.console.print(f"[red]❌ Unsupported format: {format_type}[/red]")
                 return
-            
+
             options = DiagramExportOptions(
                 format=format_map[format_type],
                 include_metadata=True,
-                include_styling=True
+                include_styling=True,
             )
-            
+
             self.engine.export_diagram(diagram, output_path, options)
-            
+
             self.console.print(f"[green]✅ Diagram exported to: {output_path}[/green]")
-            
+
             # Show file info
             file_path = Path(output_path)
             if file_path.exists():
                 file_size = file_path.stat().st_size
                 self.console.print(f"[dim]File size: {file_size} bytes[/dim]")
-                
+
         except Exception as e:
             self.console.print(f"[red]❌ Export failed: {e}[/red]")
 
@@ -643,11 +652,13 @@ class SearchAndFilterEngine:
                     for i in range(start_line, end_line)
                 ]
 
-                results.append({
-                    "line_number": line_num,
-                    "line_content": line,
-                    "context": context,
-                })
+                results.append(
+                    {
+                        "line_number": line_num,
+                        "line_content": line,
+                        "context": context,
+                    }
+                )
 
         return results
 
@@ -668,7 +679,8 @@ class SearchAndFilterEngine:
 
         # Collect all files
         all_files = [
-            file_path for file_path in project_path_obj.rglob("*")
+            file_path
+            for file_path in project_path_obj.rglob("*")
             if file_path.is_file()
         ]
 
@@ -684,23 +696,16 @@ class SearchAndFilterEngine:
         # Apply size filter
         if "max_size" in filters:
             max_size = filters["max_size"]
-            filtered_files = [
-                f for f in filtered_files
-                if f.stat().st_size <= max_size
-            ]
+            filtered_files = [f for f in filtered_files if f.stat().st_size <= max_size]
 
         # Apply name pattern filter
         if "name_pattern" in filters:
             pattern = re.compile(filters["name_pattern"], re.IGNORECASE)
-            filtered_files = [
-                f for f in filtered_files if pattern.search(f.name)
-            ]
+            filtered_files = [f for f in filtered_files if pattern.search(f.name)]
 
         # Exclude hidden files by default
         if filters.get("include_hidden", False) is False:
-            filtered_files = [
-                f for f in filtered_files if not f.name.startswith(".")
-            ]
+            filtered_files = [f for f in filtered_files if not f.name.startswith(".")]
 
         return filtered_files
 
@@ -753,9 +758,7 @@ class SearchAndFilterEngine:
         self.console.print(table)
 
         if len(results) > 10:
-            self.console.print(
-                f"[dim]... and {len(results) - 10} more results[/dim]"
-            )
+            self.console.print(f"[dim]... and {len(results) - 10} more results[/dim]")
 
     def show_filtered_files(
         self, files: list[Path], filters: dict[str, Any], project_path: str
@@ -815,7 +818,9 @@ class SearchAndFilterEngine:
                 continue
 
         # Create tree visualization
-        tree = Tree(f"📁 [bold green]{project_root.name}[/bold green] ({len(files)} files)")
+        tree = Tree(
+            f"📁 [bold green]{project_root.name}[/bold green] ({len(files)} files)"
+        )
         self._add_tree_nodes(tree, file_tree)
 
         tree_panel = Panel(
@@ -1078,7 +1083,11 @@ Once initialized, you can run the complete workflow or execute individual phases
         for phase in PhaseType:
             phase_info = self.phase_help.get(phase, {})
             desc_value = phase_info.get("description", "No description available")
-            desc = desc_value if isinstance(desc_value, str) else "No description available"
+            desc = (
+                desc_value
+                if isinstance(desc_value, str)
+                else "No description available"
+            )
             phases_table.add_row(phase.value.title(), desc)
 
         # Print both tables
@@ -1359,6 +1368,12 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             elif command == "reject":
                 return "Rejection functionality would be handled by workflow manager"
 
+            elif command == "skip":
+                return self._handle_skip_command()
+
+            elif command == "cancel":
+                return self._handle_cancel_command()
+
             else:
                 # Show command suggestions for unknown commands
                 context = self._get_current_context()
@@ -1507,11 +1522,9 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             table.add_row("Status", "Active")
             table.add_row("Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-            # Render table to string
-            with self.console.capture() as capture:
-                self.console.print(table)
-
-            return capture.get()
+            # Print table directly instead of capturing
+            self.console.print(table)
+            return ""  # Return empty string since we already printed
 
         except Exception as e:
             return f"Error getting status: {e!s}"
@@ -1572,6 +1585,103 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
         except Exception as e:
             return f"Error transitioning to phase: {e!s}"
 
+    def _handle_skip_command(self) -> str:
+        """Handle skip command to skip current phase.
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+
+            # Warn user about skipping
+            self.console.print(
+                f"[yellow]⚠️  Warning: Skipping {current_phase.value} phase[/yellow]"
+            )
+            self.console.print(
+                "[dim]Skipping phases may result in incomplete context "
+                "for later phases.[/dim]"
+            )
+
+            from rich.prompt import Confirm
+
+            if not Confirm.ask(
+                "Are you sure you want to skip this phase?", default=False
+            ):
+                return "Skip cancelled."
+
+            # Determine next phase
+            phase_order = list(PhaseType)
+            current_index = phase_order.index(current_phase)
+
+            if current_index >= len(phase_order) - 1:
+                return "Already at the last phase. Cannot skip."
+
+            next_phase = phase_order[current_index + 1]
+
+            # Mark current phase as skipped in state
+            if (
+                hasattr(self.workflow_manager, "current_project_state")
+                and self.workflow_manager.current_project_state
+            ):
+                # Update phase status to indicate it was skipped
+                self.console.print(
+                    f"[yellow]Skipping to {next_phase.value} phase...[/yellow]"
+                )
+
+            # Transition to next phase
+            success = self.workflow_manager.transition_to_phase(next_phase)
+
+            if success:
+                return f"✅ Skipped to {next_phase.value.title()} phase"
+            return f"❌ Failed to skip to {next_phase.value.title()} phase"
+
+        except Exception as e:
+            return f"Error skipping phase: {e!s}"
+
+    def _handle_cancel_command(self) -> str:
+        """Handle cancel command to cancel current operation.
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+
+            self.console.print(
+                f"[yellow]⚠️  Cancelling current operation in "
+                f"{current_phase.value} phase[/yellow]"
+            )
+
+            from rich.prompt import Confirm
+
+            if not Confirm.ask("Are you sure you want to cancel?", default=False):
+                return "Cancel aborted."
+
+            # Save current state
+            if hasattr(self.workflow_manager, "state_manager") and hasattr(
+                self.workflow_manager, "current_project_state"
+            ):
+                if self.workflow_manager.current_project_state:
+                    self.workflow_manager.state_manager.save_project_state(
+                        self.workflow_manager.current_project_state
+                    )
+                    self.console.print("[green]✓ Project state saved[/green]")
+
+            return (
+                "✅ Operation cancelled. You can resume with 'dev-agent resume' "
+                "or continue with other commands."
+            )
+
+        except Exception as e:
+            return f"Error cancelling operation: {e!s}"
+
     def _handle_architecture_command(self) -> str:
         """Handle architecture diagram command.
 
@@ -1595,10 +1705,14 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
                 ],
                 "dependencies": {
                     "CLI": ["WorkflowManager"],
-                    "WorkflowManager": ["IndexingEngine", "CodeGenerator", "ProjectState"],
+                    "WorkflowManager": [
+                        "IndexingEngine",
+                        "CodeGenerator",
+                        "ProjectState",
+                    ],
                     "IndexingEngine": ["ProjectState"],
                     "CodeGenerator": ["Document"],
-                }
+                },
             }
 
             self.visualization_engine.show_architecture_diagram(project_analysis)

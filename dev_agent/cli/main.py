@@ -124,6 +124,7 @@ def _run_indexing_with_progress(
     """
     from pathlib import Path
 
+    from rich.panel import Panel
     from rich.progress import (
         BarColumn,
         Progress,
@@ -157,12 +158,49 @@ def _run_indexing_with_progress(
         embedding_client = None
         try:
             from dev_agent.llm.azure_client import AzureEmbeddingClient
+            from dev_agent.errors.exceptions import IndexingError
+            
             config = config_manager.get_config()
-            if config.azure_openai:
-                embedding_client = AzureEmbeddingClient(config.azure_openai)
+            
+            # Check if Azure OpenAI is configured
+            if not config.azure_openai:
+                console.print()
+                console.print(Panel(
+                    "[red]Azure OpenAI is not configured.[/red]\n\n"
+                    "dev-agent requires Azure OpenAI for embeddings generation.\n\n"
+                    "Please configure Azure OpenAI first:\n"
+                    "  [cyan]dev-agent azure configure[/cyan]\n\n"
+                    "Or set environment variables:\n"
+                    "  [cyan]AZURE_OPENAI_ENDPOINT[/cyan]\n"
+                    "  [cyan]AZURE_OPENAI_API_KEY[/cyan]\n"
+                    "  [cyan]AZURE_OPENAI_DEPLOYMENT_NAME[/cyan]\n"
+                    "  [cyan]AZURE_OPENAI_EMBEDDING_DEPLOYMENT[/cyan]",
+                    title="❌ Configuration Required",
+                    border_style="red"
+                ))
+                raise typer.Exit(1)
+            
+            embedding_client = AzureEmbeddingClient(config.azure_openai)
+            
+        except typer.Exit:
+            raise
         except Exception as e:
+            console.print()
+            console.print(Panel(
+                f"[red]Failed to initialize Azure OpenAI embedding client:[/red]\n\n"
+                f"{e}\n\n"
+                "Please verify your Azure OpenAI configuration:\n"
+                "  [cyan]dev-agent azure status[/cyan]\n\n"
+                "Test your connection:\n"
+                "  [cyan]dev-agent azure test[/cyan]\n\n"
+                "Reconfigure if needed:\n"
+                "  [cyan]dev-agent azure configure[/cyan]",
+                title="❌ Initialization Failed",
+                border_style="red"
+            ))
             if logger:
-                logger.warning(f"Could not initialize embedding client: {e}")
+                logger.error(f"Could not initialize embedding client: {e}", exc_info=True)
+            raise typer.Exit(1)
 
         indexing_engine = IndexingEngine(
             project_path=project_path,
