@@ -1,6 +1,7 @@
 """Phase management system that handles individual workflow phases."""
 
 import time
+from typing import Any
 
 from ..analysis.codebase_analyzer import CodebaseAnalyzer
 from ..generation.python_code_generator import PythonCodeGenerator
