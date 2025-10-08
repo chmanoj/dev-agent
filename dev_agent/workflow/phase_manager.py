@@ -216,7 +216,7 @@ class PhaseManager(IPhaseManager):
             self.cli_interface.display_message(f"❌ Indexing phase failed: {e}")
             return result
 
-    def execute_specification_phase(
+    async def execute_specification_phase(
         self, context: ProjectContext
     ) -> SpecificationResult:
         """Execute the specification phase.
@@ -248,10 +248,14 @@ class PhaseManager(IPhaseManager):
                     cli_interface=self.cli_interface,
                     codebase_analyzer=self.codebase_analyzer,
                     state_manager=self.state_manager,
+                    llm_client=self.llm_client,
+                    cost_tracker=self.cost_tracker,
+                    token_counter=self.token_counter,
+                    vector_db=self.vector_db,
                 )
 
-            # Execute specification generation
-            specification = self.specification_workflow.execute_specification_phase(
+            # Execute specification generation (async)
+            specification = await self.specification_workflow.execute_specification_phase(
                 context.project_state.project_path
             )
 
@@ -626,7 +630,7 @@ class PhaseManager(IPhaseManager):
 
         return True
 
-    def retry_phase_execution(
+    async def retry_phase_execution(
         self, phase: PhaseType, context: ProjectContext, max_attempts: int = 3
     ) -> PhaseResult:
         """Retry phase execution with error recovery.
@@ -653,7 +657,7 @@ class PhaseManager(IPhaseManager):
                         context.project_state.project_path
                     )
                 elif phase == PhaseType.SPECIFICATION:
-                    result = self.execute_specification_phase(context)
+                    result = await self.execute_specification_phase(context)
                 elif phase == PhaseType.DESIGN:
                     result = self.execute_design_phase(context)
                 elif phase == PhaseType.IMPLEMENTATION:

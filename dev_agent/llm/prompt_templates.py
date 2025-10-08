@@ -365,9 +365,144 @@ Use simple, clear task descriptions focused on coding activities.""",
 
 
 
+# Specification Generation for New Projects Template
+SPECIFICATION_NEW_PROJECT_TEMPLATE = PromptTemplate(
+    system_prompt="""You are a technical specification writer creating specifications for new projects.
+Your task is to generate detailed, actionable specifications based on user requirements.
+
+Key principles:
+1. Create clear, testable requirements
+2. Use EARS format for acceptance criteria (WHEN/THEN, IF/THEN, SHALL)
+3. Include user stories for each requirement
+4. Consider edge cases and error scenarios
+5. Specify clear acceptance criteria
+6. Focus on functional and technical requirements""",
+    
+    user_prompt_template="""## Feature Request
+{feature_description}
+
+## Project Type
+{project_type}
+
+## Task
+Generate a detailed specification for a new project that implements the requested feature.
+
+The specification should include:
+1. **Overview**: Clear introduction explaining the feature and its purpose
+2. **Key Features**: List of main features to be implemented
+3. **Requirements**: Detailed functional requirements with:
+   - User stories in format: "As a [role], I want [feature], so that [benefit]"
+   - Acceptance criteria in EARS format:
+     * WHEN [event] THEN [system] SHALL [response]
+     * IF [precondition] THEN [system] SHALL [response]
+     * WHERE [condition] THEN [system] SHALL [response]
+
+## Output Format
+Provide a structured specification with:
+
+### Introduction
+[Brief overview of the feature and its purpose]
+
+### Key Features
+- Feature 1
+- Feature 2
+- Feature 3
+
+### Requirements
+
+#### Requirement 1
+**User Story:** As a [role], I want [feature], so that [benefit]
+
+**Acceptance Criteria:**
+1. WHEN [event] THEN [system] SHALL [response]
+2. IF [precondition] THEN [system] SHALL [response]
+3. WHERE [condition] THEN [system] SHALL [response]
+
+[Continue with additional requirements...]""",
+    
+    required_context=[
+        "feature_description",
+        "project_type",
+    ],
+    max_context_tokens=4000,
+    temperature=0.7,
+    max_tokens=3000,
+)
+
+
+# Specification Refinement Template
+SPECIFICATION_REFINEMENT_TEMPLATE = PromptTemplate(
+    system_prompt="""You are a technical specification writer refining specifications based on user feedback.
+Your task is to improve the specification by incorporating the user's requested changes.
+
+Key principles:
+1. Carefully analyze the user's feedback
+2. Make specific changes requested by the user
+3. Maintain the overall structure and format
+4. Preserve good parts of the original specification
+5. Ensure acceptance criteria remain in EARS format
+6. Keep user stories clear and actionable
+7. Address all feedback points comprehensively""",
+    
+    user_prompt_template="""## Current Specification
+{current_specification}
+
+## User Feedback
+{user_feedback}
+
+## Original Feature Description
+{feature_description}
+
+## Task
+Refine the specification by incorporating the user's feedback while maintaining quality and structure.
+
+Requirements:
+1. Address ALL points in the user feedback
+2. Maintain the specification format (Introduction, Key Features, Requirements)
+3. Keep user stories in proper format: "As a [role], I want [feature], so that [benefit]"
+4. Keep acceptance criteria in EARS format (WHEN/THEN, IF/THEN, SHALL)
+5. Preserve good aspects of the original specification
+6. Make the changes specific and actionable
+7. Ensure the refined specification is complete and coherent
+
+## Output Format
+Provide the complete refined specification with the same structure:
+
+### Introduction
+[Updated introduction incorporating feedback]
+
+### Key Features
+- Updated feature 1
+- Updated feature 2
+- Updated feature 3
+
+### Requirements
+
+#### Requirement 1
+**User Story:** As a [role], I want [feature], so that [benefit]
+
+**Acceptance Criteria:**
+1. WHEN [event] THEN [system] SHALL [response]
+2. IF [precondition] THEN [system] SHALL [response]
+
+[Continue with all requirements, incorporating feedback...]""",
+    
+    required_context=[
+        "current_specification",
+        "user_feedback",
+        "feature_description",
+    ],
+    max_context_tokens=6000,
+    temperature=0.7,
+    max_tokens=4000,
+)
+
+
 # Template registry for easy access
 TEMPLATES = {
     "specification": SPECIFICATION_TEMPLATE,
+    "specification_new_project": SPECIFICATION_NEW_PROJECT_TEMPLATE,
+    "specification_refinement": SPECIFICATION_REFINEMENT_TEMPLATE,
     "design": DESIGN_TEMPLATE,
     "code_generation": CODE_GENERATION_TEMPLATE,
     "task_generation": TASK_GENERATION_TEMPLATE,

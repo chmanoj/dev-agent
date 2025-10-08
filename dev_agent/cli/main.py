@@ -1,5 +1,6 @@
 """Main CLI entry point for dev-agent."""
 
+import asyncio
 import json
 import logging
 import os
@@ -2128,7 +2129,8 @@ def _start_interactive_mode(
             logger.info(start_msg)
         console.print(f"[blue]{start_msg}[/blue]")
 
-        cli.start_chat_session()
+        # Run async chat session
+        asyncio.run(cli.start_chat_session())
 
     except Exception as e:
         error_msg = f"Error in interactive mode: {e}"

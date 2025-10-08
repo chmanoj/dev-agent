@@ -1,9 +1,12 @@
 """Workflow orchestration system that coordinates all four phases."""
 
+import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+from ..config.config_manager import ConfigManager
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.workflow_interface import IWorkflowManager
 from ..llm.cost_tracker import CostTracker
@@ -15,6 +18,8 @@ from ..models.undo_redo import ActionType, SnapshotType
 from ..state.state_manager import StateManager
 from ..state.undo_redo_manager import UndoRedoManager
 from .phase_manager import PhaseManager
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowManager(IWorkflowManager):
@@ -52,9 +57,100 @@ class WorkflowManager(IWorkflowManager):
             budget_limit=budget_limit,
         )
 
+        # Initialize LLM components
+        self.llm_client: Any | None = None
+        self.token_counter: Any | None = None
+        self.vector_db: Any | None = None
+        
+        self._initialize_llm_components()
+
         # Workflow configuration
         self.max_retry_attempts = 3
         self.require_explicit_approval = True
+
+    def _initialize_llm_components(self) -> None:
+        """Initialize LLM client, token counter, and vector database.
+        
+        This method checks if Azure OpenAI is configured and initializes
+        the necessary components for AI-powered specification generation.
+        If Azure OpenAI is not configured, components are set to None and
+        will be checked when needed.
+        """
+        try:
+            # Load configuration
+            config_manager = ConfigManager()
+            config = config_manager.get_config()
+            
+            # Check if Azure OpenAI is configured
+            if config.azure_openai is None:
+                logger.info(
+                    "Azure OpenAI not configured. LLM features will be unavailable. "
+                    "Set environment variables or run 'dev-agent azure configure'"
+                )
+                self.llm_client = None
+                self.token_counter = None
+                self.vector_db = None
+                return
+            
+            # Import LLM components (lazy import to avoid circular dependencies)
+            from ..llm.azure_client import AzureOpenAIClient
+            from ..llm.token_counter import TokenCounter
+            
+            # Initialize LLM client
+            self.llm_client = AzureOpenAIClient(config.azure_openai)
+            logger.info(
+                f"Initialized Azure OpenAI client for deployment: "
+                f"{config.azure_openai.deployment_name}"
+            )
+            
+            # Initialize token counter
+            self.token_counter = TokenCounter(model=config.azure_openai.deployment_name)
+            logger.info("Initialized token counter")
+            
+            # Vector database will be initialized when state_manager is available
+            # (needs project path for index storage)
+            self.vector_db = None
+            
+        except Exception as e:
+            logger.warning(f"Failed to initialize LLM components: {e}")
+            self.llm_client = None
+            self.token_counter = None
+            self.vector_db = None
+
+    def _initialize_vector_database(self, project_path: str) -> None:
+        """Initialize vector database for semantic code search.
+        
+        This method initializes the VectorDatabase with the project-specific
+        index path. It requires both an embedding client and a project path.
+        
+        Args:
+            project_path: Path to the project directory
+        """
+        try:
+            # Check if embedding client is available
+            if self.embedding_client is None:
+                logger.info(
+                    "Embedding client not available. Vector database will not be initialized."
+                )
+                self.vector_db = None
+                return
+            
+            # Import VectorDatabase (lazy import)
+            from ..indexing.vector_database import VectorDatabase
+            
+            # Create index path
+            index_path = Path(project_path) / ".dev_agent" / "index"
+            
+            # Initialize vector database
+            self.vector_db = VectorDatabase(
+                index_path=str(index_path),
+                embedding_client=self.embedding_client,
+            )
+            logger.info(f"Initialized vector database at {index_path}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to initialize vector database: {e}")
+            self.vector_db = None
 
     def start_new_project(self, project_path: str) -> ProjectState:
         """Start a new project workflow.
@@ -96,12 +192,18 @@ class WorkflowManager(IWorkflowManager):
                 {"phase": project_state.current_phase, "action": "project_initialization"}
             )
 
+            # Initialize vector database now that we have project path
+            self._initialize_vector_database(project_path)
+
             # Initialize phase manager after state is set
             self.phase_manager = PhaseManager(
                 cli_interface=self.cli_interface,
                 state_manager=self.state_manager,
                 embedding_client=self.embedding_client,
                 cost_tracker=self.cost_tracker,
+                llm_client=self.llm_client,
+                token_counter=self.token_counter,
+                vector_db=self.vector_db,
             )
 
             self.cli_interface.display_message("Project initialized successfully!")
@@ -155,12 +257,18 @@ class WorkflowManager(IWorkflowManager):
                 {"phase": project_state.current_phase, "action": "project_resume"}
             )
 
+            # Initialize vector database now that we have project path
+            self._initialize_vector_database(project_path)
+
             # Initialize phase manager after state is set
             self.phase_manager = PhaseManager(
                 cli_interface=self.cli_interface,
                 state_manager=self.state_manager,
                 embedding_client=self.embedding_client,
                 cost_tracker=self.cost_tracker,
+                llm_client=self.llm_client,
+                token_counter=self.token_counter,
+                vector_db=self.vector_db,
             )
 
             self.cli_interface.display_message("Project resumed successfully!")
@@ -178,7 +286,7 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(f"Error: {error_msg}")
             raise WorkflowException(error_msg) from e
 
-    def transition_to_phase(self, phase: PhaseType) -> bool:
+    async def transition_to_phase(self, phase: PhaseType) -> bool:
         """Transition to the specified phase.
 
         Args:
@@ -196,7 +304,13 @@ class WorkflowManager(IWorkflowManager):
         # Ensure phase manager is initialized
         if not self.phase_manager:
             self.phase_manager = PhaseManager(
-                cli_interface=self.cli_interface, state_manager=self.state_manager
+                cli_interface=self.cli_interface,
+                state_manager=self.state_manager,
+                embedding_client=self.embedding_client,
+                cost_tracker=self.cost_tracker,
+                llm_client=self.llm_client,
+                token_counter=self.token_counter,
+                vector_db=self.vector_db,
             )
 
         try:
@@ -220,8 +334,8 @@ class WorkflowManager(IWorkflowManager):
                 f"Transitioning from {current_phase.value} to {phase.value} phase..."
             )
 
-            # Execute the target phase
-            result = self._execute_phase(phase)
+            # Execute the target phase (async)
+            result = await self._execute_phase(phase)
 
             if result.status == PhaseStatus.COMPLETED:
                 # Update project state
@@ -348,7 +462,7 @@ class WorkflowManager(IWorkflowManager):
         else:
             return PhaseType.INDEXING  # Default phase
 
-    def execute_complete_workflow(self) -> bool:
+    async def execute_complete_workflow(self) -> bool:
         """Execute the complete four-phase workflow.
 
         Returns:
@@ -363,7 +477,13 @@ class WorkflowManager(IWorkflowManager):
         # Ensure phase manager is initialized
         if not self.phase_manager:
             self.phase_manager = PhaseManager(
-                cli_interface=self.cli_interface, state_manager=self.state_manager
+                cli_interface=self.cli_interface,
+                state_manager=self.state_manager,
+                embedding_client=self.embedding_client,
+                cost_tracker=self.cost_tracker,
+                llm_client=self.llm_client,
+                token_counter=self.token_counter,
+                vector_db=self.vector_db,
             )
 
         phases = [
@@ -382,7 +502,7 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(f"EXECUTING {phase.value.upper()} PHASE")
             self.cli_interface.display_message(f"{'=' * 60}")
 
-            if not self.transition_to_phase(phase):
+            if not await self.transition_to_phase(phase):
                 self.cli_interface.display_message(
                     f"Workflow stopped at {phase.value} phase due to failure."
                 )
@@ -432,7 +552,7 @@ class WorkflowManager(IWorkflowManager):
         )
         return False
 
-    def _execute_phase(self, phase: PhaseType) -> PhaseResult:
+    async def _execute_phase(self, phase: PhaseType) -> PhaseResult:
         """Execute a specific phase.
 
         Args:
@@ -459,7 +579,7 @@ class WorkflowManager(IWorkflowManager):
                 self.current_project_state.project_path
             )
         elif phase == PhaseType.SPECIFICATION:
-            result = self.phase_manager.execute_specification_phase(context)
+            result = await self.phase_manager.execute_specification_phase(context)
         elif phase == PhaseType.DESIGN:
             result = self.phase_manager.execute_design_phase(context)
         elif phase == PhaseType.IMPLEMENTATION:

@@ -74,7 +74,7 @@ class InteractiveCLI(ICLIInterface):
         print("Goodbye!")
         sys.exit(0)
 
-    def start_chat_session(self) -> None:
+    async def start_chat_session(self) -> None:
         """Start an interactive chat session with the user."""
         self.session_active = True
         console.print(
@@ -89,7 +89,7 @@ class InteractiveCLI(ICLIInterface):
                 elif user_input.lower().strip() == "help":
                     self._display_help()
                 else:
-                    response = self.handle_user_input(user_input)
+                    response = await self.handle_user_input(user_input)
                     if response:
                         console.print(response)
             except EOFError:
@@ -99,7 +99,7 @@ class InteractiveCLI(ICLIInterface):
                 # Handle Ctrl+C
                 self._graceful_exit()
 
-    def handle_user_input(self, input_text: str) -> str:
+    async def handle_user_input(self, input_text: str) -> str:
         """Process user input and return response.
 
         Args:
@@ -150,7 +150,8 @@ class InteractiveCLI(ICLIInterface):
         elif input_text == "run" or input_text == "start":
             if self.workflow_manager:
                 try:
-                    success = self.workflow_manager.execute_complete_workflow()
+                    # Async workflow execution - already awaited since handle_user_input is async
+                    success = await self.workflow_manager.execute_complete_workflow()
                     if success:
                         # Display cost summary after workflow
                         self._display_cost_summary()
@@ -170,7 +171,8 @@ class InteractiveCLI(ICLIInterface):
 
                     # Convert uppercase input to lowercase for enum matching
                     phase = PhaseType(phase_name.lower())
-                    success = self.workflow_manager.transition_to_phase(phase)
+                    # Async phase transition - already awaited since handle_user_input is async
+                    success = await self.workflow_manager.transition_to_phase(phase)
                     if success:
                         # Display cost summary after phase transition
                         self._display_cost_summary()

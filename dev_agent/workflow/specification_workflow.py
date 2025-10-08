@@ -84,8 +84,15 @@ class SpecificationWorkflow:
             self.cli_interface.display_message(
                 Panel(
                     "[red]Azure OpenAI is not configured.[/red]\n\n"
-                    "Please configure Azure OpenAI first:\n"
-                    "  [cyan]dev-agent azure configure[/cyan]",
+                    "The specification phase requires Azure OpenAI for AI-powered generation.\n\n"
+                    "[yellow]To configure Azure OpenAI:[/yellow]\n"
+                    "  1. Run: [cyan]dev-agent azure configure[/cyan]\n"
+                    "  2. Or set environment variables:\n"
+                    "     [cyan]AZURE_OPENAI_ENDPOINT[/cyan]\n"
+                    "     [cyan]AZURE_OPENAI_API_KEY[/cyan]\n"
+                    "     [cyan]AZURE_OPENAI_DEPLOYMENT_NAME[/cyan]\n"
+                    "     [cyan]AZURE_OPENAI_EMBEDDING_DEPLOYMENT[/cyan]\n\n"
+                    "[dim]See documentation: docs/configuration/azure-openai.md[/dim]",
                     title="❌ Configuration Required",
                     border_style="red",
                 )
@@ -127,30 +134,64 @@ class SpecificationWorkflow:
         max_attempts = 3
         attempt = 0
 
+        # Display helpful instructions
+        self.cli_interface.display_message(
+            Panel(
+                "[cyan]Please describe the feature you want to build.[/cyan]\n\n"
+                "[yellow]Tips for a good description:[/yellow]\n"
+                "  • Be specific about what the feature should do\n"
+                "  • Include key requirements and constraints\n"
+                "  • Mention any integration points or dependencies\n"
+                "  • Describe the expected user experience\n\n"
+                "[dim]Example: 'Add user authentication with JWT tokens, "
+                "including login, logout, and password reset functionality. "
+                "Should integrate with existing user database.'[/dim]",
+                title="📝 Feature Description",
+                border_style="cyan",
+            )
+        )
+
         while attempt < max_attempts:
             attempt += 1
 
             feature_description = self.cli_interface.get_user_input(
-                "\n📝 What feature would you like to build? Describe it in detail: "
+                "\nDescribe your feature: "
             )
 
-            if feature_description.strip():
-                return feature_description.strip()
+            # Validate not empty
+            if not feature_description.strip():
+                if attempt < max_attempts:
+                    remaining = max_attempts - attempt
+                    self.cli_interface.display_message(
+                        f"❌ Feature description cannot be empty. "
+                        f"Please provide a description. ({remaining} attempts remaining)"
+                    )
+                else:
+                    self.cli_interface.display_message(
+                        "❌ Feature description is required. Cannot proceed without it."
+                    )
+                    raise ValueError("Feature description cannot be empty")
+                continue
 
-            # Display error and re-prompt
-            if attempt < max_attempts:
-                remaining = max_attempts - attempt
-                self.cli_interface.display_message(
-                    f"❌ Feature description cannot be empty. "
-                    f"Please provide a description. ({remaining} attempts remaining)"
-                )
-            else:
-                self.cli_interface.display_message(
-                    "❌ Feature description is required. Cannot proceed without it."
-                )
-                raise ValueError("Feature description cannot be empty")
+            # Validate minimum length (at least 10 characters)
+            if len(feature_description.strip()) < 10:
+                if attempt < max_attempts:
+                    remaining = max_attempts - attempt
+                    self.cli_interface.display_message(
+                        f"❌ Feature description is too short. "
+                        f"Please provide more details. ({remaining} attempts remaining)"
+                    )
+                else:
+                    self.cli_interface.display_message(
+                        "❌ Feature description must be at least 10 characters. Cannot proceed."
+                    )
+                    raise ValueError("Feature description is too short")
+                continue
 
-        raise ValueError("Feature description cannot be empty")
+            # Valid description
+            return feature_description.strip()
+
+        raise ValueError("Feature description validation failed")
 
     async def _generate_from_existing_code(
         self, feature_description: str
@@ -175,11 +216,23 @@ class SpecificationWorkflow:
         )
 
         # Generate specification from analysis using AI
-        self.cli_interface.display_message("🤖 Generating specification using AI...")
+        self.cli_interface.display_message(
+            "🤖 Generating specification using AI... This may take a moment."
+        )
         spec = await self.generator.generate_from_existing_code_ai(
             analysis=analysis,
             feature_description=feature_description,
         )
+
+        # Display cost information if available
+        if self.cost_tracker:
+            report = self.cost_tracker.get_report()
+            self.cli_interface.display_message(
+                f"💰 Generation complete! API Usage: {report['total_tokens']} tokens "
+                f"(~${report['estimated_cost']:.4f})"
+            )
+        else:
+            self.cli_interface.display_message("✅ Specification generated successfully!")
 
         return spec
 
@@ -200,10 +253,22 @@ class SpecificationWorkflow:
         )
 
         # Generate specification from user input using AI
-        self.cli_interface.display_message("🤖 Generating specification using AI...")
+        self.cli_interface.display_message(
+            "🤖 Generating specification using AI... This may take a moment."
+        )
         spec = await self.generator.generate_from_user_input_ai(
             feature_description=feature_description,
         )
+
+        # Display cost information if available
+        if self.cost_tracker:
+            report = self.cost_tracker.get_report()
+            self.cli_interface.display_message(
+                f"💰 Generation complete! API Usage: {report['total_tokens']} tokens "
+                f"(~${report['estimated_cost']:.4f})"
+            )
+        else:
+            self.cli_interface.display_message("✅ Specification generated successfully!")
 
         return spec
 
@@ -237,13 +302,37 @@ class SpecificationWorkflow:
 
             # Get feedback for refinement
             if iteration < max_iterations:
-                feedback = self.cli_interface.get_user_input(
-                    "\n💬 Please provide feedback for improving the specification: "
+                # Display helpful instructions for feedback
+                self.cli_interface.display_message(
+                    Panel(
+                        "[cyan]Please provide specific feedback to improve the specification.[/cyan]\n\n"
+                        "[yellow]Good feedback examples:[/yellow]\n"
+                        "  • 'Add error handling requirements'\n"
+                        "  • 'Include performance criteria'\n"
+                        "  • 'Clarify the authentication flow'\n"
+                        "  • 'Add more details about data validation'\n\n"
+                        "[dim]Press Enter without typing to approve the current specification.[/dim]",
+                        title="💬 Feedback",
+                        border_style="cyan",
+                    )
                 )
 
+                feedback = self.cli_interface.get_user_input(
+                    "\nYour feedback (or press Enter to approve): "
+                )
+
+                # Validate feedback
                 if feedback.strip():
+                    # Check minimum length for meaningful feedback
+                    if len(feedback.strip()) < 5:
+                        self.cli_interface.display_message(
+                            "⚠️ Feedback is too short. Please provide more specific feedback "
+                            "or press Enter to approve the current specification."
+                        )
+                        continue
+
                     self.cli_interface.display_message(
-                        "🤖 Refining specification using AI based on your feedback..."
+                        "🤖 Refining specification using AI based on your feedback... This may take a moment."
                     )
 
                     # Use AI to refine specification
@@ -257,12 +346,14 @@ class SpecificationWorkflow:
                     if self.cost_tracker:
                         report = self.cost_tracker.get_report()
                         self.cli_interface.display_message(
-                            f"💰 API Usage: {report['total_tokens']} tokens "
+                            f"💰 Refinement complete! Total API Usage: {report['total_tokens']} tokens "
                             f"(~${report['estimated_cost']:.4f})"
                         )
+                    else:
+                        self.cli_interface.display_message("✅ Specification refined successfully!")
                 else:
                     self.cli_interface.display_message(
-                        "No feedback provided. Using current specification."
+                        "✅ No feedback provided. Approving current specification."
                     )
                     current_spec.approved = True
                     return current_spec

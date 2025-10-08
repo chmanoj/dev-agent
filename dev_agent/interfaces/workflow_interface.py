@@ -20,7 +20,7 @@ class IWorkflowManager(ABC):
         pass
 
     @abstractmethod
-    def transition_to_phase(self, phase: PhaseType) -> bool:
+    async def transition_to_phase(self, phase: PhaseType) -> bool:
         """Transition to the specified phase."""
         pass
 
@@ -35,7 +35,7 @@ class IWorkflowManager(ABC):
         pass
 
     @abstractmethod
-    def execute_complete_workflow(self) -> bool:
+    async def execute_complete_workflow(self) -> bool:
         """Execute the complete four-phase workflow."""
         pass
 
@@ -49,7 +49,7 @@ class IPhaseManager(ABC):
         pass
 
     @abstractmethod
-    def execute_specification_phase(
+    async def execute_specification_phase(
         self, context: "ProjectContext"
     ) -> "SpecificationResult":
         """Execute the specification phase."""
@@ -65,6 +65,13 @@ class IPhaseManager(ABC):
         self, context: "ProjectContext"
     ) -> "ImplementationResult":
         """Execute the implementation phase."""
+        pass
+
+    @abstractmethod
+    async def retry_phase_execution(
+        self, phase: PhaseType, context: "ProjectContext", max_attempts: int = 3
+    ) -> "PhaseResult":
+        """Retry phase execution with error recovery."""
         pass
 
     @abstractmethod

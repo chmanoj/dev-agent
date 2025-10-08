@@ -7,6 +7,8 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from rich.panel import Panel
+
 from ..errors.llm_exceptions import (
     LLMAPIError,
     LLMAuthenticationError,
@@ -117,15 +119,33 @@ class SpecificationGenerator(ISpecificationGenerator):
             LLMError: If AI generation fails
         """
         if not self.llm_client:
-            raise ValueError(
+            error_message = (
                 "LLM client not configured. Initialize SpecificationGenerator "
-                "with an ILLMClient instance for AI-powered generation."
+                "with an ILLMClient instance for AI-powered generation.\n\n"
+                "To configure Azure OpenAI:\n"
+                "  1. Run: dev-agent azure configure\n"
+                "  2. Or set environment variables:\n"
+                "     AZURE_OPENAI_ENDPOINT\n"
+                "     AZURE_OPENAI_API_KEY\n"
+                "     AZURE_OPENAI_DEPLOYMENT_NAME\n"
+                "     AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
             )
+            if self.cli_interface:
+                self.cli_interface.display_message(
+                    Panel(
+                        f"[red]{error_message}[/red]",
+                        title="❌ LLM Client Not Configured",
+                        border_style="red",
+                    )
+                )
+            raise ValueError(error_message)
         
         logger.info(f"Generating AI-powered specification for: {feature_description}")
         
         try:
             # Retrieve relevant code chunks via vector search
+            if self.cli_interface:
+                self.cli_interface.display_message("  📚 Retrieving relevant code examples...")
             relevant_chunks = await self._retrieve_relevant_context(feature_description)
             
             # Build context for prompt template
@@ -161,6 +181,8 @@ class SpecificationGenerator(ISpecificationGenerator):
                 system_prompt, user_prompt = template.render(context)
             
             # Generate specification using LLM
+            if self.cli_interface:
+                self.cli_interface.display_message("  🧠 Calling Azure OpenAI API...")
             logger.info("Calling Azure OpenAI for specification generation...")
             spec_content = await self.llm_client.generate_completion(
                 prompt=user_prompt,
@@ -184,6 +206,8 @@ class SpecificationGenerator(ISpecificationGenerator):
                 )
             
             # Parse AI-generated content into structured document
+            if self.cli_interface:
+                self.cli_interface.display_message("  📝 Parsing specification...")
             spec_doc = self._parse_ai_specification(spec_content, analysis)
             
             logger.info("AI-powered specification generated successfully")
@@ -283,6 +307,145 @@ class SpecificationGenerator(ISpecificationGenerator):
             approved=False,
         )
 
+    async def generate_from_user_input_ai(
+        self,
+        feature_description: str,
+    ) -> SpecificationDocument:
+        """Generate specification from user input using AI.
+        
+        For new projects without existing code, this generates a specification
+        based solely on the user's feature description using Azure OpenAI.
+
+        Args:
+            feature_description: Description of the feature to build
+
+        Returns:
+            Generated specification document
+            
+        Raises:
+            ValueError: If LLM client is not configured
+            LLMError: If AI generation fails
+        """
+        if not self.llm_client:
+            error_message = (
+                "LLM client not configured. Initialize SpecificationGenerator "
+                "with an ILLMClient instance for AI-powered generation.\n\n"
+                "To configure Azure OpenAI:\n"
+                "  1. Run: dev-agent azure configure\n"
+                "  2. Or set environment variables:\n"
+                "     AZURE_OPENAI_ENDPOINT\n"
+                "     AZURE_OPENAI_API_KEY\n"
+                "     AZURE_OPENAI_DEPLOYMENT_NAME\n"
+                "     AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
+            )
+            if self.cli_interface:
+                self.cli_interface.display_message(
+                    Panel(
+                        f"[red]{error_message}[/red]",
+                        title="❌ LLM Client Not Configured",
+                        border_style="red",
+                    )
+                )
+            raise ValueError(error_message)
+        
+        logger.info(f"Generating AI-powered specification for new project: {feature_description}")
+        
+        try:
+            # Build context for new project template
+            context = {
+                "feature_description": feature_description,
+                "project_type": "new",
+            }
+            
+            # Get template and generate
+            template = get_template("specification_new_project")
+            
+            # Validate token limits before generation
+            if self.token_counter:
+                system_prompt, user_prompt = template.render(context, self.token_counter)
+                prompt_tokens = self.token_counter.count_tokens(user_prompt)
+                system_tokens = self.token_counter.count_tokens(system_prompt)
+                total_prompt_tokens = prompt_tokens + system_tokens
+                
+                is_valid, error_msg = self.token_counter.validate_context_window(
+                    prompt_tokens=total_prompt_tokens,
+                    max_completion_tokens=template.max_tokens,
+                )
+                
+                if not is_valid:
+                    raise LLMTokenLimitError(error_msg)
+                
+                logger.info(
+                    f"Token validation passed: {total_prompt_tokens} prompt tokens, "
+                    f"{template.max_tokens} max completion tokens"
+                )
+            else:
+                system_prompt, user_prompt = template.render(context)
+            
+            # Generate specification using LLM
+            if self.cli_interface:
+                self.cli_interface.display_message("  🧠 Calling Azure OpenAI API...")
+            logger.info("Calling Azure OpenAI for new project specification generation...")
+            spec_content = await self.llm_client.generate_completion(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=template.temperature,
+                max_tokens=template.max_tokens,
+            )
+            
+            # Track cost if tracker available
+            if self.cost_tracker and self.token_counter:
+                prompt_tokens = self.token_counter.count_tokens(user_prompt + system_prompt)
+                completion_tokens = self.token_counter.count_tokens(spec_content)
+                cost = self.cost_tracker.record_completion(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    model=self.token_counter.get_model_name(),
+                )
+                logger.info(
+                    f"Specification generation cost: ${cost:.4f} "
+                    f"({prompt_tokens} + {completion_tokens} tokens)"
+                )
+            
+            # Parse AI-generated content into structured document
+            if self.cli_interface:
+                self.cli_interface.display_message("  📝 Parsing specification...")
+            spec_doc = self._parse_ai_specification(spec_content, None)
+            
+            # Set source to USER_INPUT for new projects
+            spec_doc.source = SpecificationSource.USER_INPUT
+            
+            logger.info("AI-powered specification for new project generated successfully")
+            return spec_doc
+            
+        except LLMAuthenticationError as e:
+            logger.error(f"Authentication failed: {e}")
+            raise
+        except LLMRateLimitError as e:
+            logger.warning(f"Rate limit hit: {e}")
+            raise
+        except LLMTimeoutError as e:
+            logger.error(f"Request timed out: {e}")
+            raise
+        except LLMBadRequestError as e:
+            logger.error(f"Bad request: {e}")
+            raise
+        except LLMTokenLimitError as e:
+            logger.error(f"Token limit exceeded: {e}")
+            raise
+        except LLMAPIError as e:
+            logger.error(f"API error: {e}")
+            raise
+        except LLMError as e:
+            logger.error(f"LLM error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during AI generation: {e}")
+            raise LLMAPIError(
+                f"Failed to generate specification: {e}",
+                "Check logs for details and verify Azure OpenAI configuration"
+            ) from e
+
     def refine_specification(
         self, spec: SpecificationDocument, feedback: str
     ) -> SpecificationDocument:
@@ -307,6 +470,159 @@ class SpecificationGenerator(ISpecificationGenerator):
         refined_spec.approval_timestamp = None
 
         return refined_spec
+
+    async def refine_specification_ai(
+        self,
+        spec: SpecificationDocument,
+        feedback: str,
+        feature_description: str,
+    ) -> SpecificationDocument:
+        """Refine specification using AI based on user feedback.
+        
+        This method uses the LLM to understand the feedback and generate
+        an improved version of the specification that incorporates the
+        requested changes.
+
+        Args:
+            spec: Original specification document
+            feedback: User feedback for refinement
+            feature_description: Original feature description
+
+        Returns:
+            Refined specification document
+            
+        Raises:
+            ValueError: If LLM client is not configured
+            LLMError: If AI refinement fails
+        """
+        if not self.llm_client:
+            error_message = (
+                "LLM client not configured. Initialize SpecificationGenerator "
+                "with an ILLMClient instance for AI-powered refinement.\n\n"
+                "To configure Azure OpenAI:\n"
+                "  1. Run: dev-agent azure configure\n"
+                "  2. Or set environment variables:\n"
+                "     AZURE_OPENAI_ENDPOINT\n"
+                "     AZURE_OPENAI_API_KEY\n"
+                "     AZURE_OPENAI_DEPLOYMENT_NAME\n"
+                "     AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
+            )
+            if self.cli_interface:
+                self.cli_interface.display_message(
+                    Panel(
+                        f"[red]{error_message}[/red]",
+                        title="❌ LLM Client Not Configured",
+                        border_style="red",
+                    )
+                )
+            raise ValueError(error_message)
+        
+        logger.info("Refining specification using AI based on user feedback")
+        
+        try:
+            # Format current specification as text
+            current_spec_text = self.format_specification_document(spec)
+            
+            # Build context for refinement
+            context = {
+                "current_specification": current_spec_text,
+                "user_feedback": feedback,
+                "feature_description": feature_description,
+            }
+            
+            # Get refinement template
+            template = get_template("specification_refinement")
+            
+            # Validate token limits before generation
+            if self.token_counter:
+                system_prompt, user_prompt = template.render(context, self.token_counter)
+                prompt_tokens = self.token_counter.count_tokens(user_prompt)
+                system_tokens = self.token_counter.count_tokens(system_prompt)
+                total_prompt_tokens = prompt_tokens + system_tokens
+                
+                is_valid, error_msg = self.token_counter.validate_context_window(
+                    prompt_tokens=total_prompt_tokens,
+                    max_completion_tokens=template.max_tokens,
+                )
+                
+                if not is_valid:
+                    raise LLMTokenLimitError(error_msg)
+                
+                logger.info(
+                    f"Token validation passed: {total_prompt_tokens} prompt tokens, "
+                    f"{template.max_tokens} max completion tokens"
+                )
+            else:
+                system_prompt, user_prompt = template.render(context)
+            
+            # Generate refined specification using LLM
+            if self.cli_interface:
+                self.cli_interface.display_message("  🧠 Calling Azure OpenAI API...")
+            logger.info("Calling Azure OpenAI for specification refinement...")
+            refined_content = await self.llm_client.generate_completion(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=template.temperature,
+                max_tokens=template.max_tokens,
+            )
+            
+            # Track cost if tracker available
+            if self.cost_tracker and self.token_counter:
+                prompt_tokens = self.token_counter.count_tokens(user_prompt + system_prompt)
+                completion_tokens = self.token_counter.count_tokens(refined_content)
+                cost = self.cost_tracker.record_completion(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    model=self.token_counter.get_model_name(),
+                )
+                logger.info(
+                    f"Specification refinement cost: ${cost:.4f} "
+                    f"({prompt_tokens} + {completion_tokens} tokens)"
+                )
+            
+            # Parse refined specification
+            if self.cli_interface:
+                self.cli_interface.display_message("  📝 Parsing refined specification...")
+            refined_spec = self._parse_ai_specification(refined_content, None)
+            
+            # Preserve source from original spec
+            refined_spec.source = spec.source
+            
+            # Update version and reset approval
+            refined_spec.version = self._increment_version(spec.version)
+            refined_spec.approved = False
+            refined_spec.approval_timestamp = None
+            
+            logger.info("AI-powered specification refinement completed successfully")
+            return refined_spec
+            
+        except LLMAuthenticationError as e:
+            logger.error(f"Authentication failed: {e}")
+            raise
+        except LLMRateLimitError as e:
+            logger.warning(f"Rate limit hit: {e}")
+            raise
+        except LLMTimeoutError as e:
+            logger.error(f"Request timed out: {e}")
+            raise
+        except LLMBadRequestError as e:
+            logger.error(f"Bad request: {e}")
+            raise
+        except LLMTokenLimitError as e:
+            logger.error(f"Token limit exceeded: {e}")
+            raise
+        except LLMAPIError as e:
+            logger.error(f"API error: {e}")
+            raise
+        except LLMError as e:
+            logger.error(f"LLM error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during AI refinement: {e}")
+            raise LLMAPIError(
+                f"Failed to refine specification: {e}",
+                "Check logs for details and verify Azure OpenAI configuration"
+            ) from e
 
     def format_specification_document(self, spec: SpecificationDocument) -> str:
         """Format specification document as markdown.
@@ -514,7 +830,7 @@ class SpecificationGenerator(ISpecificationGenerator):
     def _parse_ai_specification(
         self,
         ai_content: str,
-        analysis: SpecificationAnalysis,
+        analysis: SpecificationAnalysis | None,
     ) -> SpecificationDocument:
         """Parse AI-generated specification content into structured document.
         
@@ -523,7 +839,7 @@ class SpecificationGenerator(ISpecificationGenerator):
         
         Args:
             ai_content: AI-generated specification content
-            analysis: Original codebase analysis
+            analysis: Original codebase analysis (None for new projects)
             
         Returns:
             Structured SpecificationDocument
@@ -542,8 +858,11 @@ class SpecificationGenerator(ISpecificationGenerator):
         key_features = self._extract_list_items(
             sections.get("functional requirements", sections.get("key features", ""))
         )
-        if not key_features:
+        if not key_features and analysis:
             key_features = analysis.main_features[:5]
+        elif not key_features:
+            # For new projects without analysis, extract from content
+            key_features = ["Feature implementation"]
         
         # Extract functional requirements
         functional_requirements = self._extract_requirements_from_ai_content(
@@ -551,10 +870,21 @@ class SpecificationGenerator(ISpecificationGenerator):
             sections,
         )
         
-        # If no requirements extracted, fall back to analysis-based generation
-        if not functional_requirements:
+        # If no requirements extracted and we have analysis, fall back to analysis-based generation
+        if not functional_requirements and analysis:
             logger.warning("No requirements extracted from AI content, using analysis-based generation")
             functional_requirements = self._generate_requirements_from_evidence(analysis)
+        elif not functional_requirements:
+            # For new projects, create a basic requirement
+            logger.warning("No requirements extracted from AI content for new project")
+            functional_requirements = [
+                Requirement(
+                    id="FR-1",
+                    user_story="As a user, I want the system to implement the requested feature",
+                    acceptance_criteria=["WHEN the feature is implemented THEN it SHALL work as specified"],
+                    priority=Priority.HIGH,
+                )
+            ]
         
         return SpecificationDocument(
             introduction=introduction,

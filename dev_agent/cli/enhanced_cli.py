@@ -1549,6 +1549,10 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
     def _handle_run_command(self) -> str:
         """Handle run/start command.
+        
+        Note: This method uses asyncio.run() to execute the async workflow.
+        This is safe because enhanced_cli methods are called synchronously
+        from the main CLI loop.
 
         Returns:
             Response message
@@ -1557,8 +1561,12 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             return "No active project. Use 'init [path]' to start."
 
         try:
+            import asyncio
+            
             with self.progress_manager.progress:
-                success = self.workflow_manager.execute_complete_workflow()
+                # Execute async workflow using asyncio.run()
+                # This creates a new event loop for the async operation
+                success = asyncio.run(self.workflow_manager.execute_complete_workflow())
 
             if success:
                 return "✅ Workflow completed successfully!"
@@ -1570,6 +1578,10 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
     def _handle_phase_command(self, phase_name: str) -> str:
         """Handle phase transition command.
+        
+        Note: This method uses asyncio.run() to execute the async phase transition.
+        This is safe because enhanced_cli methods are called synchronously
+        from the main CLI loop.
 
         Args:
             phase_name: Name of the phase to transition to
@@ -1581,6 +1593,8 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             return "No active project. Use 'init [path]' to start."
 
         try:
+            import asyncio
+            
             # Try to match phase name case-insensitively
             phase_name_upper = phase_name.upper()
             phase = None
@@ -1593,7 +1607,9 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
                 valid_phases = [phase.value for phase in PhaseType]
                 return f"Invalid phase: {phase_name}. Valid phases: {', '.join(valid_phases)}"
 
-            success = self.workflow_manager.transition_to_phase(phase)
+            # Execute async phase transition using asyncio.run()
+            # This creates a new event loop for the async operation
+            success = asyncio.run(self.workflow_manager.transition_to_phase(phase))
 
             if success:
                 return f"✅ Successfully transitioned to {phase_name.title()} phase"
@@ -1650,8 +1666,9 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
                     f"[yellow]Skipping to {next_phase.value} phase...[/yellow]"
                 )
 
-            # Transition to next phase
-            success = self.workflow_manager.transition_to_phase(next_phase)
+            # Transition to next phase using asyncio.run()
+            import asyncio
+            success = asyncio.run(self.workflow_manager.transition_to_phase(next_phase))
 
             if success:
                 return f"✅ Skipped to {next_phase.value.title()} phase"
