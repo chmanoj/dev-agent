@@ -33,9 +33,27 @@ class InteractiveCLI(ICLIInterface):
 
         # Initialize workflow manager if not provided
         if not self.workflow_manager:
+            from ..config import ConfigManager
+            from ..llm.embeddings import AzureEmbeddingClient
             from ..workflow.workflow_manager import WorkflowManager
 
-            self.workflow_manager = WorkflowManager(self)
+            # Initialize embedding client for workflow
+            config_manager = ConfigManager()
+            config = config_manager.get_config()
+            
+            embedding_client = None
+            if config.azure_openai:
+                try:
+                    embedding_client = AzureEmbeddingClient(config.azure_openai)
+                except Exception as e:
+                    console.print(
+                        f"[yellow]Warning: Could not initialize embedding client: {e}[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]Some features may be limited.[/yellow]"
+                    )
+
+            self.workflow_manager = WorkflowManager(self, embedding_client=embedding_client)
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""

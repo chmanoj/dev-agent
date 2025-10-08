@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Annotated
+from typing import Annotated, TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -19,6 +19,10 @@ from ..config import (
 from .enhanced_cli import EnhancedCLI
 from .interactive_cli import InteractiveCLI
 from .session_manager import SessionManager
+
+if TYPE_CHECKING:
+    from ..interfaces.cli_interface import ICLIInterface
+    from ..workflow.workflow_manager import WorkflowManager
 
 console = Console()
 app = typer.Typer(
@@ -67,6 +71,45 @@ def setup_cli_logging(
         log_config_info(config)
 
     logger.info(f"Starting dev-agent v{config.version}")
+
+
+def create_workflow_manager(cli_interface: "ICLIInterface") -> "WorkflowManager":
+    """Create a WorkflowManager with proper initialization.
+    
+    This helper function ensures that the WorkflowManager is created with
+    all necessary components including the embedding client for vector search.
+    
+    Args:
+        cli_interface: CLI interface instance
+        
+    Returns:
+        Configured WorkflowManager instance with embedding client
+    """
+    from ..llm.embeddings import AzureEmbeddingClient
+    from ..workflow.workflow_manager import WorkflowManager
+    
+    config = config_manager.get_config()
+    
+    embedding_client = None
+    if config.azure_openai:
+        try:
+            embedding_client = AzureEmbeddingClient(config.azure_openai)
+            if logger:
+                logger.info("Initialized Azure OpenAI embedding client for workflow")
+        except Exception as e:
+            if logger:
+                logger.error(f"Failed to initialize embedding client: {e}", exc_info=True)
+            console.print(
+                f"[yellow]Warning: Could not initialize embedding client: {e}[/yellow]"
+            )
+            console.print(
+                "[yellow]Some features may be limited. Run 'dev-agent azure configure' to set up Azure OpenAI.[/yellow]"
+            )
+    else:
+        if logger:
+            logger.warning("Azure OpenAI not configured - vector search features will be limited")
+    
+    return WorkflowManager(cli_interface, embedding_client=embedding_client)
 
 
 @app.callback(invoke_without_command=True)
@@ -482,11 +525,9 @@ def init(
         # Initialize CLI and session manager
         session_manager = SessionManager(project_path)
 
-        # Initialize workflow manager
-        from ..workflow.workflow_manager import WorkflowManager
-
+        # Initialize workflow manager with embedding client
         cli = EnhancedCLI()
-        workflow_manager = WorkflowManager(cli)
+        workflow_manager = create_workflow_manager(cli)
         cli.workflow_manager = workflow_manager
 
         if logger:
@@ -635,11 +676,9 @@ def resume(
         # Initialize session manager and try to resume
         session_manager = SessionManager(project_path)
 
-        # Initialize workflow manager
-        from ..workflow.workflow_manager import WorkflowManager
-
+        # Initialize workflow manager with embedding client
         cli = EnhancedCLI()
-        workflow_manager = WorkflowManager(cli)
+        workflow_manager = create_workflow_manager(cli)
         cli.workflow_manager = workflow_manager
 
         if logger:
@@ -1516,10 +1555,8 @@ def cost_report(
             raise typer.Exit(1)
 
         # Initialize workflow manager to access cost tracker
-        from ..workflow.workflow_manager import WorkflowManager
-
         cli = EnhancedCLI()
-        workflow_manager = WorkflowManager(cli)
+        workflow_manager = create_workflow_manager(cli)
 
         try:
             workflow_manager.resume_project(project_path)
@@ -1812,10 +1849,8 @@ def status(
             raise typer.Exit(1)
 
         # Initialize workflow manager to access project state
-        from ..workflow.workflow_manager import WorkflowManager
-
         cli = EnhancedCLI()
-        workflow_manager = WorkflowManager(cli)
+        workflow_manager = create_workflow_manager(cli)
 
         try:
             project_state = workflow_manager.resume_project(project_path)

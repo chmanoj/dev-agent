@@ -1178,11 +1178,29 @@ class EnhancedCLI(ICLIInterface):
 
         # Initialize workflow manager if not provided
         if not self.workflow_manager:
+            from dev_agent.config import ConfigManager  # noqa: PLC0415
+            from dev_agent.llm.embeddings import AzureEmbeddingClient  # noqa: PLC0415
             from dev_agent.workflow.workflow_manager import (  # noqa: PLC0415
                 WorkflowManager,
             )
 
-            self.workflow_manager = WorkflowManager(self)
+            # Initialize embedding client for workflow
+            config_manager = ConfigManager()
+            config = config_manager.get_config()
+            
+            embedding_client = None
+            if config.azure_openai:
+                try:
+                    embedding_client = AzureEmbeddingClient(config.azure_openai)
+                except Exception as e:
+                    self.console.print(
+                        f"[yellow]Warning: Could not initialize embedding client: {e}[/yellow]"
+                    )
+                    self.console.print(
+                        "[yellow]Some features may be limited.[/yellow]"
+                    )
+
+            self.workflow_manager = WorkflowManager(self, embedding_client=embedding_client)
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""
