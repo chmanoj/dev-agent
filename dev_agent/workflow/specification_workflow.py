@@ -228,8 +228,8 @@ class SpecificationWorkflow:
         if self.cost_tracker:
             report = self.cost_tracker.get_report()
             self.cli_interface.display_message(
-                f"💰 Generation complete! API Usage: {report['total_tokens']} tokens "
-                f"(~${report['estimated_cost']:.4f})"
+                f"💰 Generation complete! API Usage: {report.total_tokens} tokens "
+                f"(~${report.total_cost:.4f})"
             )
         else:
             self.cli_interface.display_message("✅ Specification generated successfully!")
@@ -264,8 +264,8 @@ class SpecificationWorkflow:
         if self.cost_tracker:
             report = self.cost_tracker.get_report()
             self.cli_interface.display_message(
-                f"💰 Generation complete! API Usage: {report['total_tokens']} tokens "
-                f"(~${report['estimated_cost']:.4f})"
+                f"💰 Generation complete! API Usage: {report.total_tokens} tokens "
+                f"(~${report.total_cost:.4f})"
             )
         else:
             self.cli_interface.display_message("✅ Specification generated successfully!")
@@ -346,8 +346,8 @@ class SpecificationWorkflow:
                     if self.cost_tracker:
                         report = self.cost_tracker.get_report()
                         self.cli_interface.display_message(
-                            f"💰 Refinement complete! Total API Usage: {report['total_tokens']} tokens "
-                            f"(~${report['estimated_cost']:.4f})"
+                            f"💰 Refinement complete! Total API Usage: {report.total_tokens} tokens "
+                            f"(~${report.total_cost:.4f})"
                         )
                     else:
                         self.cli_interface.display_message("✅ Specification refined successfully!")
