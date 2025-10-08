@@ -118,6 +118,20 @@ class AzureEmbeddingClient(IEmbeddingClient):
             # Get API key or bearer token value
             api_key_value = self._get_api_key_value()
 
+            # Create HTTP client with SSL verification setting
+            import httpx
+            http_client = httpx.AsyncClient(
+                verify=config.verify_ssl,
+                timeout=config.timeout,
+            )
+            
+            # Log warning if SSL verification is disabled
+            if not config.verify_ssl:
+                logger.warning(
+                    "⚠️  SSL certificate verification is DISABLED for embeddings. "
+                    "This is insecure and should only be used for development/testing."
+                )
+
             self.client = AsyncAzureOpenAI(
                 api_key=api_key_value,
                 api_version=config.api_version,
@@ -125,6 +139,7 @@ class AzureEmbeddingClient(IEmbeddingClient):
                 timeout=config.timeout,
                 max_retries=config.max_retries,
                 default_headers=default_headers,
+                http_client=http_client,
             )
         else:
             self.client = client

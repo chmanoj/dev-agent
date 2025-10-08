@@ -231,7 +231,13 @@ def _run_async_test(coro):
 
 
 @app.command("test")
-def test_azure_connection() -> None:
+def test_azure_connection(
+    insecure: bool = typer.Option(
+        False,
+        "--insecure",
+        help="Disable SSL certificate verification (INSECURE - for testing only)"
+    ),
+) -> None:
     """Test Azure OpenAI connection with comprehensive validation.
     
     This command tests both completion and embedding endpoints to ensure
@@ -243,12 +249,33 @@ def test_azure_connection() -> None:
     
     Examples:
         dev-agent azure test
+        dev-agent azure test --insecure  # Disable SSL verification (not recommended)
     """
     console.print("\n[bold blue]Testing Azure OpenAI Connection[/bold blue]")
     console.print("This will test both completion and embedding endpoints.\n")
+    
+    # Show warning if SSL verification is disabled
+    if insecure:
+        console.print(Panel(
+            "[yellow]⚠️  SSL CERTIFICATE VERIFICATION DISABLED[/yellow]\n\n"
+            "You are running in insecure mode. This means:\n"
+            "• SSL certificates will NOT be verified\n"
+            "• Your connection is vulnerable to man-in-the-middle attacks\n"
+            "• This should ONLY be used for testing/development\n"
+            "• NEVER use this in production\n\n"
+            "To fix SSL certificate issues properly, see:\n"
+            "  [cyan]FIX_SSL_CERTIFICATE_ERROR.md[/cyan]",
+            title="⚠️  Security Warning",
+            border_style="yellow"
+        ))
+        console.print()
 
     config_manager = ConfigManager()
     config = config_manager.get_config()
+    
+    # Override SSL verification if --insecure flag is used
+    if insecure and config.azure_openai:
+        config.azure_openai.verify_ssl = False
 
     # Validate configuration exists
     if not config.azure_openai.api_key or not config.azure_openai.endpoint:

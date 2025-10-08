@@ -32,6 +32,7 @@ class AzureOpenAIConfig(BaseModel):
         max_retries: Maximum retry attempts for failed API calls (0-10)
         timeout: Request timeout in seconds (1-300)
         batch_size: Batch size for embedding generation (1-100)
+        verify_ssl: Verify SSL certificates (default: True, set to False to disable - INSECURE!)
     
     Example:
         ```python
@@ -129,6 +130,10 @@ class AzureOpenAIConfig(BaseModel):
         ge=1,
         le=100,
         description="Batch size for embedding generation",
+    )
+    verify_ssl: bool = Field(
+        default=True,
+        description="Verify SSL certificates (set to False to disable SSL verification - INSECURE!)",
     )
 
     @field_validator("endpoint")

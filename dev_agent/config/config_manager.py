@@ -291,6 +291,10 @@ class ConfigManager:
             if batch_size := os.getenv("AZURE_OPENAI_BATCH_SIZE"):
                 config_data["batch_size"] = int(batch_size)
 
+            # SSL verification (default: True)
+            if verify_ssl := os.getenv("AZURE_OPENAI_VERIFY_SSL"):
+                config_data["verify_ssl"] = verify_ssl.lower() in ("true", "1", "yes")
+
             return PydanticAzureOpenAIConfig(**config_data)
 
         except (ValidationError, ValueError) as e:

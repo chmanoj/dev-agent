@@ -83,6 +83,9 @@ def main(
     version: Annotated[
         bool, typer.Option("--version", help="Show version and exit")
     ] = False,
+    insecure: Annotated[
+        bool, typer.Option("--insecure", help="Disable SSL certificate verification (INSECURE - for testing only)")
+    ] = False,
 ) -> None:
     """AI-powered development workflow assistant.
     
@@ -95,6 +98,21 @@ def main(
         config = ConfigManager().get_config()
         console.print(f"[bold cyan]dev-agent[/bold cyan] version {config.version}")
         raise typer.Exit(0)
+    
+    # Store insecure flag in context for subcommands to access
+    if insecure:
+        console.print(Panel(
+            "[yellow]⚠️  SSL CERTIFICATE VERIFICATION DISABLED[/yellow]\n\n"
+            "Running in insecure mode. SSL certificates will NOT be verified.\n"
+            "This should ONLY be used for testing/development.\n"
+            "NEVER use this in production environments.",
+            title="⚠️  Security Warning",
+            border_style="yellow"
+        ))
+        console.print()
+        # Set environment variable so all Azure OpenAI clients use it
+        import os
+        os.environ["AZURE_OPENAI_VERIFY_SSL"] = "false"
     
     if config_path:
         # TODO: Handle custom config path
