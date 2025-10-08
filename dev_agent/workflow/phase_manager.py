@@ -1,7 +1,9 @@
 """Phase management system that handles individual workflow phases."""
 
+from __future__ import annotations
+
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..analysis.codebase_analyzer import CodebaseAnalyzer
 from ..generation.python_code_generator import PythonCodeGenerator
@@ -25,23 +27,49 @@ from ..state.state_manager import StateManager
 from ..workflow.design_workflow import DesignWorkflow
 from ..workflow.specification_workflow import SpecificationWorkflow
 
+if TYPE_CHECKING:
+    from ..indexing.vector_database import VectorDatabase
+    from ..llm.base import IEmbeddingClient, ILLMClient
+    from ..llm.cost_tracker import CostTracker
+    from ..llm.token_counter import TokenCounter
+
 
 class PhaseManager(IPhaseManager):
-    """Manages execution of individual workflow phases with validation and recovery."""
+    """Manages execution of individual workflow phases with validation and recovery.
+    
+    This class orchestrates the execution of the four workflow phases (indexing,
+    specification, design, and implementation) with proper LLM client integration,
+    validation, and error recovery.
+    """
 
-    def __init__(self, cli_interface: ICLIInterface, state_manager: StateManager, embedding_client: Any | None = None, cost_tracker: Any | None = None):
-        """Initialize the phase manager.
+    def __init__(
+        self,
+        cli_interface: ICLIInterface,
+        state_manager: StateManager,
+        embedding_client: IEmbeddingClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        llm_client: ILLMClient | None = None,
+        token_counter: TokenCounter | None = None,
+        vector_db: VectorDatabase | None = None,
+    ):
+        """Initialize the phase manager with all required components.
 
         Args:
             cli_interface: CLI interface for user interaction
             state_manager: State manager for persistence
             embedding_client: Optional embedding client for indexing (required for specification phase)
             cost_tracker: Optional cost tracker for monitoring API usage
+            llm_client: Optional LLM client for AI-powered generation (required for specification phase)
+            token_counter: Optional token counter for cost estimation and validation
+            vector_db: Optional vector database for semantic code search
         """
         self.cli_interface = cli_interface
         self.state_manager = state_manager
         self.embedding_client = embedding_client
         self.cost_tracker = cost_tracker
+        self.llm_client = llm_client
+        self.token_counter = token_counter
+        self.vector_db = vector_db
 
         # Component instances (initialized lazily)
         self.indexing_engine: IIndexingEngine | None = None
@@ -105,6 +133,16 @@ class PhaseManager(IPhaseManager):
                 result.status = PhaseStatus.COMPLETED
                 result.message = "Index loaded from existing cache"
 
+                # Automatically transition to specification phase (same as new index)
+                project_state = self.state_manager.load_project_state()
+                if project_state:
+                    project_state.current_phase = PhaseType.SPECIFICATION
+                    self.state_manager.save_project_state(project_state)
+
+                self.cli_interface.display_message(
+                    "✅ Indexing complete! Moving to specification phase..."
+                )
+
             else:
                 # Build new index
                 self.cli_interface.display_message("Building codebase index...")
@@ -138,11 +176,17 @@ class PhaseManager(IPhaseManager):
                             index_version="1.0",
                         )
 
+                        # Automatically transition to specification phase
+                        project_state.current_phase = PhaseType.SPECIFICATION
+
                         self.state_manager.save_project_state(project_state)
 
                     self.cli_interface.display_message(
                         f"✅ Indexed {result.files_indexed} files "
                         f"({result.total_lines:,} lines) in {time.time() - start_time:.1f}s"
+                    )
+                    self.cli_interface.display_message(
+                        "✅ Indexing complete! Moving to specification phase..."
                     )
 
                 else:

@@ -1,20 +1,41 @@
 """Workflow integration for specification generation phase."""
 
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from rich.panel import Panel
+
 from ..generation.specification_generator import SpecificationGenerator
 from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.cli_interface import ICLIInterface
 from ..models.documents import SpecificationDocument
 from ..state.state_manager import StateManager
 
+if TYPE_CHECKING:
+    from ..indexing.vector_database import VectorDatabase
+    from ..llm.base import ILLMClient
+    from ..llm.cost_tracker import CostTracker
+    from ..llm.token_counter import TokenCounter
+
 
 class SpecificationWorkflow:
-    """Manages the specification generation workflow phase."""
+    """Manages the specification generation workflow phase.
+
+    This workflow orchestrates the specification generation process, integrating
+    with Azure OpenAI for AI-powered specification generation and refinement.
+    """
 
     def __init__(
         self,
         cli_interface: ICLIInterface,
         codebase_analyzer: ICodebaseAnalyzer | None = None,
         state_manager: StateManager | None = None,
+        llm_client: ILLMClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        token_counter: TokenCounter | None = None,
+        vector_db: VectorDatabase | None = None,
     ):
         """Initialize the specification workflow.
 
@@ -22,13 +43,31 @@ class SpecificationWorkflow:
             cli_interface: CLI interface for user interaction
             codebase_analyzer: Optional codebase analyzer for existing projects
             state_manager: Optional state manager for persistence
+            llm_client: LLM client for AI-powered generation (required for AI features)
+            cost_tracker: Cost tracker for monitoring API usage
+            token_counter: Token counter for validation
+            vector_db: Vector database for context retrieval
         """
         self.cli_interface = cli_interface
         self.codebase_analyzer = codebase_analyzer
         self.state_manager = state_manager
-        self.generator = SpecificationGenerator(cli_interface)
+        self.llm_client = llm_client
+        self.cost_tracker = cost_tracker
+        self.token_counter = token_counter
+        self.vector_db = vector_db
 
-    def execute_specification_phase(self, project_path: str) -> SpecificationDocument:
+        # Initialize generator with all components
+        self.generator = SpecificationGenerator(
+            cli_interface=cli_interface,
+            llm_client=llm_client,
+            cost_tracker=cost_tracker,
+            token_counter=token_counter,
+            vector_db=vector_db,
+        )
+
+    async def execute_specification_phase(
+        self, project_path: str
+    ) -> SpecificationDocument:
         """Execute the specification generation phase.
 
         Args:
@@ -36,17 +75,36 @@ class SpecificationWorkflow:
 
         Returns:
             Approved specification document
+
+        Raises:
+            ValueError: If LLM client is not configured
         """
+        # Check LLM client availability
+        if not self.llm_client:
+            self.cli_interface.display_message(
+                Panel(
+                    "[red]Azure OpenAI is not configured.[/red]\n\n"
+                    "Please configure Azure OpenAI first:\n"
+                    "  [cyan]dev-agent azure configure[/cyan]",
+                    title="❌ Configuration Required",
+                    border_style="red",
+                )
+            )
+            raise ValueError("LLM client required for specification generation")
+
         self.cli_interface.display_message("Starting specification generation phase...")
+
+        # Prompt user for feature description
+        feature_description = self._get_feature_description()
 
         # Determine if this is an existing codebase or new project
         if self.codebase_analyzer and self._has_existing_code(project_path):
-            spec = self._generate_from_existing_code()
+            spec = await self._generate_from_existing_code(feature_description)
         else:
-            spec = self._generate_from_user_input()
+            spec = await self._generate_from_user_input(feature_description)
 
         # Request approval and handle refinements
-        spec = self._approval_workflow(spec)
+        spec = await self._approval_workflow_ai(spec, feature_description)
 
         # Save the specification
         if self.state_manager:
@@ -57,8 +115,54 @@ class SpecificationWorkflow:
         )
         return spec
 
-    def _generate_from_existing_code(self) -> SpecificationDocument:
-        """Generate specification from existing codebase analysis."""
+    def _get_feature_description(self) -> str:
+        """Prompt user for feature description with validation.
+
+        Returns:
+            Feature description provided by user
+
+        Raises:
+            ValueError: If user provides empty description after multiple attempts
+        """
+        max_attempts = 3
+        attempt = 0
+
+        while attempt < max_attempts:
+            attempt += 1
+
+            feature_description = self.cli_interface.get_user_input(
+                "\n📝 What feature would you like to build? Describe it in detail: "
+            )
+
+            if feature_description.strip():
+                return feature_description.strip()
+
+            # Display error and re-prompt
+            if attempt < max_attempts:
+                remaining = max_attempts - attempt
+                self.cli_interface.display_message(
+                    f"❌ Feature description cannot be empty. "
+                    f"Please provide a description. ({remaining} attempts remaining)"
+                )
+            else:
+                self.cli_interface.display_message(
+                    "❌ Feature description is required. Cannot proceed without it."
+                )
+                raise ValueError("Feature description cannot be empty")
+
+        raise ValueError("Feature description cannot be empty")
+
+    async def _generate_from_existing_code(
+        self, feature_description: str
+    ) -> SpecificationDocument:
+        """Generate specification from existing codebase analysis using AI.
+
+        Args:
+            feature_description: Description of the feature to build
+
+        Returns:
+            Generated specification document
+        """
         self.cli_interface.display_message("Analyzing existing codebase...")
 
         # Perform codebase analysis
@@ -70,21 +174,107 @@ class SpecificationWorkflow:
             f"{len(analysis.requirement_evidence)} requirement areas."
         )
 
-        # Generate specification from analysis
-        spec = self.generator.generate_from_existing_code(analysis)
-
-        return spec
-
-    def _generate_from_user_input(self) -> SpecificationDocument:
-        """Generate specification from user input."""
-        self.cli_interface.display_message(
-            "No existing codebase detected. Let's create a specification from your requirements."
+        # Generate specification from analysis using AI
+        self.cli_interface.display_message("🤖 Generating specification using AI...")
+        spec = await self.generator.generate_from_existing_code_ai(
+            analysis=analysis,
+            feature_description=feature_description,
         )
 
-        # Generate specification from user input (will prompt user)
-        spec = self.generator.generate_from_user_input([])
+        return spec
+
+    async def _generate_from_user_input(
+        self, feature_description: str
+    ) -> SpecificationDocument:
+        """Generate specification from user input using AI.
+
+        Args:
+            feature_description: Description of the feature to build
+
+        Returns:
+            Generated specification document
+        """
+        self.cli_interface.display_message(
+            "No existing codebase detected. "
+            "Let's create a specification from your requirements."
+        )
+
+        # Generate specification from user input using AI
+        self.cli_interface.display_message("🤖 Generating specification using AI...")
+        spec = await self.generator.generate_from_user_input_ai(
+            feature_description=feature_description,
+        )
 
         return spec
+
+    async def _approval_workflow_ai(
+        self,
+        spec: SpecificationDocument,
+        feature_description: str,
+    ) -> SpecificationDocument:
+        """Handle the approval workflow with AI-powered refinements.
+
+        Args:
+            spec: Initial specification document
+            feature_description: Original feature description from user
+
+        Returns:
+            Final approved specification document
+        """
+        current_spec = spec
+        max_iterations = 3
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            # Request user approval
+            approved = self.generator.request_user_approval(current_spec)
+
+            if approved:
+                self.cli_interface.display_message("✅ Specification approved!")
+                return current_spec
+
+            # Get feedback for refinement
+            if iteration < max_iterations:
+                feedback = self.cli_interface.get_user_input(
+                    "\n💬 Please provide feedback for improving the specification: "
+                )
+
+                if feedback.strip():
+                    self.cli_interface.display_message(
+                        "🤖 Refining specification using AI based on your feedback..."
+                    )
+
+                    # Use AI to refine specification
+                    current_spec = await self.generator.refine_specification_ai(
+                        spec=current_spec,
+                        feedback=feedback,
+                        feature_description=feature_description,
+                    )
+
+                    # Display cost information if available
+                    if self.cost_tracker:
+                        report = self.cost_tracker.get_report()
+                        self.cli_interface.display_message(
+                            f"💰 API Usage: {report['total_tokens']} tokens "
+                            f"(~${report['estimated_cost']:.4f})"
+                        )
+                else:
+                    self.cli_interface.display_message(
+                        "No feedback provided. Using current specification."
+                    )
+                    current_spec.approved = True
+                    return current_spec
+            else:
+                self.cli_interface.display_message(
+                    "Maximum refinement iterations reached. "
+                    "Using current specification."
+                )
+                current_spec.approved = True
+                return current_spec
+
+        return current_spec
 
     def _approval_workflow(self, spec: SpecificationDocument) -> SpecificationDocument:
         """Handle the approval workflow with potential refinements.
@@ -130,7 +320,8 @@ class SpecificationWorkflow:
                     return current_spec
             else:
                 self.cli_interface.display_message(
-                    "Maximum refinement iterations reached. Using current specification."
+                    "Maximum refinement iterations reached. "
+                    "Using current specification."
                 )
                 current_spec.approved = True
                 return current_spec
@@ -146,7 +337,6 @@ class SpecificationWorkflow:
         Returns:
             True if existing code is found, False otherwise
         """
-        from pathlib import Path
 
         project_dir = Path(project_path)
 
