@@ -795,30 +795,28 @@ class SpecificationGenerator(ISpecificationGenerator):
         Returns:
             Context dictionary for template rendering
         """
-        # Build codebase summary
+        # Build codebase summary - FOCUSED on context, not features
         codebase_summary = (
             f"Project Purpose: {analysis.project_purpose}\n\n"
-            f"Main Features:\n"
+            f"Technology Stack:\n"
         )
-        for feature in analysis.main_features[:5]:
-            codebase_summary += f"- {feature}\n"
-        
-        codebase_summary += f"\nUser Roles: {', '.join(analysis.user_roles)}\n"
-        codebase_summary += f"\nFunctional Areas:\n"
-        for area in analysis.functional_areas[:5]:
-            codebase_summary += f"- {area}\n"
-        
-        codebase_summary += f"\nTechnology Stack:\n"
         for tech in analysis.technology_constraints[:5]:
             codebase_summary += f"- {tech}\n"
         
-        # Format relevant code chunks
+        # Only include user roles if relevant
+        if analysis.user_roles:
+            codebase_summary += f"\nUser Roles: {', '.join(analysis.user_roles)}\n"
+        
+        # Format relevant code chunks - these should be MOST relevant to the feature request
         relevant_code_chunks = "\n\n---\n\n".join(relevant_chunks) if relevant_chunks else "No relevant code examples found."
         
-        # Extract detected patterns
-        detected_patterns = "Patterns detected from codebase analysis:\n"
-        for evidence in analysis.requirement_evidence[:3]:
-            detected_patterns += f"- {evidence.requirement_type}: {evidence.description}\n"
+        # Extract detected patterns - focus on architectural patterns, not features
+        detected_patterns = "Architectural and coding patterns detected:\n"
+        if analysis.requirement_evidence:
+            for evidence in analysis.requirement_evidence[:3]:
+                detected_patterns += f"- {evidence.requirement_type}: {evidence.description}\n"
+        else:
+            detected_patterns += "- No specific patterns detected\n"
         
         return {
             "codebase_summary": codebase_summary,

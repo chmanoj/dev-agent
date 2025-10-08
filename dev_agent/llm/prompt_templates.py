@@ -122,46 +122,68 @@ class PromptTemplate:
 # Specification Generation Template
 SPECIFICATION_TEMPLATE = PromptTemplate(
     system_prompt="""You are a technical specification writer analyzing a Python codebase.
-Your task is to generate detailed, actionable specifications based on codebase analysis.
+Your task is to generate detailed, actionable specifications for the SPECIFIC FEATURE requested by the user.
+
+CRITICAL: Focus ONLY on the feature described in the Feature Request section. Do NOT generate specifications for existing features or generic functionality like "data management" or "user authentication" unless explicitly requested.
 
 Key principles:
-1. Follow existing architectural patterns shown in the code examples
-2. Use the same naming conventions and code style
-3. Maintain consistency with current dependencies
-4. Include clear acceptance criteria
-5. Specify error handling requirements
-6. Consider edge cases and user experience""",
+1. Generate specifications ONLY for the requested feature
+2. Follow existing architectural patterns shown in the code examples
+3. Use the same naming conventions and code style
+4. Maintain consistency with current dependencies
+5. Include clear acceptance criteria
+6. Specify error handling requirements
+7. Consider edge cases and user experience""",
     
-    user_prompt_template="""## Codebase Context
-{codebase_summary}
-
-## Relevant Code Examples
-{relevant_code_chunks}
-
-## Existing Patterns
-{detected_patterns}
-
-## Feature Request
+    user_prompt_template="""## FEATURE REQUEST (PRIMARY FOCUS)
 {feature_description}
 
+IMPORTANT: Generate a specification ONLY for the feature described above. Do NOT include specifications for existing features or unrelated functionality.
+
+## Codebase Context (for reference only)
+{codebase_summary}
+
+## Relevant Code Examples (for pattern matching)
+{relevant_code_chunks}
+
+## Existing Patterns (to follow)
+{detected_patterns}
+
 ## Task
-Generate a detailed specification for the requested feature that:
-- Follows the existing architectural patterns
-- Uses the same naming conventions and code style
-- Maintains consistency with current dependencies
-- Includes functional and technical requirements
-- Provides clear acceptance criteria
-- Specifies error handling requirements
+Generate a detailed specification SPECIFICALLY for the requested feature above. The specification must:
+- Address ONLY the feature described in the Feature Request
+- Follow the existing architectural patterns shown in code examples
+- Use the same naming conventions and code style
+- Maintain consistency with current dependencies
+- Include functional and technical requirements
+- Provide clear acceptance criteria in EARS format (WHEN/THEN, IF/THEN, SHALL)
+- Specify error handling requirements
 
 ## Output Format
 Provide a structured specification with:
-1. **Overview**: Brief description of the feature
-2. **Functional Requirements**: What the feature should do
-3. **Technical Requirements**: How it should be implemented
-4. **Acceptance Criteria**: Testable conditions for completion
-5. **Dependencies**: Required libraries or components
-6. **Error Handling**: Expected error scenarios and handling
-7. **Testing Strategy**: How to verify the implementation""",
+
+### Introduction
+[Brief description of the REQUESTED FEATURE and its purpose]
+
+### Key Features
+[List ONLY the features related to the user's request]
+- Feature 1 related to request
+- Feature 2 related to request
+- Feature 3 related to request
+
+### Requirements
+
+#### Requirement 1
+**User Story:** As a [role], I want [specific feature from request], so that [benefit]
+
+**Acceptance Criteria:**
+1. WHEN [event] THEN [system] SHALL [response]
+2. IF [precondition] THEN [system] SHALL [response]
+3. WHERE [condition] THEN [system] SHALL [response]
+
+[Continue with additional requirements ONLY for the requested feature...]
+
+REMEMBER: Focus exclusively on the feature described in the Feature Request section.""",
     
     required_context=[
         "codebase_summary",
@@ -368,57 +390,62 @@ Use simple, clear task descriptions focused on coding activities.""",
 # Specification Generation for New Projects Template
 SPECIFICATION_NEW_PROJECT_TEMPLATE = PromptTemplate(
     system_prompt="""You are a technical specification writer creating specifications for new projects.
-Your task is to generate detailed, actionable specifications based on user requirements.
+Your task is to generate detailed, actionable specifications for the SPECIFIC FEATURE requested by the user.
+
+CRITICAL: Focus ONLY on the feature described in the Feature Request. Do NOT add generic features like "data management", "user authentication", or "file management" unless explicitly mentioned in the request.
 
 Key principles:
-1. Create clear, testable requirements
-2. Use EARS format for acceptance criteria (WHEN/THEN, IF/THEN, SHALL)
-3. Include user stories for each requirement
-4. Consider edge cases and error scenarios
-5. Specify clear acceptance criteria
-6. Focus on functional and technical requirements""",
+1. Generate specifications ONLY for the requested feature
+2. Create clear, testable requirements
+3. Use EARS format for acceptance criteria (WHEN/THEN, IF/THEN, SHALL)
+4. Include user stories for each requirement
+5. Consider edge cases and error scenarios
+6. Specify clear acceptance criteria
+7. Focus on functional and technical requirements""",
     
-    user_prompt_template="""## Feature Request
+    user_prompt_template="""## FEATURE REQUEST (PRIMARY FOCUS)
 {feature_description}
+
+IMPORTANT: Generate a specification ONLY for the feature described above. Do NOT add generic features or functionality not mentioned in the request.
 
 ## Project Type
 {project_type}
 
 ## Task
-Generate a detailed specification for a new project that implements the requested feature.
+Generate a detailed specification that implements ONLY the requested feature above.
 
-The specification should include:
-1. **Overview**: Clear introduction explaining the feature and its purpose
-2. **Key Features**: List of main features to be implemented
-3. **Requirements**: Detailed functional requirements with:
-   - User stories in format: "As a [role], I want [feature], so that [benefit]"
-   - Acceptance criteria in EARS format:
-     * WHEN [event] THEN [system] SHALL [response]
-     * IF [precondition] THEN [system] SHALL [response]
-     * WHERE [condition] THEN [system] SHALL [response]
+The specification must:
+1. Address ONLY what is described in the Feature Request
+2. NOT include generic features like authentication, data management, or file handling unless explicitly requested
+3. Focus on the specific functionality the user wants
+4. Include clear, testable requirements
+5. Use EARS format for acceptance criteria
 
 ## Output Format
 Provide a structured specification with:
 
 ### Introduction
-[Brief overview of the feature and its purpose]
+[Brief overview of the REQUESTED FEATURE and its purpose - do not add unrelated features]
 
 ### Key Features
-- Feature 1
-- Feature 2
-- Feature 3
+[List ONLY features directly related to the user's request]
+- Feature 1 from request
+- Feature 2 from request
+- Feature 3 from request
 
 ### Requirements
 
 #### Requirement 1
-**User Story:** As a [role], I want [feature], so that [benefit]
+**User Story:** As a [role], I want [specific feature from request], so that [benefit]
 
 **Acceptance Criteria:**
-1. WHEN [event] THEN [system] SHALL [response]
-2. IF [precondition] THEN [system] SHALL [response]
-3. WHERE [condition] THEN [system] SHALL [response]
+1. WHEN [event related to request] THEN [system] SHALL [response]
+2. IF [precondition related to request] THEN [system] SHALL [response]
+3. WHERE [condition related to request] THEN [system] SHALL [response]
 
-[Continue with additional requirements...]""",
+[Continue with additional requirements ONLY for the requested feature...]
+
+REMEMBER: Focus exclusively on what the user requested. Do not add generic features.""",
     
     required_context=[
         "feature_description",
