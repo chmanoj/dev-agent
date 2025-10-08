@@ -6,6 +6,7 @@ AI-powered development workflow assistant that implements a four-phase developme
 
 ### Core Capabilities
 - **Azure OpenAI Integration**: Enterprise-grade AI powered by GPT-4 and text-embedding-ada-002 using your Azure OpenAI deployments
+- **Flexible Authentication**: Support for both API key and Azure AD authentication with custom headers for auditing
 - **Interactive CLI**: Chat-based command-line interface with user approval workflows built with Typer and Rich
 - **High-Performance Indexing**: Analyzes large codebases using Tree-sitter and Azure OpenAI embeddings
 - **AI-Powered Generation**: Intelligent specification, design, and task generation using GPT-4
@@ -304,18 +305,40 @@ uv run dev-agent azure status
 ```
 
 **Environment variables (recommended for production):**
+
+*Option A: API Key Authentication (Default)*
 ```bash
-export AZURE_OPENAI_API_KEY="your-api-key"
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_OPENAI_CHAT_MODEL="gpt-4"
-export AZURE_OPENAI_EMBEDDING_MODEL="text-embedding-ada-002"
+export AZURE_OPENAI_API_KEY="your-api-key"
+export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
 ```
+
+*Option B: Azure AD Authentication (Enterprise)*
+```bash
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_OPENAI_TOKEN="your-bearer-token"
+export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
+
+# Optional: Custom headers for auditing
+export AZURE_OPENAI_USER_SID="A123456"
+export AZURE_OPENAI_CUSTOM_HEADERS='{"department": "engineering"}'
+```
+
+**Authentication Methods:**
+- **API Key**: Simple authentication using Azure OpenAI API key (default)
+- **Azure AD**: Enterprise authentication using bearer tokens with support for custom headers and auditing
 
 **Required Azure OpenAI deployments:**
 - GPT-4 (or GPT-4 Turbo) for code generation and specifications
 - text-embedding-ada-002 for code embeddings and similarity search
 
-For detailed setup instructions, see the [Azure OpenAI documentation](docs/azure-openai-integration.md).
+**Documentation:**
+- [Azure OpenAI Configuration Guide](docs/configuration/azure-openai.md) - Complete setup instructions
+- [Azure AD Migration Guide](docs/configuration/azure-ad-migration-guide.md) - Migrate from API key to Azure AD authentication
 
 ### CLI Commands Reference
 

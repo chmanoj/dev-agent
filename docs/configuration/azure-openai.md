@@ -338,6 +338,456 @@ Run the test:
 uv run python test_azure.py
 ```
 
+## Azure AD Authentication
+
+dev-agent supports Azure Active Directory (Azure AD) authentication for enterprise environments that require bearer token authentication instead of simple API keys. This is particularly useful for organizations with strict security policies, compliance requirements, or those using managed identities.
+
+### Authentication Methods
+
+dev-agent supports two authentication methods:
+
+1. **API Key Authentication** (default): Simple authentication using an API key
+2. **Azure AD Authentication**: Enterprise authentication using bearer tokens
+
+When both are configured, bearer token authentication takes precedence.
+
+### Why Use Azure AD Authentication?
+
+- **Enhanced Security**: Bearer tokens can be short-lived and automatically rotated
+- **Compliance**: Meet organizational security policies requiring Azure AD
+- **Auditing**: Better tracking of API usage by user with custom headers
+- **Managed Identities**: Use Azure managed identities when running on Azure infrastructure
+- **Centralized Access Control**: Manage access through Azure AD policies
+
+### Setting Up Azure AD Authentication
+
+#### Step 1: Obtain a Bearer Token
+
+There are several ways to obtain an Azure AD bearer token:
+
+**Option A: Using Azure CLI**
+
+```bash
+# Login to Azure
+az login
+
+# Get access token for Azure OpenAI
+az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv
+```
+
+**Option B: Using Azure PowerShell**
+
+```powershell
+# Connect to Azure
+Connect-AzAccount
+
+# Get access token
+(Get-AzAccessToken -ResourceUrl "https://cognitiveservices.azure.com").Token
+```
+
+**Option C: Using Managed Identity (for Azure resources)**
+
+```python
+from azure.identity import DefaultAzureCredential
+
+credential = DefaultAzureCredential()
+token = credential.get_token("https://cognitiveservices.azure.com/.default")
+bearer_token = token.token
+```
+
+**Option D: Using Service Principal**
+
+```bash
+# Login with service principal
+az login --service-principal \
+  --username <app-id> \
+  --password <password-or-cert> \
+  --tenant <tenant-id>
+
+# Get token
+az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv
+```
+
+#### Step 2: Configure Environment Variables
+
+Replace or add to your existing Azure OpenAI configuration:
+
+**Linux/macOS**:
+
+```bash
+# Azure AD Authentication
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_OPENAI_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGc..."  # Your bearer token
+export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
+
+# Optional: User session ID for auditing
+export AZURE_OPENAI_USER_SID="A123456"
+
+# Optional: Custom headers (JSON format)
+export AZURE_OPENAI_CUSTOM_HEADERS='{"department": "engineering", "project": "dev-agent"}'
+```
+
+**Windows (PowerShell)**:
+
+```powershell
+# Azure AD Authentication
+$env:AZURE_OPENAI_ENDPOINT = "https://your-resource.openai.azure.com/"
+$env:AZURE_OPENAI_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGc..."
+$env:AZURE_OPENAI_API_VERSION = "2024-02-15-preview"
+$env:AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4"
+$env:AZURE_OPENAI_EMBEDDING_DEPLOYMENT = "text-embedding-ada-002"
+$env:AZURE_OPENAI_USER_SID = "A123456"
+```
+
+**Using .env file**:
+
+```bash
+# .env file (add to .gitignore!)
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGc...
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+AZURE_OPENAI_USER_SID=A123456
+AZURE_OPENAI_CUSTOM_HEADERS={"department": "engineering"}
+```
+
+### Custom Headers for Auditing
+
+Custom headers allow you to track API usage by user, department, or project for compliance and auditing purposes.
+
+#### User Session ID (user_sid)
+
+The `user_sid` header is commonly used for tracking individual user sessions:
+
+```bash
+export AZURE_OPENAI_USER_SID="A123456"
+```
+
+This automatically adds a `user_sid` header to all Azure OpenAI API requests.
+
+#### Additional Custom Headers
+
+You can add any custom headers as a JSON object:
+
+```bash
+export AZURE_OPENAI_CUSTOM_HEADERS='{
+  "user_sid": "A123456",
+  "department": "engineering",
+  "project": "dev-agent",
+  "cost_center": "CC-1234",
+  "environment": "production"
+}'
+```
+
+**Note**: Custom headers must be valid JSON. If parsing fails, dev-agent will log a warning and continue without custom headers.
+
+### Configuration Examples
+
+#### Example 1: API Key Authentication (Default)
+
+```bash
+# Traditional API key authentication
+export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com/"
+export AZURE_OPENAI_API_KEY="abc123def456..."
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
+```
+
+#### Example 2: Azure AD Authentication
+
+```bash
+# Azure AD bearer token authentication
+export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com/"
+export AZURE_OPENAI_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGc..."
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
+```
+
+#### Example 3: Azure AD with Custom Headers
+
+```bash
+# Azure AD with auditing headers
+export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com/"
+export AZURE_OPENAI_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGc..."
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
+export AZURE_OPENAI_USER_SID="A123456"
+export AZURE_OPENAI_CUSTOM_HEADERS='{"department": "engineering", "project": "dev-agent"}'
+```
+
+#### Example 4: Using Deployment Name Alias
+
+```bash
+# Using AZURE_CHAT_DEPLOYMENT_NAME as an alias
+export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com/"
+export AZURE_OPENAI_TOKEN="eyJ0eXAiOiJKV1QiLCJhbGc..."
+export AZURE_CHAT_DEPLOYMENT_NAME="gpt-4"  # Alternative to AZURE_OPENAI_DEPLOYMENT_NAME
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
+```
+
+### Token Management
+
+#### Token Expiration
+
+Azure AD bearer tokens typically expire after 1 hour. You'll need to refresh tokens periodically:
+
+**Manual Refresh**:
+```bash
+# Get new token
+NEW_TOKEN=$(az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv)
+
+# Update environment variable
+export AZURE_OPENAI_TOKEN="$NEW_TOKEN"
+```
+
+**Automated Refresh Script** (`refresh_token.sh`):
+```bash
+#!/bin/bash
+# refresh_token.sh - Automatically refresh Azure AD token
+
+while true; do
+    # Get new token
+    TOKEN=$(az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv)
+    
+    # Update environment variable
+    export AZURE_OPENAI_TOKEN="$TOKEN"
+    
+    echo "Token refreshed at $(date)"
+    
+    # Wait 50 minutes before refreshing (tokens expire in 60 minutes)
+    sleep 3000
+done
+```
+
+**Using Managed Identity** (recommended for Azure resources):
+```python
+# automatic_token_refresh.py
+from azure.identity import DefaultAzureCredential
+import os
+import time
+
+def refresh_token():
+    """Automatically refresh token using managed identity."""
+    credential = DefaultAzureCredential()
+    
+    while True:
+        try:
+            token = credential.get_token("https://cognitiveservices.azure.com/.default")
+            os.environ["AZURE_OPENAI_TOKEN"] = token.token
+            print(f"Token refreshed at {time.ctime()}")
+            
+            # Refresh 5 minutes before expiration
+            sleep_time = token.expires_on - time.time() - 300
+            time.sleep(max(sleep_time, 0))
+        except Exception as e:
+            print(f"Error refreshing token: {e}")
+            time.sleep(60)  # Retry after 1 minute
+
+if __name__ == "__main__":
+    refresh_token()
+```
+
+#### Token Security Best Practices
+
+1. **Never commit tokens to version control**
+   - Add `.env` to `.gitignore`
+   - Use environment variables or Azure Key Vault
+   - Tokens are even more sensitive than API keys due to shorter lifespan
+
+2. **Use short-lived tokens**
+   - Default 1-hour expiration is recommended
+   - Implement automatic refresh
+   - Don't extend token lifetime unnecessarily
+
+3. **Rotate tokens regularly**
+   - Implement automatic token refresh
+   - Use managed identities when possible
+   - Monitor token usage and expiration
+
+4. **Secure token storage**
+   - Use Azure Key Vault for production
+   - Encrypt tokens at rest
+   - Use secure environment variable management
+
+### Troubleshooting Azure AD Authentication
+
+#### "401 Unauthorized" with Bearer Token
+
+**Problem**: Bearer token is invalid or expired
+
+**Solutions**:
+
+1. **Check token expiration**:
+   ```bash
+   # Decode JWT token to check expiration (requires jq)
+   echo "$AZURE_OPENAI_TOKEN" | cut -d'.' -f2 | base64 -d | jq '.exp'
+   
+   # Compare with current time
+   date +%s
+   ```
+
+2. **Refresh the token**:
+   ```bash
+   # Get new token
+   export AZURE_OPENAI_TOKEN=$(az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv)
+   ```
+
+3. **Verify token audience**:
+   - Token must be for `https://cognitiveservices.azure.com`
+   - Check token claims using JWT decoder
+
+4. **Check Azure AD permissions**:
+   - Ensure service principal has "Cognitive Services User" role
+   - Verify RBAC permissions on the Azure OpenAI resource
+
+#### "403 Forbidden" with Bearer Token
+
+**Problem**: Token is valid but lacks required permissions
+
+**Solutions**:
+
+1. **Assign required role**:
+   ```bash
+   # Assign Cognitive Services User role
+   az role assignment create \
+     --assignee <user-or-service-principal-id> \
+     --role "Cognitive Services User" \
+     --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.CognitiveServices/accounts/<resource-name>
+   ```
+
+2. **Check resource access**:
+   - Verify the resource exists and is accessible
+   - Check network restrictions on the resource
+   - Ensure no conditional access policies are blocking
+
+3. **Verify tenant**:
+   - Ensure you're authenticated to the correct Azure AD tenant
+   - Check tenant ID in token matches resource tenant
+
+#### Custom Headers Not Working
+
+**Problem**: Custom headers are not being sent with requests
+
+**Solutions**:
+
+1. **Validate JSON format**:
+   ```bash
+   # Test JSON parsing
+   echo '{"user_sid": "A123456"}' | python -m json.tool
+   ```
+
+2. **Check environment variable**:
+   ```bash
+   echo $AZURE_OPENAI_CUSTOM_HEADERS
+   ```
+
+3. **Review logs**:
+   ```bash
+   # Enable debug logging
+   export DEV_AGENT_LOG_LEVEL=DEBUG
+   uv run dev-agent --verbose init
+   ```
+
+4. **Verify header names**:
+   - Use lowercase header names
+   - Avoid special characters
+   - Check Azure OpenAI header restrictions
+
+#### Token Refresh Failures
+
+**Problem**: Automatic token refresh is failing
+
+**Solutions**:
+
+1. **Check Azure CLI authentication**:
+   ```bash
+   az account show
+   ```
+
+2. **Re-authenticate**:
+   ```bash
+   az login
+   ```
+
+3. **Verify managed identity** (for Azure resources):
+   ```bash
+   # Test managed identity
+   curl 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://cognitiveservices.azure.com' -H Metadata:true
+   ```
+
+4. **Check service principal credentials**:
+   ```bash
+   # Verify service principal
+   az ad sp show --id <app-id>
+   ```
+
+### Migration from API Key to Azure AD
+
+If you're currently using API key authentication and want to migrate to Azure AD:
+
+#### Step 1: Test Azure AD Authentication
+
+Keep your existing API key configuration and add Azure AD:
+
+```bash
+# Keep existing API key
+export AZURE_OPENAI_API_KEY="your-existing-key"
+
+# Add bearer token (takes precedence)
+export AZURE_OPENAI_TOKEN="your-bearer-token"
+```
+
+Test that Azure AD authentication works:
+```bash
+uv run dev-agent azure test
+```
+
+#### Step 2: Update Configuration
+
+Once verified, you can remove the API key:
+
+```bash
+# Remove API key from environment
+unset AZURE_OPENAI_API_KEY
+
+# Keep only bearer token
+export AZURE_OPENAI_TOKEN="your-bearer-token"
+```
+
+#### Step 3: Update Documentation
+
+Update your team's documentation and deployment scripts to use Azure AD authentication.
+
+#### Step 4: Implement Token Refresh
+
+Set up automatic token refresh to avoid authentication failures:
+
+```bash
+# Add to your startup script
+./refresh_token.sh &
+```
+
+### Best Practices
+
+1. **Use Managed Identities**: When running on Azure infrastructure (VMs, App Service, Functions), use managed identities instead of service principals
+
+2. **Implement Token Refresh**: Always implement automatic token refresh to avoid authentication failures
+
+3. **Monitor Token Usage**: Track token expiration and refresh patterns in your logs
+
+4. **Use Custom Headers**: Leverage custom headers for auditing and compliance tracking
+
+5. **Secure Token Storage**: Never log or expose bearer tokens in error messages or logs
+
+6. **Test Thoroughly**: Test Azure AD authentication in development before deploying to production
+
+7. **Document Configuration**: Maintain clear documentation of your Azure AD setup for your team
+
+8. **Plan for Failures**: Implement fallback mechanisms and clear error messages for authentication failures
+
 ## Configuration Options Reference
 
 ### Required Environment Variables
@@ -345,10 +795,14 @@ uv run python test_azure.py
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `AZURE_OPENAI_ENDPOINT` | Your Azure OpenAI endpoint URL | `https://my-resource.openai.azure.com/` |
-| `AZURE_OPENAI_API_KEY` | Your Azure OpenAI API key | `abc123...` |
+| `AZURE_OPENAI_API_KEY` | Your Azure OpenAI API key (if using API key auth) | `abc123...` |
+| `AZURE_OPENAI_TOKEN` | Azure AD bearer token (if using Azure AD auth) | `eyJ0eXAiOiJKV1Qi...` |
 | `AZURE_OPENAI_API_VERSION` | Azure OpenAI API version | `2024-02-15-preview` |
 | `AZURE_OPENAI_DEPLOYMENT_NAME` | GPT-4 deployment name | `gpt-4` |
+| `AZURE_CHAT_DEPLOYMENT_NAME` | Alternative name for GPT-4 deployment (alias) | `gpt-4` |
 | `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embedding deployment name | `text-embedding-ada-002` |
+
+**Note**: Either `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_TOKEN` must be provided. If both are present, `AZURE_OPENAI_TOKEN` takes precedence.
 
 ### Optional Environment Variables
 
@@ -359,6 +813,8 @@ uv run python test_azure.py
 | `AZURE_OPENAI_MAX_RETRIES` | Maximum retry attempts | `3` |
 | `AZURE_OPENAI_TIMEOUT` | Request timeout in seconds | `60` |
 | `AZURE_OPENAI_BATCH_SIZE` | Embedding batch size | `16` |
+| `AZURE_OPENAI_USER_SID` | User session ID for auditing | None |
+| `AZURE_OPENAI_CUSTOM_HEADERS` | Custom headers as JSON string | `{}` |
 
 ## Troubleshooting
 
@@ -1305,6 +1761,7 @@ print(f"Breakdown: {estimate.breakdown}")
 
 ## Next Steps
 
+- [Azure AD Migration Guide](./azure-ad-migration-guide.md) - Migrate from API key to Azure AD authentication
 - [Cost Management Guide](../usage/cost-management.md) - Learn how to track and optimize costs
 - [Usage Examples](../examples/azure-setup.md) - See practical examples
 - [API Documentation](../api/llm.md) - Explore the LLM integration API

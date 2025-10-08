@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import SecretStr, ValidationError
+from pydantic import ValidationError
 
 from dev_agent.models.llm_config import AzureOpenAIConfig as PydanticAzureOpenAIConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -60,7 +63,7 @@ class DevAgentConfig:
     version: str = "0.1.0"
 
     @classmethod
-    def default(cls) -> "DevAgentConfig":
+    def default(cls) -> DevAgentConfig:
         """Create default configuration with optional Azure OpenAI."""
         return cls(
             indexing=IndexingConfig(),
@@ -71,10 +74,10 @@ class DevAgentConfig:
 
     def to_dict(self, redact_secrets: bool = True) -> dict[str, Any]:
         """Convert configuration to dictionary.
-        
+
         Args:
             redact_secrets: If True, redact API keys in output (default: True)
-        
+
         Returns:
             Dictionary representation with Azure OpenAI config properly serialized
         """
@@ -84,7 +87,7 @@ class DevAgentConfig:
             "cli": asdict(self.cli),
             "version": self.version,
         }
-        
+
         # Serialize Azure OpenAI config if present
         if self.azure_openai is not None:
             # Use model_dump to get dict, excluding unset fields
@@ -100,29 +103,32 @@ class DevAgentConfig:
                     # Get the actual secret value for saving
                     azure_dict["api_key"] = self.azure_openai.api_key.get_secret_value()
             config_dict["azure_openai"] = azure_dict
-        
+
         return config_dict
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DevAgentConfig":
+    def from_dict(cls, data: dict[str, Any]) -> DevAgentConfig:
         """Create configuration from dictionary.
-        
+
         Args:
             data: Configuration dictionary
-            
+
         Returns:
             DevAgentConfig instance with validated Azure OpenAI config
         """
         # Parse Azure OpenAI config if present
         azure_config = None
-        if "azure_openai" in data and data["azure_openai"]:
+        if data.get("azure_openai"):
             azure_data = data["azure_openai"]
             # Handle legacy field names for backward compatibility
             if "chat_model" in azure_data and "deployment_name" not in azure_data:
                 azure_data["deployment_name"] = azure_data.pop("chat_model")
-            if "embedding_model" in azure_data and "embedding_deployment" not in azure_data:
+            if (
+                "embedding_model" in azure_data
+                and "embedding_deployment" not in azure_data
+            ):
                 azure_data["embedding_deployment"] = azure_data.pop("embedding_model")
-            
+
             # Skip if API key is redacted (will be loaded from env vars)
             if azure_data.get("api_key") != "***REDACTED***":
                 try:
@@ -130,7 +136,7 @@ class DevAgentConfig:
                 except ValidationError:
                     # If validation fails, skip and rely on env vars
                     pass
-        
+
         return cls(
             indexing=IndexingConfig(**data.get("indexing", {})),
             logging=LoggingConfig(**data.get("logging", {})),
@@ -142,7 +148,7 @@ class DevAgentConfig:
 
 class ConfigManager:
     """Manages configuration loading, saving, and access.
-    
+
     Configuration precedence (highest to lowest):
     1. Environment variables
     2. Project-specific config file
@@ -170,65 +176,125 @@ class ConfigManager:
     @staticmethod
     def _load_azure_config_from_env() -> PydanticAzureOpenAIConfig | None:
         """Load Azure OpenAI configuration from environment variables.
-        
+
         Environment variables take precedence over config file values.
-        
+        Supports both API key and Azure AD bearer token authentication.
+
         Returns:
             AzureOpenAIConfig if all required env vars are present, None otherwise
-            
+
         Environment Variables:
             AZURE_OPENAI_ENDPOINT: Azure OpenAI endpoint URL (required)
-            AZURE_OPENAI_API_KEY: Azure OpenAI API key (required)
+            AZURE_OPENAI_API_KEY: Azure OpenAI API key (conditional - required if no bearer token)
+            AZURE_OPENAI_TOKEN: Azure AD bearer token (conditional - required if no API key)
             AZURE_OPENAI_API_VERSION: API version (optional, default: 2024-02-15-preview)
             AZURE_OPENAI_DEPLOYMENT_NAME: GPT-4 deployment name (required)
+            AZURE_CHAT_DEPLOYMENT_NAME: Alias for AZURE_OPENAI_DEPLOYMENT_NAME (optional)
             AZURE_OPENAI_EMBEDDING_DEPLOYMENT: Embedding deployment name (required)
+            AZURE_OPENAI_USER_SID: User session ID for auditing (optional)
+            AZURE_OPENAI_CUSTOM_HEADERS: Custom headers as JSON string (optional)
             AZURE_OPENAI_MAX_TOKENS: Max tokens (optional, default: 4000)
             AZURE_OPENAI_TEMPERATURE: Temperature (optional, default: 0.7)
             AZURE_OPENAI_MAX_RETRIES: Max retries (optional, default: 3)
             AZURE_OPENAI_TIMEOUT: Timeout in seconds (optional, default: 60)
             AZURE_OPENAI_BATCH_SIZE: Batch size (optional, default: 16)
+
+        Note:
+            - Bearer token (AZURE_OPENAI_TOKEN) takes precedence over API key if both are set
+            - AZURE_CHAT_DEPLOYMENT_NAME is an alias for AZURE_OPENAI_DEPLOYMENT_NAME
+            - Custom headers are parsed from JSON string format
+            - user_sid is automatically merged into custom_headers dict
         """
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+
+        # Support both API key and bearer token authentication
+        # Bearer token takes precedence if both are provided
+        bearer_token = os.getenv("AZURE_OPENAI_TOKEN")
         api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+
+        # Support AZURE_CHAT_DEPLOYMENT_NAME as alias for AZURE_OPENAI_DEPLOYMENT_NAME
+        deployment_name = os.getenv("AZURE_CHAT_DEPLOYMENT_NAME") or os.getenv(
+            "AZURE_OPENAI_DEPLOYMENT_NAME"
+        )
         embedding_deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
-        
+
         # Check if required env vars are present
-        if not all([endpoint, api_key, deployment_name, embedding_deployment]):
+        # Either api_key or bearer_token must be provided (validated by Pydantic model)
+        if not all([endpoint, deployment_name, embedding_deployment]):
             return None
-        
+
+        # At least one authentication method must be present
+        if not api_key and not bearer_token:
+            return None
+
         try:
             # Build config from env vars
-            config_data = {
+            config_data: dict[str, Any] = {
                 "endpoint": endpoint,
-                "api_key": api_key,
                 "deployment_name": deployment_name,
                 "embedding_deployment": embedding_deployment,
             }
-            
+
+            # Add authentication credentials
+            # Bearer token takes precedence over API key
+            if bearer_token:
+                config_data["bearer_token"] = bearer_token
+            if api_key:
+                config_data["api_key"] = api_key
+
+            # Parse custom headers from JSON string
+            custom_headers: dict[str, str] = {}
+            if custom_headers_json := os.getenv("AZURE_OPENAI_CUSTOM_HEADERS"):
+                try:
+                    parsed_headers = json.loads(custom_headers_json)
+                    if isinstance(parsed_headers, dict):
+                        # Ensure all values are strings
+                        custom_headers = {
+                            str(k): str(v) for k, v in parsed_headers.items()
+                        }
+                    else:
+                        logger.warning(
+                            "AZURE_OPENAI_CUSTOM_HEADERS must be a JSON object. "
+                            f"Got {type(parsed_headers).__name__}. Using empty custom headers."
+                        )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        f"Failed to parse AZURE_OPENAI_CUSTOM_HEADERS as JSON: {e}. "
+                        "Using empty custom headers."
+                    )
+
+            # Add user_sid to custom headers if provided
+            if user_sid := os.getenv("AZURE_OPENAI_USER_SID"):
+                custom_headers["user_sid"] = user_sid
+                config_data["user_sid"] = user_sid
+
+            # Add custom headers to config if any were set
+            if custom_headers:
+                config_data["custom_headers"] = custom_headers
+
             # Add optional env vars if present
             if api_version := os.getenv("AZURE_OPENAI_API_VERSION"):
                 config_data["api_version"] = api_version
-            
+
             if max_tokens := os.getenv("AZURE_OPENAI_MAX_TOKENS"):
                 config_data["max_tokens"] = int(max_tokens)
-            
+
             if temperature := os.getenv("AZURE_OPENAI_TEMPERATURE"):
                 config_data["temperature"] = float(temperature)
-            
+
             if max_retries := os.getenv("AZURE_OPENAI_MAX_RETRIES"):
                 config_data["max_retries"] = int(max_retries)
-            
+
             if timeout := os.getenv("AZURE_OPENAI_TIMEOUT"):
                 config_data["timeout"] = int(timeout)
-            
+
             if batch_size := os.getenv("AZURE_OPENAI_BATCH_SIZE"):
                 config_data["batch_size"] = int(batch_size)
-            
+
             return PydanticAzureOpenAIConfig(**config_data)
-        
+
         except (ValidationError, ValueError) as e:
-            print(f"Warning: Failed to load Azure OpenAI config from environment: {e}")
+            logger.warning("Failed to load Azure OpenAI config from environment: %s", e)
             return None
 
     def _ensure_config_dir(self) -> None:
@@ -237,11 +303,11 @@ class ConfigManager:
 
     def load_config(self) -> DevAgentConfig:
         """Load configuration with precedence: env vars > config file > defaults.
-        
+
         Configuration loading order:
         1. Load from config file (if exists) or use defaults
         2. Override Azure OpenAI config with environment variables (if present)
-        
+
         Returns:
             Loaded configuration with environment variable overrides applied
         """
@@ -274,7 +340,7 @@ class ConfigManager:
 
         Args:
             config: Configuration to save (uses current if None)
-            
+
         Note:
             API keys are saved in plain text to the config file.
             Users should use environment variables for production deployments.
@@ -338,7 +404,7 @@ class ConfigManager:
 
     def load_project_config(self, project_path: str) -> DevAgentConfig:
         """Load project-specific configuration with env var precedence.
-        
+
         Configuration precedence:
         1. Environment variables (highest)
         2. Project-specific config file
@@ -380,7 +446,7 @@ class ConfigManager:
         Args:
             project_path: Path to the project
             config: Configuration to save
-            
+
         Note:
             API keys are saved in plain text to the config file.
             Users should use environment variables for production deployments.
@@ -397,19 +463,19 @@ class ConfigManager:
 
     def get_azure_openai_config(self) -> PydanticAzureOpenAIConfig:
         """Get Azure OpenAI configuration with validation.
-        
+
         Returns:
             Validated Azure OpenAI configuration
-            
+
         Raises:
             ValueError: If Azure OpenAI is not configured
-            
+
         Note:
             This method checks environment variables first, then falls back
             to the config file. If neither is available, raises an error.
         """
         config = self.get_config()
-        
+
         if config.azure_openai is None:
             raise ValueError(
                 "Azure OpenAI is not configured. Please set environment variables:\n"
@@ -419,33 +485,33 @@ class ConfigManager:
                 "  AZURE_OPENAI_EMBEDDING_DEPLOYMENT\n"
                 "Or run: dev-agent azure configure"
             )
-        
+
         return config.azure_openai
 
     def validate_azure_config(self) -> tuple[bool, str]:
         """Validate Azure OpenAI configuration.
-        
+
         Returns:
             Tuple of (is_valid, error_message)
             If valid, error_message is empty string
         """
         try:
             config = self.get_azure_openai_config()
-            
+
             # Check required fields
             if not config.endpoint:
                 return False, "Azure OpenAI endpoint is not set"
-            
+
             if not config.api_key:
                 return False, "Azure OpenAI API key is not set"
-            
+
             if not config.deployment_name:
                 return False, "Azure OpenAI deployment name is not set"
-            
+
             if not config.embedding_deployment:
                 return False, "Azure OpenAI embedding deployment is not set"
-            
+
             return True, ""
-        
+
         except ValueError as e:
             return False, str(e)

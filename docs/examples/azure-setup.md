@@ -8,6 +8,8 @@ This guide provides practical examples for setting up and using Azure OpenAI wit
 
 Create a `.env` file in your project root (remember to add to `.gitignore`):
 
+**Option A: API Key Authentication (Default)**
+
 ```bash
 # .env file - DO NOT COMMIT TO VERSION CONTROL
 AZURE_OPENAI_ENDPOINT=https://my-dev-agent.openai.azure.com/
@@ -15,6 +17,19 @@ AZURE_OPENAI_API_KEY=your-api-key-here
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+```
+
+**Option B: Azure AD Authentication (Enterprise)**
+
+```bash
+# .env file - DO NOT COMMIT TO VERSION CONTROL
+AZURE_OPENAI_ENDPOINT=https://my-dev-agent.openai.azure.com/
+AZURE_OPENAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGc...
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+AZURE_OPENAI_USER_SID=A123456
+AZURE_OPENAI_CUSTOM_HEADERS={"department": "engineering"}
 ```
 
 ### Step 2: Load Environment Variables
@@ -683,6 +698,514 @@ async def test_code_generation(mock_azure_client):
     # Your test code here
     # Uses mock instead of real API
     pass
+```
+
+## Azure AD Authentication Examples
+
+### Example 1: Obtaining Bearer Token with Azure CLI
+
+```bash
+#!/bin/bash
+# get_azure_token.sh - Get Azure AD bearer token
+
+# Login to Azure (if not already logged in)
+az login
+
+# Get access token for Azure OpenAI
+TOKEN=$(az account get-access-token \
+  --resource https://cognitiveservices.azure.com \
+  --query accessToken \
+  --output tsv)
+
+# Export token
+export AZURE_OPENAI_TOKEN="$TOKEN"
+
+echo "Bearer token obtained and exported"
+echo "Token expires in 1 hour"
+```
+
+### Example 2: Azure AD Configuration with Python
+
+```python
+"""Azure AD authentication configuration example."""
+import os
+from dev_agent.models.llm_config import AzureOpenAIConfig
+from pydantic import SecretStr
+
+# Create configuration with bearer token
+config = AzureOpenAIConfig(
+    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    bearer_token=SecretStr(os.getenv("AZURE_OPENAI_TOKEN")),
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+    deployment_name=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4"),
+    embedding_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-ada-002"),
+    user_sid="A123456",  # For auditing
+    custom_headers={
+        "department": "engineering",
+        "project": "dev-agent",
+    },
+)
+
+print(f"Authentication: Azure AD")
+print(f"Endpoint: {config.endpoint}")
+print(f"User SID: {config.user_sid}")
+print(f"Custom headers: {config.custom_headers}")
+```
+
+### Example 3: Automatic Token Refresh with Managed Identity
+
+```python
+"""Automatic token refresh using Azure managed identity."""
+import asyncio
+import os
+import time
+from azure.identity import DefaultAzureCredential
+from dev_agent.llm.azure_client import AzureOpenAIClient
+from dev_agent.models.llm_config import AzureOpenAIConfig
+from pydantic import SecretStr
+
+class TokenRefreshManager:
+    """Manage automatic token refresh for Azure AD."""
+    
+    def __init__(self):
+        self.credential = DefaultAzureCredential()
+        self.current_token = None
+        self.token_expiry = 0
+    
+    def get_token(self) -> str:
+        """Get current token or refresh if expired."""
+        current_time = time.time()
+        
+        # Refresh if token expires in less than 5 minutes
+        if current_time >= (self.token_expiry - 300):
+            token_obj = self.credential.get_token(
+                "https://cognitiveservices.azure.com/.default"
+            )
+            self.current_token = token_obj.token
+            self.token_expiry = token_obj.expires_on
+            print(f"Token refreshed, expires at {time.ctime(self.token_expiry)}")
+        
+        return self.current_token
+    
+    def get_config(self) -> AzureOpenAIConfig:
+        """Get configuration with current token."""
+        return AzureOpenAIConfig(
+            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            bearer_token=SecretStr(self.get_token()),
+            api_version="2024-02-15-preview",
+            deployment_name="gpt-4",
+            embedding_deployment="text-embedding-ada-002",
+        )
+
+async def main():
+    """Example usage with automatic token refresh."""
+    token_manager = TokenRefreshManager()
+    
+    # Get initial configuration
+    config = token_manager.get_config()
+    client = AzureOpenAIClient(config)
+    
+    # Use client for multiple operations
+    for i in range(5):
+        # Refresh token if needed
+        config = token_manager.get_config()
+        client.config = config
+        
+        # Make API call
+        response = await client.generate_completion(
+            prompt=f"Generate example {i+1}",
+            max_tokens=100,
+        )
+        print(f"Response {i+1}: {response[:50]}...")
+        
+        # Wait between calls
+        await asyncio.sleep(10)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Example 4: Service Principal Authentication
+
+```python
+"""Authenticate using Azure service principal."""
+import os
+import subprocess
+from dev_agent.models.llm_config import AzureOpenAIConfig
+from pydantic import SecretStr
+
+def get_service_principal_token(
+    tenant_id: str,
+    client_id: str,
+    client_secret: str,
+) -> str:
+    """Get bearer token using service principal credentials."""
+    
+    # Login with service principal
+    subprocess.run([
+        "az", "login",
+        "--service-principal",
+        "--username", client_id,
+        "--password", client_secret,
+        "--tenant", tenant_id,
+    ], check=True, capture_output=True)
+    
+    # Get access token
+    result = subprocess.run([
+        "az", "account", "get-access-token",
+        "--resource", "https://cognitiveservices.azure.com",
+        "--query", "accessToken",
+        "--output", "tsv",
+    ], check=True, capture_output=True, text=True)
+    
+    return result.stdout.strip()
+
+# Usage
+tenant_id = os.getenv("AZURE_TENANT_ID")
+client_id = os.getenv("AZURE_CLIENT_ID")
+client_secret = os.getenv("AZURE_CLIENT_SECRET")
+
+token = get_service_principal_token(tenant_id, client_id, client_secret)
+
+config = AzureOpenAIConfig(
+    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    bearer_token=SecretStr(token),
+    api_version="2024-02-15-preview",
+    deployment_name="gpt-4",
+    embedding_deployment="text-embedding-ada-002",
+)
+
+print("Authenticated with service principal")
+```
+
+### Example 5: Custom Headers for Auditing
+
+```python
+"""Use custom headers for detailed auditing and tracking."""
+import asyncio
+import os
+from dev_agent.llm.azure_client import AzureOpenAIClient
+from dev_agent.models.llm_config import AzureOpenAIConfig
+from pydantic import SecretStr
+
+async def auditing_example():
+    """Demonstrate custom headers for auditing."""
+    
+    # Configuration with comprehensive auditing headers
+    config = AzureOpenAIConfig(
+        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        bearer_token=SecretStr(os.getenv("AZURE_OPENAI_TOKEN")),
+        api_version="2024-02-15-preview",
+        deployment_name="gpt-4",
+        embedding_deployment="text-embedding-ada-002",
+        user_sid="A123456",  # User identifier
+        custom_headers={
+            "department": "engineering",
+            "project": "dev-agent",
+            "cost_center": "CC-1234",
+            "environment": "production",
+            "request_id": "req-001",
+            "session_id": "sess-abc123",
+        },
+    )
+    
+    client = AzureOpenAIClient(config)
+    
+    # All API calls will include these headers
+    response = await client.generate_completion(
+        prompt="Generate a function",
+        max_tokens=200,
+    )
+    
+    print("Request completed with auditing headers:")
+    print(f"  User SID: {config.user_sid}")
+    print(f"  Department: {config.custom_headers['department']}")
+    print(f"  Project: {config.custom_headers['project']}")
+    print(f"  Cost Center: {config.custom_headers['cost_center']}")
+
+asyncio.run(auditing_example())
+```
+
+### Example 6: Token Refresh Script for Long-Running Processes
+
+```bash
+#!/bin/bash
+# refresh_token_daemon.sh - Background token refresh daemon
+
+LOG_FILE="/var/log/azure_token_refresh.log"
+TOKEN_FILE="/tmp/azure_openai_token"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+refresh_token() {
+    # Get new token
+    TOKEN=$(az account get-access-token \
+        --resource https://cognitiveservices.azure.com \
+        --query accessToken \
+        --output tsv 2>&1)
+    
+    if [ $? -eq 0 ]; then
+        # Save token to file
+        echo "$TOKEN" > "$TOKEN_FILE"
+        chmod 600 "$TOKEN_FILE"
+        
+        # Export to environment
+        export AZURE_OPENAI_TOKEN="$TOKEN"
+        
+        log "Token refreshed successfully"
+        return 0
+    else
+        log "ERROR: Failed to refresh token: $TOKEN"
+        return 1
+    fi
+}
+
+# Initial token fetch
+log "Starting token refresh daemon"
+refresh_token
+
+# Refresh every 50 minutes (tokens expire in 60 minutes)
+while true; do
+    sleep 3000  # 50 minutes
+    refresh_token
+done
+```
+
+### Example 7: Environment-Specific Azure AD Configuration
+
+```python
+"""Configure Azure AD authentication for different environments."""
+import os
+from enum import Enum
+from dev_agent.models.llm_config import AzureOpenAIConfig
+from pydantic import SecretStr
+
+class Environment(Enum):
+    """Deployment environments."""
+    DEVELOPMENT = "development"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+def get_azure_ad_config(env: Environment) -> AzureOpenAIConfig:
+    """Get Azure AD configuration for specific environment."""
+    
+    # Environment-specific settings
+    env_configs = {
+        Environment.DEVELOPMENT: {
+            "endpoint": "https://dev-openai.openai.azure.com/",
+            "deployment_name": "gpt-4",
+            "user_sid": "DEV-USER",
+            "custom_headers": {
+                "environment": "development",
+                "cost_center": "CC-DEV",
+            },
+        },
+        Environment.STAGING: {
+            "endpoint": "https://staging-openai.openai.azure.com/",
+            "deployment_name": "gpt-4-turbo",
+            "user_sid": "STAGING-USER",
+            "custom_headers": {
+                "environment": "staging",
+                "cost_center": "CC-STAGING",
+            },
+        },
+        Environment.PRODUCTION: {
+            "endpoint": "https://prod-openai.openai.azure.com/",
+            "deployment_name": "gpt-4-turbo",
+            "user_sid": os.getenv("PRODUCTION_USER_ID"),
+            "custom_headers": {
+                "environment": "production",
+                "cost_center": "CC-PROD",
+                "compliance": "required",
+            },
+        },
+    }
+    
+    env_config = env_configs[env]
+    
+    # Get bearer token (same for all environments)
+    bearer_token = os.getenv("AZURE_OPENAI_TOKEN")
+    if not bearer_token:
+        raise ValueError("AZURE_OPENAI_TOKEN environment variable not set")
+    
+    return AzureOpenAIConfig(
+        endpoint=env_config["endpoint"],
+        bearer_token=SecretStr(bearer_token),
+        api_version="2024-02-15-preview",
+        deployment_name=env_config["deployment_name"],
+        embedding_deployment="text-embedding-ada-002",
+        user_sid=env_config["user_sid"],
+        custom_headers=env_config["custom_headers"],
+    )
+
+# Usage
+current_env = Environment(os.getenv("DEPLOYMENT_ENV", "development"))
+config = get_azure_ad_config(current_env)
+
+print(f"Configured for: {current_env.value}")
+print(f"Endpoint: {config.endpoint}")
+print(f"User SID: {config.user_sid}")
+```
+
+### Example 8: Testing Azure AD Authentication
+
+```python
+"""Test Azure AD authentication configuration."""
+import asyncio
+import os
+from dev_agent.llm.azure_client import AzureOpenAIClient
+from dev_agent.models.llm_config import AzureOpenAIConfig
+from pydantic import SecretStr
+
+async def test_azure_ad_auth():
+    """Test Azure AD authentication setup."""
+    
+    print("Testing Azure AD Authentication...")
+    print("=" * 50)
+    
+    # Check environment variables
+    print("\n1. Checking environment variables...")
+    required_vars = [
+        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_OPENAI_TOKEN",
+        "AZURE_OPENAI_DEPLOYMENT_NAME",
+    ]
+    
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    if missing_vars:
+        print(f"❌ Missing environment variables: {', '.join(missing_vars)}")
+        return False
+    print("✓ All required environment variables present")
+    
+    # Create configuration
+    print("\n2. Creating configuration...")
+    try:
+        config = AzureOpenAIConfig(
+            endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            bearer_token=SecretStr(os.getenv("AZURE_OPENAI_TOKEN")),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+            deployment_name=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+            embedding_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-ada-002"),
+            user_sid=os.getenv("AZURE_OPENAI_USER_SID"),
+        )
+        print("✓ Configuration created successfully")
+        print(f"  Endpoint: {config.endpoint}")
+        print(f"  Deployment: {config.deployment_name}")
+        print(f"  User SID: {config.user_sid}")
+        print(f"  Auth method: Azure AD (bearer token)")
+    except Exception as e:
+        print(f"❌ Configuration error: {e}")
+        return False
+    
+    # Test API connection
+    print("\n3. Testing API connection...")
+    try:
+        client = AzureOpenAIClient(config)
+        response = await client.generate_completion(
+            prompt="Say 'Hello from Azure AD authentication!'",
+            max_tokens=20,
+        )
+        print("✓ API connection successful")
+        print(f"  Response: {response}")
+    except Exception as e:
+        print(f"❌ API connection failed: {e}")
+        return False
+    
+    # Test custom headers
+    print("\n4. Testing custom headers...")
+    if config.custom_headers or config.user_sid:
+        print("✓ Custom headers configured:")
+        if config.user_sid:
+            print(f"  user_sid: {config.user_sid}")
+        for key, value in config.custom_headers.items():
+            print(f"  {key}: {value}")
+    else:
+        print("ℹ No custom headers configured (optional)")
+    
+    print("\n" + "=" * 50)
+    print("✓ All tests passed!")
+    print("\nYour Azure AD authentication is configured correctly.")
+    return True
+
+if __name__ == "__main__":
+    success = asyncio.run(test_azure_ad_auth())
+    exit(0 if success else 1)
+```
+
+### Example 9: Migration from API Key to Azure AD
+
+```python
+"""Migrate from API key to Azure AD authentication."""
+import asyncio
+import os
+from dev_agent.llm.azure_client import AzureOpenAIClient
+from dev_agent.models.llm_config import AzureOpenAIConfig
+from pydantic import SecretStr
+
+async def migration_example():
+    """Demonstrate migration from API key to Azure AD."""
+    
+    print("Migration Example: API Key → Azure AD")
+    print("=" * 50)
+    
+    # Step 1: Current API key configuration
+    print("\n1. Current configuration (API Key):")
+    api_key_config = AzureOpenAIConfig(
+        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        api_key=SecretStr(os.getenv("AZURE_OPENAI_API_KEY")),
+        api_version="2024-02-15-preview",
+        deployment_name="gpt-4",
+        embedding_deployment="text-embedding-ada-002",
+    )
+    print(f"  Auth method: API Key")
+    print(f"  Endpoint: {api_key_config.endpoint}")
+    
+    # Test current configuration
+    client = AzureOpenAIClient(api_key_config)
+    response = await client.generate_completion(
+        prompt="Test with API key",
+        max_tokens=10,
+    )
+    print(f"  ✓ API key authentication working")
+    
+    # Step 2: New Azure AD configuration
+    print("\n2. New configuration (Azure AD):")
+    azure_ad_config = AzureOpenAIConfig(
+        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        bearer_token=SecretStr(os.getenv("AZURE_OPENAI_TOKEN")),
+        api_version="2024-02-15-preview",
+        deployment_name="gpt-4",
+        embedding_deployment="text-embedding-ada-002",
+        user_sid="A123456",
+        custom_headers={"migration": "api-key-to-azure-ad"},
+    )
+    print(f"  Auth method: Azure AD")
+    print(f"  Endpoint: {azure_ad_config.endpoint}")
+    print(f"  User SID: {azure_ad_config.user_sid}")
+    
+    # Test new configuration
+    client = AzureOpenAIClient(azure_ad_config)
+    response = await client.generate_completion(
+        prompt="Test with Azure AD",
+        max_tokens=10,
+    )
+    print(f"  ✓ Azure AD authentication working")
+    
+    # Step 3: Migration complete
+    print("\n3. Migration steps:")
+    print("  ✓ Obtained Azure AD bearer token")
+    print("  ✓ Updated configuration to use bearer token")
+    print("  ✓ Added custom headers for auditing")
+    print("  ✓ Tested new authentication method")
+    print("\n  Next steps:")
+    print("  - Update environment variables in production")
+    print("  - Implement automatic token refresh")
+    print("  - Remove API key from configuration")
+    print("  - Update documentation for team")
+
+asyncio.run(migration_example())
 ```
 
 ## Security Best Practices

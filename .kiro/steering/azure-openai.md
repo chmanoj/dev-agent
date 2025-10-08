@@ -64,7 +64,18 @@ User Request → Workflow Manager → LLM Client → Azure OpenAI API
 
 ## Configuration (MANDATORY)
 
+### Authentication Methods
+
+dev-agent supports two authentication methods for Azure OpenAI:
+
+1. **API Key Authentication** (default): Simple authentication using API key
+2. **Azure AD Authentication**: Enterprise authentication using bearer tokens
+
+When both are configured, bearer token authentication takes precedence.
+
 ### Environment Variables (REQUIRED)
+
+**Option A: API Key Authentication (Default)**
 ```bash
 # Azure OpenAI Endpoint (REQUIRED)
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
@@ -87,26 +98,104 @@ AZURE_OPENAI_TIMEOUT=60
 AZURE_OPENAI_BATCH_SIZE=16  # For embedding batches
 ```
 
+**Option B: Azure AD Authentication (Enterprise)**
+```bash
+# Azure OpenAI Endpoint (REQUIRED)
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+
+# Bearer Token (REQUIRED for Azure AD - NEVER commit to git)
+AZURE_OPENAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGc...
+
+# API Version (REQUIRED)
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
+# Model Deployments (REQUIRED)
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_CHAT_DEPLOYMENT_NAME=gpt-4  # Alternative alias
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
+
+# Optional: Custom Headers for Auditing
+AZURE_OPENAI_USER_SID=A123456
+AZURE_OPENAI_CUSTOM_HEADERS={"department": "engineering", "project": "dev-agent"}
+
+# Optional Configuration
+AZURE_OPENAI_MAX_TOKENS=4000
+AZURE_OPENAI_TEMPERATURE=0.7
+AZURE_OPENAI_MAX_RETRIES=3
+AZURE_OPENAI_TIMEOUT=60
+AZURE_OPENAI_BATCH_SIZE=16
+```
+
 ### Pydantic Configuration Model
 ```python
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, model_validator
 
 class AzureOpenAIConfig(BaseModel):
-    """Azure OpenAI configuration with validation."""
+    """Azure OpenAI configuration with validation and Azure AD support."""
     
+    # Endpoint and API version
     endpoint: str = Field(..., description="Azure OpenAI endpoint URL")
-    api_key: SecretStr = Field(..., description="Azure OpenAI API key")
     api_version: str = Field(default="2024-02-15-preview")
+    
+    # Authentication (either api_key or bearer_token required)
+    api_key: SecretStr | None = Field(default=None, description="Azure OpenAI API key")
+    bearer_token: SecretStr | None = Field(default=None, description="Azure AD bearer token")
+    openai_api_type: str = Field(default="azure", description="API type: 'azure' or 'azure_ad'")
+    
+    # Model deployments
     deployment_name: str = Field(..., description="GPT-4 deployment name")
     embedding_deployment: str = Field(..., description="Embedding deployment name")
+    
+    # Generation parameters
     max_tokens: int = Field(default=4000, ge=1, le=128000)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_retries: int = Field(default=3, ge=0, le=10)
     timeout: int = Field(default=60, ge=1, le=300)
     batch_size: int = Field(default=16, ge=1, le=100)
     
+    # Custom headers for auditing
+    user_sid: str | None = Field(default=None, description="User session ID for auditing")
+    custom_headers: dict[str, str] = Field(default_factory=dict, description="Custom request headers")
+    
+    @model_validator(mode='after')
+    def validate_authentication(self) -> 'AzureOpenAIConfig':
+        """Ensure at least one authentication method is configured."""
+        if not self.api_key and not self.bearer_token:
+            raise ValueError(
+                "Either api_key or bearer_token must be provided for authentication"
+            )
+        
+        # Set api_type based on authentication method
+        if self.bearer_token:
+            self.openai_api_type = "azure_ad"
+        
+        return self
+    
+    def get_auth_headers(self) -> dict[str, str]:
+        """Build authentication and custom headers."""
+        headers = {}
+        
+        # Add Authorization header for Azure AD
+        if self.bearer_token:
+            headers["Authorization"] = f"Bearer {self.bearer_token.get_secret_value()}"
+        
+        # Add custom headers
+        headers.update(self.custom_headers)
+        
+        # Add user_sid if configured
+        if self.user_sid:
+            headers["user_sid"] = self.user_sid
+        
+        return headers
+    
+    def get_api_key_value(self) -> str:
+        """Get the appropriate credential value."""
+        if self.bearer_token:
+            return self.bearer_token.get_secret_value()
+        return self.api_key.get_secret_value()
+    
     class Config:
-        # Prevent API key from being logged or serialized
+        # Prevent sensitive data from being logged or serialized
         json_encoders = {SecretStr: lambda v: "***REDACTED***"}
 ```
 
@@ -524,6 +613,186 @@ async def test_real_azure_openai():
     assert isinstance(result, str)
 ```
 
+## Azure AD Authentication Standards
+
+### When to Use Azure AD Authentication
+
+Use Azure AD authentication when:
+- **Enterprise Security**: Organization requires Azure AD for all services
+- **Compliance**: Need to meet specific compliance requirements
+- **Auditing**: Require detailed tracking of API usage by user
+- **Managed Identities**: Running on Azure infrastructure (VMs, App Service, Functions)
+- **Short-Lived Credentials**: Need automatic token rotation
+- **Centralized Access Control**: Manage access through Azure AD policies
+
+### Bearer Token Management (REQUIRED)
+
+```python
+# ✅ CORRECT - Automatic token refresh with managed identity
+from azure.identity import DefaultAzureCredential
+
+class TokenManager:
+    """Manage Azure AD token refresh."""
+    
+    def __init__(self):
+        self.credential = DefaultAzureCredential()
+        self.current_token = None
+        self.token_expiry = 0
+    
+    def get_token(self) -> str:
+        """Get current token or refresh if expired."""
+        import time
+        current_time = time.time()
+        
+        # Refresh if token expires in less than 5 minutes
+        if current_time >= (self.token_expiry - 300):
+            token_obj = self.credential.get_token(
+                "https://cognitiveservices.azure.com/.default"
+            )
+            self.current_token = token_obj.token
+            self.token_expiry = token_obj.expires_on
+        
+        return self.current_token
+
+# ❌ WRONG - Hardcoded token without refresh
+bearer_token = "eyJ0eXAiOiJKV1Qi..."  # Will expire!
+```
+
+### Custom Headers for Auditing (RECOMMENDED)
+
+```python
+# ✅ CORRECT - Comprehensive auditing headers
+config = AzureOpenAIConfig(
+    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    bearer_token=SecretStr(token_manager.get_token()),
+    api_version="2024-02-15-preview",
+    deployment_name="gpt-4",
+    embedding_deployment="text-embedding-ada-002",
+    user_sid="A123456",  # User identifier
+    custom_headers={
+        "department": "engineering",
+        "project": "dev-agent",
+        "cost_center": "CC-1234",
+        "environment": "production",
+    },
+)
+
+# ❌ WRONG - No auditing headers
+config = AzureOpenAIConfig(
+    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    bearer_token=SecretStr(token),
+    # Missing user_sid and custom_headers
+)
+```
+
+### Client Initialization with Azure AD
+
+```python
+# ✅ CORRECT - Azure AD authentication with custom headers
+def _build_default_headers(self) -> dict[str, str]:
+    """Build default headers including auth and custom headers."""
+    headers = {}
+    
+    # Add bearer token authorization if using Azure AD
+    if self.config.bearer_token:
+        token_value = self.config.bearer_token.get_secret_value()
+        headers["Authorization"] = f"Bearer {token_value}"
+    
+    # Add custom headers
+    headers.update(self.config.custom_headers)
+    
+    # Add user_sid if configured
+    if self.config.user_sid:
+        headers["user_sid"] = self.config.user_sid
+    
+    return headers
+
+def _get_api_key_value(self) -> str:
+    """Get the API key or bearer token value for client initialization."""
+    if self.config.bearer_token:
+        # When using Azure AD, pass the bearer token as api_key
+        return self.config.bearer_token.get_secret_value()
+    else:
+        # Standard API key authentication
+        return self.config.api_key.get_secret_value()
+
+# Initialize client with headers
+self.client = AsyncAzureOpenAI(
+    api_key=self._get_api_key_value(),
+    api_version=config.api_version,
+    azure_endpoint=config.endpoint,
+    timeout=config.timeout,
+    max_retries=0,
+    default_headers=self._build_default_headers(),
+)
+```
+
+### Error Handling for Azure AD
+
+```python
+# ✅ CORRECT - Specific error messages for authentication method
+async def safe_generate(self, prompt: str) -> str:
+    """Generate with authentication-aware error handling."""
+    try:
+        return await self.generate_completion(prompt)
+    
+    except AuthenticationError as e:
+        auth_method = "Azure AD bearer token" if self.config.bearer_token else "API key"
+        logger.error(f"Azure OpenAI authentication failed using {auth_method}")
+        
+        if self.config.bearer_token:
+            raise LLMAuthenticationError(
+                f"Failed to authenticate with Azure OpenAI using {auth_method}. "
+                "Check that your bearer token is valid and not expired. "
+                "Tokens typically expire after 1 hour."
+            ) from e
+        else:
+            raise LLMAuthenticationError(
+                f"Failed to authenticate with Azure OpenAI using {auth_method}. "
+                "Check that your API key is correct."
+            ) from e
+```
+
+### Configuration Loading with Azure AD
+
+```python
+# ✅ CORRECT - Load Azure AD configuration from environment
+def _load_azure_config_from_env(self) -> AzureOpenAIConfig:
+    """Load Azure OpenAI configuration from environment variables."""
+    
+    # Get bearer token (takes precedence over API key)
+    bearer_token = os.getenv("AZURE_OPENAI_TOKEN")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    
+    # Parse custom headers from JSON
+    custom_headers = {}
+    if headers_json := os.getenv("AZURE_OPENAI_CUSTOM_HEADERS"):
+        try:
+            custom_headers = json.loads(headers_json)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse AZURE_OPENAI_CUSTOM_HEADERS: {e}")
+    
+    # Add user_sid to custom headers if provided
+    if user_sid := os.getenv("AZURE_OPENAI_USER_SID"):
+        custom_headers["user_sid"] = user_sid
+    
+    # Support deployment name alias
+    deployment_name = (
+        os.getenv("AZURE_CHAT_DEPLOYMENT_NAME") or
+        os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+    )
+    
+    return AzureOpenAIConfig(
+        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        api_key=SecretStr(api_key) if api_key else None,
+        bearer_token=SecretStr(bearer_token) if bearer_token else None,
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+        deployment_name=deployment_name,
+        embedding_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
+        custom_headers=custom_headers,
+    )
+```
+
 ## Security Requirements (ENFORCED)
 
 ### API Key Management
@@ -533,17 +802,34 @@ async def test_real_azure_openai():
 - **Rotate keys regularly** (every 90 days minimum)
 - **Use managed identities** when running on Azure infrastructure
 
+### Bearer Token Management (Azure AD)
+- **NEVER commit bearer tokens** to version control
+- **Implement automatic token refresh** (tokens expire after 1 hour)
+- **Use managed identities** when possible (automatic token management)
+- **Use short-lived tokens** (default 1-hour expiration is recommended)
+- **Monitor token expiration** and refresh proactively
+- **Secure token storage** using Azure Key Vault or secure environment variables
+
 ### Logging Security
-- **NEVER log API keys** in any form
-- **Use SecretStr** for all sensitive data
+- **NEVER log API keys or bearer tokens** in any form
+- **Use SecretStr** for all sensitive data (API keys and bearer tokens)
 - **Redact credentials** in error messages
 - **Audit log API calls** without sensitive data
+- **Log authentication method used** (API key vs Azure AD) for debugging
+
+### Custom Headers Security
+- **Validate custom headers** before use
+- **Avoid sensitive data** in header names or values
+- **Log custom headers** at debug level only
+- **Document header usage** for compliance audits
+- **Use standard header names** when possible
 
 ### Data Privacy
 - **Code stays in Azure** - never sent to third parties
 - **Comply with Azure compliance** requirements
 - **Document data flow** for security reviews
 - **Implement data retention** policies
+- **Track API usage by user** using custom headers for auditing
 
 ## Future Enhancements (Backlog)
 

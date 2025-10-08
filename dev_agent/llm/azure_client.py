@@ -98,12 +98,19 @@ class AzureOpenAIClient(ILLMClient):
 
         # Initialize Azure OpenAI client
         if client is None:
+            # Build default headers including auth and custom headers
+            default_headers = self._build_default_headers()
+
+            # Get API key or bearer token value
+            api_key_value = self._get_api_key_value()
+
             self.client = AsyncAzureOpenAI(
-                api_key=config.api_key.get_secret_value(),
+                api_key=api_key_value,
                 api_version=config.api_version,
                 azure_endpoint=config.endpoint,
                 timeout=config.timeout,
                 max_retries=0,  # We handle retries ourselves with tenacity
+                default_headers=default_headers,
             )
         else:
             self.client = client
@@ -111,9 +118,57 @@ class AzureOpenAIClient(ILLMClient):
         # Initialize token counter for the deployment model
         self.token_counter = TokenCounter(model=config.deployment_name)
 
+        # Log authentication method used
+        auth_method = "Azure AD" if config.bearer_token else "API Key"
         logger.info(
-            f"Initialized Azure OpenAI client for deployment: {config.deployment_name}"
+            f"Initialized Azure OpenAI client for deployment: {config.deployment_name} "
+            f"using {auth_method} authentication"
         )
+
+    def _build_default_headers(self) -> dict[str, str]:
+        """Build default headers including auth and custom headers.
+
+        This method constructs the headers dictionary that will be passed to
+        AsyncAzureOpenAI client initialization. It includes:
+        - Authorization header (if using Azure AD bearer token)
+        - Custom headers from configuration
+        - User SID header (if configured)
+
+        Returns:
+            Dictionary of headers to include in all API requests
+        """
+        headers: dict[str, str] = {}
+
+        # Add bearer token authorization if using Azure AD
+        if self.config.bearer_token:
+            token_value = self.config.bearer_token.get_secret_value()
+            headers["Authorization"] = f"Bearer {token_value}"
+
+        # Add custom headers from configuration
+        headers.update(self.config.custom_headers)
+
+        # Add user_sid if configured
+        if self.config.user_sid:
+            headers["user_sid"] = self.config.user_sid
+
+        return headers
+
+    def _get_api_key_value(self) -> str:
+        """Get the API key or bearer token value for client initialization.
+
+        When using Azure AD authentication, the bearer token is passed as the
+        api_key parameter to AsyncAzureOpenAI. For standard API key authentication,
+        the API key is used directly.
+
+        Returns:
+            The credential value to use for authentication
+        """
+        if self.config.bearer_token:
+            # When using Azure AD, pass the bearer token as api_key
+            return self.config.bearer_token.get_secret_value()
+        else:
+            # Standard API key authentication
+            return self.config.api_key.get_secret_value()  # type: ignore[union-attr]
 
     async def generate_completion(
         self,
@@ -191,7 +246,13 @@ class AzureOpenAIClient(ILLMClient):
 
             return response.choices[0].message.content or ""
 
-        except (AuthenticationError, RateLimitError, APITimeoutError, BadRequestError, APIError):
+        except (
+            AuthenticationError,
+            RateLimitError,
+            APITimeoutError,
+            BadRequestError,
+            APIError,
+        ):
             # These are handled by _call_completion_with_retry and converted to custom exceptions
             # The exceptions are already converted in _call_completion_with_retry
             raise
@@ -238,10 +299,22 @@ class AzureOpenAIClient(ILLMClient):
             return response
 
         except AuthenticationError as e:
-            logger.error(f"Azure OpenAI authentication failed: {e}")
+            auth_method = (
+                "Azure AD bearer token" if self.config.bearer_token else "API key"
+            )
+            logger.error(f"Azure OpenAI authentication failed using {auth_method}: {e}")
+
+            if self.config.bearer_token:
+                guidance = (
+                    "Check that AZURE_OPENAI_TOKEN is set correctly and not expired. "
+                    "Bearer tokens have limited validity and may need to be refreshed."
+                )
+            else:
+                guidance = "Check that AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT are set correctly"
+
             raise LLMAuthenticationError(
-                "Failed to authenticate with Azure OpenAI",
-                "Check that AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT are set correctly",
+                f"Failed to authenticate with Azure OpenAI using {auth_method}",
+                guidance,
             ) from e
 
         except RateLimitError as e:
@@ -331,10 +404,24 @@ class AzureOpenAIClient(ILLMClient):
                     yield chunk.choices[0].delta.content
 
         except AuthenticationError as e:
-            logger.error(f"Azure OpenAI authentication failed during streaming: {e}")
+            auth_method = (
+                "Azure AD bearer token" if self.config.bearer_token else "API key"
+            )
+            logger.error(
+                f"Azure OpenAI authentication failed during streaming using {auth_method}: {e}"
+            )
+
+            if self.config.bearer_token:
+                guidance = (
+                    "Check that AZURE_OPENAI_TOKEN is set correctly and not expired. "
+                    "Bearer tokens have limited validity and may need to be refreshed."
+                )
+            else:
+                guidance = "Check that AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT are set correctly"
+
             raise LLMAuthenticationError(
-                "Failed to authenticate with Azure OpenAI",
-                "Check that AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT are set correctly",
+                f"Failed to authenticate with Azure OpenAI using {auth_method}",
+                guidance,
             ) from e
 
         except RateLimitError as e:

@@ -4,7 +4,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
 
 ## Tasks
 
-- [ ] 1. Enhance AzureOpenAIConfig model with Azure AD authentication fields
+- [x] 1. Enhance AzureOpenAIConfig model with Azure AD authentication fields
   - Add `bearer_token: SecretStr | None` field for Azure AD authentication
   - Add `custom_headers: dict[str, str]` field for custom request headers
   - Add `user_sid: str | None` field for user session tracking
@@ -16,7 +16,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Update `model_config` to redact bearer_token like api_key in JSON serialization
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 3.1, 3.2, 3.5, 4.1, 4.2_
 
-- [ ] 2. Update ConfigManager to load Azure AD configuration from environment variables
+- [x] 2. Update ConfigManager to load Azure AD configuration from environment variables
   - Add support for `AZURE_OPENAI_TOKEN` environment variable (bearer token)
   - Add support for `AZURE_CHAT_DEPLOYMENT_NAME` as alias for `AZURE_OPENAI_DEPLOYMENT_NAME`
   - Add support for `AZURE_OPENAI_USER_SID` environment variable
@@ -27,7 +27,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Add warning logging for malformed custom headers JSON
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 6.2, 6.3_
 
-- [ ] 3. Modify AzureOpenAIClient to support Azure AD authentication and custom headers
+- [x] 3. Modify AzureOpenAIClient to support Azure AD authentication and custom headers
   - Add `_build_default_headers()` helper method to construct headers dict
   - Add `_get_api_key_value()` helper method to return token or API key
   - Update `__init__()` to call helper methods and pass headers to AsyncAzureOpenAI
@@ -37,7 +37,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Ensure custom headers and user_sid are included in default_headers
   - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 2.4, 2.5, 5.1, 5.2, 5.3, 5.4, 6.5_
 
-- [ ] 4. Modify AzureEmbeddingClient to support Azure AD authentication and custom headers
+- [x] 4. Modify AzureEmbeddingClient to support Azure AD authentication and custom headers
   - Add `_build_default_headers()` helper method (same logic as AzureOpenAIClient)
   - Add `_get_api_key_value()` helper method (same logic as AzureOpenAIClient)
   - Update `__init__()` to call helper methods and pass headers to AsyncAzureOpenAI
@@ -46,7 +46,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Ensure consistency with AzureOpenAIClient implementation
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 2.5, 5.1, 5.2, 5.3, 5.4, 6.5_
 
-- [ ] 5. Enhance error handling for Azure AD authentication failures
+- [x] 5. Enhance error handling for Azure AD authentication failures
   - Update authentication error messages to indicate which method was used (API key or bearer token)
   - Add specific error message for expired bearer tokens
   - Update `LLMAuthenticationError` messages in both clients to reference authentication method
@@ -54,14 +54,14 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Ensure error messages reference correct environment variables based on auth method
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 6. Create comprehensive unit tests for Azure AD authentication
-- [ ] 6.1 Create test file `tests/test_azure_ad_authentication.py`
+- [x] 6. Create comprehensive unit tests for Azure AD authentication
+- [x] 6.1 Create test file `tests/test_azure_ad_authentication.py`
   - Create fixtures for API key config and bearer token config
   - Create fixture for config with custom headers
   - Create fixture for config with user_sid
   - _Requirements: 7.1, 7.2_
 
-- [ ] 6.2 Add configuration validation tests
+- [x] 6.2 Add configuration validation tests
   - Test API key authentication configuration validates correctly
   - Test bearer token authentication configuration validates correctly
   - Test missing both credentials raises ValueError
@@ -72,7 +72,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Test openai_api_type remains "azure" when only API key is provided
   - _Requirements: 1.4, 3.5, 7.1_
 
-- [ ] 6.3 Add client initialization tests
+- [x] 6.3 Add client initialization tests
   - Test AzureOpenAIClient initializes with API key config
   - Test AzureOpenAIClient initializes with bearer token config
   - Test AzureEmbeddingClient initializes with API key config
@@ -81,7 +81,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Test default_headers parameter is used correctly
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 7.1_
 
-- [ ] 6.4 Add header building tests
+- [x] 6.4 Add header building tests
   - Test `_build_default_headers()` with API key (no Authorization header)
   - Test `_build_default_headers()` with bearer token (includes Authorization header)
   - Test custom headers are merged into default_headers
@@ -90,21 +90,21 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Test Authorization header format is "Bearer {token}"
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 7.1_
 
-- [ ] 6.5 Add authentication method detection tests
+- [x] 6.5 Add authentication method detection tests
   - Test `_get_api_key_value()` returns API key when no bearer token
   - Test `_get_api_key_value()` returns bearer token when configured
   - Test `get_auth_headers()` method on config model
   - Test `get_api_key_value()` method on config model
   - _Requirements: 1.5, 7.1_
 
-- [ ] 6.6 Add backward compatibility tests
+- [x] 6.6 Add backward compatibility tests
   - Test existing API key configuration still works unchanged
   - Test existing environment variables work without modification
   - Test config file with old format loads correctly
   - Test migration scenario from API key to bearer token
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 7.1_
 
-- [ ] 6.7 Add ConfigManager environment variable tests
+- [x] 6.7 Add ConfigManager environment variable tests
   - Test `AZURE_OPENAI_TOKEN` environment variable is loaded
   - Test `AZURE_CHAT_DEPLOYMENT_NAME` alias works correctly
   - Test `AZURE_OPENAI_USER_SID` is loaded and added to headers
@@ -113,7 +113,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Test bearer token takes precedence over API key when both are set
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 6.2, 7.1_
 
-- [ ]* 6.8 Add integration tests with mocked Azure OpenAI API
+- [x] 6.8 Add integration tests with mocked Azure OpenAI API
   - Mock AsyncAzureOpenAI to verify headers are passed correctly
   - Verify Authorization header format in mocked calls
   - Verify custom headers are included in API requests
@@ -122,8 +122,8 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Test embedding generation with Azure AD auth (mocked)
   - _Requirements: 7.2, 7.3_
 
-- [ ] 7. Update documentation for Azure AD authentication
-- [ ] 7.1 Update `docs/configuration/azure-openai.md`
+- [x] 7. Update documentation for Azure AD authentication
+- [x] 7.1 Update `docs/configuration/azure-openai.md`
   - Add "Azure AD Authentication" section with overview
   - Document all new environment variables with descriptions
   - Provide configuration examples for API key and Azure AD auth
@@ -132,7 +132,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Add section on token expiration and refresh
   - _Requirements: 7.3, 7.4, 7.5_
 
-- [ ] 7.2 Create or update `docs/examples/azure-setup.md`
+- [x] 7.2 Create or update `docs/examples/azure-setup.md`
   - Add step-by-step Azure AD setup example
   - Show how to obtain bearer tokens
   - Demonstrate custom headers configuration
@@ -140,14 +140,14 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Provide complete working examples
   - _Requirements: 7.3, 7.4_
 
-- [ ] 7.3 Update `README.md`
+- [x] 7.3 Update `README.md`
   - Add Azure AD authentication mention in features section
   - Update environment variables section with new variables
   - Add link to detailed Azure AD documentation
   - Update quick start guide if needed
   - _Requirements: 7.3, 7.5_
 
-- [ ] 7.4 Update `.kiro/steering/azure-openai.md` steering rules
+- [x] 7.4 Update `.kiro/steering/azure-openai.md` steering rules
   - Add Azure AD authentication configuration standards
   - Document custom headers usage patterns
   - Add security considerations for bearer tokens
@@ -155,7 +155,7 @@ This implementation plan outlines the tasks needed to add Azure AD authenticatio
   - Add best practices for token management
   - _Requirements: 7.3, 7.5_
 
-- [ ] 8. Add migration guide and examples
+- [x] 8. Add migration guide and examples
   - Create migration guide document showing how to switch from API key to Azure AD
   - Provide side-by-side configuration examples
   - Document environment variable precedence rules
