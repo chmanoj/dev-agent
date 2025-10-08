@@ -1,7 +1,10 @@
 """Code chunking strategies for embedding generation."""
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
+from typing import Any
 
 from ..models.indexing import ASTIndex, CodeChunk
 
