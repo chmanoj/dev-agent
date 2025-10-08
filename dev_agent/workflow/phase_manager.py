@@ -28,15 +28,19 @@ from ..workflow.specification_workflow import SpecificationWorkflow
 class PhaseManager(IPhaseManager):
     """Manages execution of individual workflow phases with validation and recovery."""
 
-    def __init__(self, cli_interface: ICLIInterface, state_manager: StateManager):
+    def __init__(self, cli_interface: ICLIInterface, state_manager: StateManager, embedding_client: Any | None = None, cost_tracker: Any | None = None):
         """Initialize the phase manager.
 
         Args:
             cli_interface: CLI interface for user interaction
             state_manager: State manager for persistence
+            embedding_client: Optional embedding client for indexing (required for specification phase)
+            cost_tracker: Optional cost tracker for monitoring API usage
         """
         self.cli_interface = cli_interface
         self.state_manager = state_manager
+        self.embedding_client = embedding_client
+        self.cost_tracker = cost_tracker
 
         # Component instances (initialized lazily)
         self.indexing_engine: IIndexingEngine | None = None
@@ -186,8 +190,11 @@ class PhaseManager(IPhaseManager):
             # Initialize components
             if not self.codebase_analyzer:
                 if not self.indexing_engine:
+                    # Initialize indexing engine with embedding client for vector search
                     self.indexing_engine = IndexingEngine(
-                        context.project_state.project_path
+                        project_path=context.project_state.project_path,
+                        embedding_client=self.embedding_client,
+                        cost_tracker=self.cost_tracker,
                     )
                 self.codebase_analyzer = CodebaseAnalyzer(self.indexing_engine)
 
@@ -265,8 +272,11 @@ class PhaseManager(IPhaseManager):
             # Initialize components
             if not self.codebase_analyzer:
                 if not self.indexing_engine:
+                    # Initialize indexing engine with embedding client for vector search
                     self.indexing_engine = IndexingEngine(
-                        context.project_state.project_path
+                        project_path=context.project_state.project_path,
+                        embedding_client=self.embedding_client,
+                        cost_tracker=self.cost_tracker,
                     )
                 self.codebase_analyzer = CodebaseAnalyzer(self.indexing_engine)
 
@@ -347,8 +357,11 @@ class PhaseManager(IPhaseManager):
             # Initialize components
             if not self.codebase_analyzer:
                 if not self.indexing_engine:
+                    # Initialize indexing engine with embedding client for vector search
                     self.indexing_engine = IndexingEngine(
-                        context.project_state.project_path
+                        project_path=context.project_state.project_path,
+                        embedding_client=self.embedding_client,
+                        cost_tracker=self.cost_tracker,
                     )
                 self.codebase_analyzer = CodebaseAnalyzer(self.indexing_engine)
 

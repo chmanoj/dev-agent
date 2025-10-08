@@ -9,15 +9,17 @@ from ..models.indexing import ASTIndex, CodeChunk
 class CodeChunker:
     """Intelligent code chunking for embedding generation."""
 
-    def __init__(self, max_chunk_size: int = 512, overlap_size: int = 50):
+    def __init__(self, max_chunk_size: int = 512, overlap_size: int = 50, max_tokens: int = 8000):
         """Initialize the code chunker.
 
         Args:
             max_chunk_size: Maximum number of characters per chunk
             overlap_size: Number of characters to overlap between chunks
+            max_tokens: Maximum number of tokens per chunk (for embedding API limit)
         """
         self.max_chunk_size = max_chunk_size
         self.overlap_size = overlap_size
+        self.max_tokens = max_tokens  # Azure OpenAI embedding limit is 8192 tokens
 
     def chunk_file(self, file_path: str, language: str = "python") -> list[CodeChunk]:
         """Chunk a single file into embeddings-ready pieces.
@@ -597,4 +599,106 @@ class CodeChunker:
         if current_chunk:
             merged_chunks.append(current_chunk)
 
-        return merged_chunks
+        # Validate token limits and split chunks that are too large
+        validated_chunks = self._validate_token_limits(merged_chunks)
+
+        return validated_chunks
+    
+    def _validate_token_limits(self, chunks: list[CodeChunk]) -> list[CodeChunk]:
+        """Validate that chunks don't exceed token limits and split if needed.
+        
+        Args:
+            chunks: List of chunks to validate
+            
+        Returns:
+            List of chunks with all chunks under token limit
+        """
+        validated_chunks = []
+        
+        try:
+            import tiktoken
+            encoding = tiktoken.get_encoding("cl100k_base")  # Used by text-embedding-ada-002
+        except ImportError:
+            # If tiktoken not available, use character-based estimation (1 token ≈ 4 chars)
+            encoding = None
+        
+        for chunk in chunks:
+            # Count tokens
+            if encoding:
+                token_count = len(encoding.encode(chunk.content))
+            else:
+                # Rough estimation: 1 token ≈ 4 characters
+                token_count = len(chunk.content) // 4
+            
+            # If chunk is within limit, keep it
+            if token_count <= self.max_tokens:
+                validated_chunks.append(chunk)
+            else:
+                # Split chunk into smaller pieces
+                logger.warning(
+                    f"Chunk from {chunk.file_path}:{chunk.start_line}-{chunk.end_line} "
+                    f"exceeds token limit ({token_count} > {self.max_tokens}). Splitting..."
+                )
+                split_chunks = self._split_oversized_chunk(chunk, encoding)
+                validated_chunks.extend(split_chunks)
+        
+        return validated_chunks
+    
+    def _split_oversized_chunk(self, chunk: CodeChunk, encoding: Any) -> list[CodeChunk]:
+        """Split a chunk that exceeds token limits into smaller chunks.
+        
+        Args:
+            chunk: Chunk to split
+            encoding: Tiktoken encoding or None
+            
+        Returns:
+            List of smaller chunks
+        """
+        lines = chunk.content.split("\n")
+        split_chunks = []
+        current_lines = []
+        current_tokens = 0
+        current_start_line = chunk.start_line
+        
+        for i, line in enumerate(lines):
+            # Count tokens for this line
+            if encoding:
+                line_tokens = len(encoding.encode(line + "\n"))
+            else:
+                line_tokens = len(line) // 4 + 1
+            
+            # Check if adding this line would exceed limit
+            if current_tokens + line_tokens > self.max_tokens and current_lines:
+                # Create chunk from accumulated lines
+                chunk_content = "\n".join(current_lines)
+                split_chunks.append(CodeChunk(
+                    content=chunk_content,
+                    file_path=chunk.file_path,
+                    start_line=current_start_line,
+                    end_line=current_start_line + len(current_lines) - 1,
+                    language=chunk.language,
+                    chunk_type=f"{chunk.chunk_type}_split",
+                ))
+                
+                # Start new chunk
+                current_lines = [line]
+                current_tokens = line_tokens
+                current_start_line = chunk.start_line + i
+            else:
+                current_lines.append(line)
+                current_tokens += line_tokens
+        
+        # Add remaining lines as final chunk
+        if current_lines:
+            chunk_content = "\n".join(current_lines)
+            split_chunks.append(CodeChunk(
+                content=chunk_content,
+                file_path=chunk.file_path,
+                start_line=current_start_line,
+                end_line=current_start_line + len(current_lines) - 1,
+                language=chunk.language,
+                chunk_type=f"{chunk.chunk_type}_split",
+            ))
+        
+        logger.info(f"Split oversized chunk into {len(split_chunks)} smaller chunks")
+        return split_chunks

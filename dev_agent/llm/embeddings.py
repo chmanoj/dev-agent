@@ -88,6 +88,7 @@ class AzureEmbeddingClient(IEmbeddingClient):
         config: AzureOpenAIConfig,
         cache_dir: Path | str | None = None,
         client: AsyncAzureOpenAI | None = None,
+        cost_tracker: Any | None = None,
     ) -> None:
         """Initialize Azure embedding client.
 
@@ -98,12 +99,14 @@ class AzureEmbeddingClient(IEmbeddingClient):
                       '.dev_agent/embedding_cache'
             client: Optional pre-configured AsyncAzureOpenAI client for testing.
                    If not provided, a new client will be created.
+            cost_tracker: Optional cost tracker for monitoring token usage
 
         Raises:
             ValueError: If configuration is invalid
         """
         self.config = config
         self.model = config.embedding_deployment
+        self.cost_tracker = cost_tracker
 
         # Initialize cache
         if cache_dir is None:
@@ -418,6 +421,15 @@ class AzureEmbeddingClient(IEmbeddingClient):
 
                 # Cache the embedding
                 self.cache.set(text, self.model, embedding, self.EMBEDDING_DIMENSION)
+
+            # Track token usage and cost if cost tracker is available
+            if hasattr(self, 'cost_tracker') and self.cost_tracker:
+                from dev_agent.llm.cost_tracker import CostTracker
+                if isinstance(self.cost_tracker, CostTracker):
+                    self.cost_tracker.record_embedding(
+                        tokens=response.usage.total_tokens,
+                        model=self.model,
+                    )
 
             logger.debug(
                 f"Generated {len(batch_texts)} embeddings with "

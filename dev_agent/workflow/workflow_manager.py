@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.workflow_interface import IWorkflowManager
@@ -25,6 +26,7 @@ class WorkflowManager(IWorkflowManager):
         cost_tracker: CostTracker | None = None,
         budget_threshold: float | None = None,
         budget_limit: float | None = None,
+        embedding_client: Any | None = None,
     ):
         """Initialize the workflow manager.
 
@@ -33,6 +35,7 @@ class WorkflowManager(IWorkflowManager):
             cost_tracker: Optional cost tracker instance (created if not provided)
             budget_threshold: Budget threshold for warnings in USD
             budget_limit: Hard budget limit in USD
+            embedding_client: Optional embedding client for indexing and vector search
         """
         self.cli_interface = cli_interface
         self.state_manager: StateManager | None = None
@@ -40,6 +43,7 @@ class WorkflowManager(IWorkflowManager):
         self.undo_redo_manager: UndoRedoManager | None = None
         self.current_project_state: ProjectState | None = None
         self.error_handler = WorkflowErrorHandler(cli_interface)
+        self.embedding_client = embedding_client
 
         # Initialize cost tracker
         self.cost_tracker = cost_tracker or CostTracker(
@@ -94,7 +98,10 @@ class WorkflowManager(IWorkflowManager):
 
             # Initialize phase manager after state is set
             self.phase_manager = PhaseManager(
-                cli_interface=self.cli_interface, state_manager=self.state_manager
+                cli_interface=self.cli_interface,
+                state_manager=self.state_manager,
+                embedding_client=self.embedding_client,
+                cost_tracker=self.cost_tracker,
             )
 
             self.cli_interface.display_message("Project initialized successfully!")
@@ -150,7 +157,10 @@ class WorkflowManager(IWorkflowManager):
 
             # Initialize phase manager after state is set
             self.phase_manager = PhaseManager(
-                cli_interface=self.cli_interface, state_manager=self.state_manager
+                cli_interface=self.cli_interface,
+                state_manager=self.state_manager,
+                embedding_client=self.embedding_client,
+                cost_tracker=self.cost_tracker,
             )
 
             self.cli_interface.display_message("Project resumed successfully!")
