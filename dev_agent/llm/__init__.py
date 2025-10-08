@@ -4,6 +4,13 @@ This module provides abstract interfaces and implementations for LLM providers,
 with Azure OpenAI as the primary implementation.
 """
 
+from dev_agent.llm.azure_client import AzureOpenAIClient
 from dev_agent.llm.base import IEmbeddingClient, ILLMClient
+from dev_agent.llm.embeddings import AzureEmbeddingClient
 
-__all__ = ["ILLMClient", "IEmbeddingClient"]
+__all__ = [
+    "ILLMClient",
+    "IEmbeddingClient",
+    "AzureOpenAIClient",
+    "AzureEmbeddingClient",
+]

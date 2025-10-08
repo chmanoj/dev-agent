@@ -176,7 +176,7 @@ def _run_indexing_with_progress(
         # Initialize indexing engine with embedding client from config
         embedding_client = None
         try:
-            from dev_agent.llm.azure_client import AzureEmbeddingClient
+            from dev_agent.llm.embeddings import AzureEmbeddingClient
             from dev_agent.errors.exceptions import IndexingError
             
             config = config_manager.get_config()

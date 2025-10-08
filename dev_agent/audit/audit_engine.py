@@ -227,7 +227,7 @@ class TestClass:
                             )
                         else:
                             # Try to create embedding client
-                            from dev_agent.llm.azure_client import AzureEmbeddingClient
+                            from dev_agent.llm.embeddings import AzureEmbeddingClient
                             from dev_agent.config.config_manager import ConfigManager
 
                             config_manager = ConfigManager()
