@@ -140,6 +140,7 @@ async def main():
             return
         
         azure_config = config.azure_openai
+        azure_config.verify_ssl = False
         print("✓ Configuration loaded successfully")
         
         # Display configuration (without secrets)
