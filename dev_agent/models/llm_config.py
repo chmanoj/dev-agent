@@ -451,11 +451,9 @@ class GeminiConfig(BaseModel):
             ValueError: If model name is not supported
         """
         supported_models = {
-            "gemini-pro",
-            "gemini-pro-vision",
-            "gemini-ultra",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
         }
 
         if v not in supported_models:
@@ -481,8 +479,7 @@ class GeminiConfig(BaseModel):
             ValueError: If embedding model name is not supported
         """
         supported_embedding_models = {
-            "embedding-001",
-            "text-embedding-004",
+            "gemini-embedding-001",
         }
 
         if v not in supported_embedding_models:
@@ -563,8 +560,8 @@ class GeminiConfig(BaseModel):
                 },
                 {
                     "api_key": "your-gemini-api-key-here",
-                    "model_name": "gemini-1.5-pro",
-                    "embedding_model": "text-embedding-004",
+                    "model_name": "gemini-2.5-flash",
+                    "embedding_model": "gemini-embedding-001",
                     "api_endpoint": "generativelanguage.googleapis.com",
                     "max_output_tokens": 4096,
                     "temperature": 0.3,

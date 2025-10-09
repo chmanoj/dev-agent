@@ -61,7 +61,7 @@ class WorkflowManager(IWorkflowManager):
         self.llm_client: Any | None = None
         self.token_counter: Any | None = None
         self.vector_db: Any | None = None
-        
+
         self._initialize_llm_components()
 
         # Workflow configuration
@@ -70,47 +70,51 @@ class WorkflowManager(IWorkflowManager):
 
     def _initialize_llm_components(self) -> None:
         """Initialize LLM client, token counter, and vector database.
-        
-        This method checks if Azure OpenAI is configured and initializes
+
+        This method detects the configured LLM provider and initializes
         the necessary components for AI-powered specification generation.
-        If Azure OpenAI is not configured, components are set to None and
-        will be checked when needed.
+        Supports both Azure OpenAI and Google Gemini providers.
         """
         try:
-            # Load configuration
+            # Load configuration and detect provider
             config_manager = ConfigManager()
-            config = config_manager.get_config()
-            
-            # Check if Azure OpenAI is configured
-            if config.azure_openai is None:
-                logger.info(
-                    "Azure OpenAI not configured. LLM features will be unavailable. "
-                    "Set environment variables or run 'dev-agent azure configure'"
-                )
+
+            # Get the preferred LLM provider
+            try:
+                provider = config_manager.get_llm_provider()
+                logger.info(f"Detected LLM provider: {provider.value}")
+            except ValueError as e:
+                logger.info(f"No valid LLM provider configured: {e}")
                 self.llm_client = None
                 self.token_counter = None
                 self.vector_db = None
                 return
-            
-            # Import LLM components (lazy import to avoid circular dependencies)
-            from ..llm.azure_client import AzureOpenAIClient
+
+            # Import LLM factory functions (lazy import to avoid circular dependencies)
+            from ..llm import create_llm_client
             from ..llm.token_counter import TokenCounter
-            
-            # Initialize LLM client
-            self.llm_client = AzureOpenAIClient(config.azure_openai)
-            logger.info(
-                f"Initialized Azure OpenAI client for deployment: "
-                f"{config.azure_openai.deployment_name}"
-            )
-            
-            # Initialize token counter
-            self.token_counter = TokenCounter(model=config.azure_openai.deployment_name)
-            logger.info("Initialized token counter")
-            
+
+            # Initialize LLM client using factory function
+            self.llm_client = create_llm_client(provider=provider)
+            logger.info(f"Initialized {provider.value} LLM client")
+
+            # Initialize token counter with appropriate model
+            if provider.value == "azure_openai":
+                config = config_manager.get_config()
+                model_name = config.azure_openai.deployment_name
+            elif provider.value == "gemini":
+                config = config_manager.get_config()
+                model_name = config.gemini.model_name if config.gemini else "gemini-pro"
+            else:
+                model_name = "default"
+
+            self.token_counter = TokenCounter(model=model_name)
+            logger.info(f"Initialized token counter for model: {model_name}")
+
             # Vector database will be initialized when state_manager is available
             # (needs project path for index storage)
             self.vector_db = None
-            
+
         except Exception as e:
             logger.warning(f"Failed to initialize LLM components: {e}")
             self.llm_client = None
@@ -119,35 +123,52 @@ class WorkflowManager(IWorkflowManager):
 
     def _initialize_vector_database(self, project_path: str) -> None:
         """Initialize vector database for semantic code search.
-        
+
         This method initializes the VectorDatabase with the project-specific
-        index path. It requires both an embedding client and a project path.
-        
+        index path. It creates an embedding client based on the configured provider.
+
         Args:
             project_path: Path to the project directory
         """
         try:
-            # Check if embedding client is available
+            # Create embedding client if not provided
             if self.embedding_client is None:
-                logger.info(
-                    "Embedding client not available. Vector database will not be initialized."
-                )
-                self.vector_db = None
-                return
-            
+                try:
+                    # Load configuration and detect provider
+                    config_manager = ConfigManager()
+                    provider = config_manager.get_llm_provider()
+
+                    # Import embedding factory function
+                    from ..llm import create_embedding_client
+
+                    # Create embedding client
+                    cache_dir = Path(project_path) / ".dev_agent" / "embedding_cache"
+                    self.embedding_client = create_embedding_client(
+                        provider=provider, cache_dir=cache_dir
+                    )
+                    logger.info(f"Created {provider.value} embedding client")
+
+                except Exception as e:
+                    logger.warning(f"Failed to create embedding client: {e}")
+                    self.vector_db = None
+                    return
+
             # Import VectorDatabase (lazy import)
             from ..indexing.vector_database import VectorDatabase
-            
+
             # Create index path
             index_path = Path(project_path) / ".dev_agent" / "index"
-            
+
             # Initialize vector database
             self.vector_db = VectorDatabase(
                 index_path=str(index_path),
                 embedding_client=self.embedding_client,
             )
             logger.info(f"Initialized vector database at {index_path}")
-            
+
+        except Exception as e:
+            logger.warning(f"Failed to initialize vector database: {e}")
+            self.vector_db = None
         except Exception as e:
             logger.warning(f"Failed to initialize vector database: {e}")
             self.vector_db = None
@@ -168,7 +189,7 @@ class WorkflowManager(IWorkflowManager):
 
             # Initialize state manager
             self.state_manager = StateManager(project_path)
-            
+
             # Initialize undo/redo manager
             self.undo_redo_manager = UndoRedoManager(project_path)
 
@@ -189,7 +210,10 @@ class WorkflowManager(IWorkflowManager):
                 project_state,
                 SnapshotType.AUTOMATIC,
                 "Initial project state",
-                {"phase": project_state.current_phase, "action": "project_initialization"}
+                {
+                    "phase": project_state.current_phase,
+                    "action": "project_initialization",
+                },
             )
 
             # Initialize vector database now that we have project path
@@ -232,7 +256,7 @@ class WorkflowManager(IWorkflowManager):
 
             # Initialize state manager
             self.state_manager = StateManager(project_path)
-            
+
             # Initialize undo/redo manager
             self.undo_redo_manager = UndoRedoManager(project_path)
 
@@ -254,7 +278,7 @@ class WorkflowManager(IWorkflowManager):
                 project_state,
                 SnapshotType.AUTOMATIC,
                 f"Project resumed in {project_state.current_phase.value} phase",
-                {"phase": project_state.current_phase, "action": "project_resume"}
+                {"phase": project_state.current_phase, "action": "project_resume"},
             )
 
             # Initialize vector database now that we have project path
@@ -327,7 +351,11 @@ class WorkflowManager(IWorkflowManager):
                     self.current_project_state,
                     SnapshotType.AUTOMATIC,
                     f"Before transition from {current_phase.value} to {phase.value}",
-                    {"phase": current_phase, "action": "phase_transition_before", "target_phase": phase}
+                    {
+                        "phase": current_phase,
+                        "action": "phase_transition_before",
+                        "target_phase": phase,
+                    },
                 )
 
             self.cli_interface.display_message(
@@ -348,25 +376,29 @@ class WorkflowManager(IWorkflowManager):
                         self.current_project_state,
                         SnapshotType.AUTOMATIC,
                         f"After transition to {phase.value}",
-                        {"phase": phase, "action": "phase_transition_after", "source_phase": current_phase}
+                        {
+                            "phase": phase,
+                            "action": "phase_transition_after",
+                            "source_phase": current_phase,
+                        },
                     )
-                    
+
                     # Create undo/redo action
                     self.undo_redo_manager.create_action(
                         ActionType.PHASE_TRANSITION,
                         f"Transition from {current_phase.value} to {phase.value}",
                         before_snapshot_id,
                         after_snapshot_id,
-                        {"source_phase": current_phase, "target_phase": phase}
+                        {"source_phase": current_phase, "target_phase": phase},
                     )
-                    
+
                     # Add command history entry
                     self.undo_redo_manager.add_command_history_entry(
                         f"transition_to_phase({phase.value})",
                         phase,
                         True,
                         after_snapshot_id,
-                        metadata={"source_phase": current_phase, "target_phase": phase}
+                        metadata={"source_phase": current_phase, "target_phase": phase},
                     )
 
                 self.cli_interface.display_message(
@@ -382,7 +414,7 @@ class WorkflowManager(IWorkflowManager):
                         False,
                         before_snapshot_id,
                         error_message=result.message,
-                        metadata={"source_phase": current_phase, "target_phase": phase}
+                        metadata={"source_phase": current_phase, "target_phase": phase},
                     )
 
                 self.cli_interface.display_message(
@@ -433,7 +465,11 @@ class WorkflowManager(IWorkflowManager):
                         self.current_project_state,
                         SnapshotType.APPROVAL_POINT,
                         approval_description,
-                        {"phase": phase, "action": "user_approval", "approved": approved}
+                        {
+                            "phase": phase,
+                            "action": "user_approval",
+                            "approved": approved,
+                        },
                     )
 
             if approved:
@@ -714,7 +750,9 @@ class WorkflowManager(IWorkflowManager):
         """
         phase_report = self.cost_tracker.get_phase_report(phase)
 
-        self.cli_interface.display_message(f"\n💰 {phase.value.title()} Phase Cost Summary")
+        self.cli_interface.display_message(
+            f"\n💰 {phase.value.title()} Phase Cost Summary"
+        )
         self.cli_interface.display_message("=" * 50)
         self.cli_interface.display_message(
             f"Operations: {phase_report.operations_count}"
@@ -731,9 +769,7 @@ class WorkflowManager(IWorkflowManager):
         self.cli_interface.display_message(
             f"Total Tokens: {phase_report.total_prompt_tokens + phase_report.total_completion_tokens + phase_report.total_embedding_tokens:,}"
         )
-        self.cli_interface.display_message(
-            f"Phase Cost: ${phase_cost:.4f}"
-        )
+        self.cli_interface.display_message(f"Phase Cost: ${phase_cost:.4f}")
         self.cli_interface.display_message(
             f"Total Cost So Far: ${self.cost_tracker.get_current_cost():.4f}"
         )
@@ -785,25 +821,19 @@ class WorkflowManager(IWorkflowManager):
         self.cli_interface.display_message(
             f"Total Tokens: {report.total_prompt_tokens + report.total_completion_tokens + report.total_embedding_tokens:,}"
         )
-        self.cli_interface.display_message(
-            f"Total Cost: ${report.total_cost:.4f}"
-        )
+        self.cli_interface.display_message(f"Total Cost: ${report.total_cost:.4f}")
 
         # Display breakdown by phase
         if report.by_phase:
             self.cli_interface.display_message("\nCost by Phase:")
             for phase_name, phase_cost in report.by_phase.items():
-                self.cli_interface.display_message(
-                    f"  {phase_name}: ${phase_cost:.4f}"
-                )
+                self.cli_interface.display_message(f"  {phase_name}: ${phase_cost:.4f}")
 
         # Display breakdown by operation type
         if report.by_operation:
             self.cli_interface.display_message("\nOperations by Type:")
             for op_type, count in report.by_operation.items():
-                self.cli_interface.display_message(
-                    f"  {op_type}: {count}"
-                )
+                self.cli_interface.display_message(f"  {op_type}: {count}")
 
         self.cli_interface.display_message("=" * 50)
 
@@ -856,7 +886,9 @@ class WorkflowManager(IWorkflowManager):
             "total_prompt_tokens": report.total_prompt_tokens,
             "total_completion_tokens": report.total_completion_tokens,
             "total_embedding_tokens": report.total_embedding_tokens,
-            "total_tokens": report.total_prompt_tokens + report.total_completion_tokens + report.total_embedding_tokens,
+            "total_tokens": report.total_prompt_tokens
+            + report.total_completion_tokens
+            + report.total_embedding_tokens,
             "total_cost": report.total_cost,
             "by_phase": report.by_phase,
             "by_operation": report.by_operation,
@@ -884,14 +916,17 @@ class WorkflowManager(IWorkflowManager):
                 self.current_project_state,
                 SnapshotType.MANUAL,
                 description,
-                {"phase": self.current_project_state.current_phase, "action": "manual_snapshot"}
+                {
+                    "phase": self.current_project_state.current_phase,
+                    "action": "manual_snapshot",
+                },
             )
-            
+
             self.cli_interface.display_message(
                 f"Manual snapshot created: {description}"
             )
             return snapshot_id
-            
+
         except Exception as e:
             self.cli_interface.display_message(f"Error creating snapshot: {e}")
             return None
@@ -922,7 +957,7 @@ class WorkflowManager(IWorkflowManager):
 
             # Update current state
             self.current_project_state = restored_state
-            
+
             # Save restored state
             if not self.state_manager.save_project_state(restored_state):
                 self.cli_interface.display_message(
@@ -935,7 +970,11 @@ class WorkflowManager(IWorkflowManager):
                 restored_state,
                 SnapshotType.AUTOMATIC,
                 f"Restored from snapshot {snapshot_id}",
-                {"phase": restored_state.current_phase, "action": "snapshot_restore", "source_snapshot": snapshot_id}
+                {
+                    "phase": restored_state.current_phase,
+                    "action": "snapshot_restore",
+                    "source_snapshot": snapshot_id,
+                },
             )
 
             self.cli_interface.display_message(
@@ -944,9 +983,9 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(
                 f"Current phase: {restored_state.current_phase.value}"
             )
-            
+
             return True
-            
+
         except Exception as e:
             self.cli_interface.display_message(f"Error restoring snapshot: {e}")
             return False
@@ -966,36 +1005,30 @@ class WorkflowManager(IWorkflowManager):
         try:
             undo_actions = self.undo_redo_manager.get_undo_actions(limit=1)
             if not undo_actions:
-                self.cli_interface.display_message(
-                    "No actions available to undo."
-                )
+                self.cli_interface.display_message("No actions available to undo.")
                 return False
 
             action = undo_actions[0]
             restored_state = self.undo_redo_manager.undo_action(action.id)
-            
+
             if not restored_state:
-                self.cli_interface.display_message(
-                    "Error: Could not undo action"
-                )
+                self.cli_interface.display_message("Error: Could not undo action")
                 return False
 
             # Update current state
             self.current_project_state = restored_state
-            
+
             # Save restored state
             if not self.state_manager.save_project_state(restored_state):
-                self.cli_interface.display_message(
-                    "Error: Could not save undone state"
-                )
+                self.cli_interface.display_message("Error: Could not save undone state")
                 return False
 
             self.cli_interface.display_message(
                 f"Successfully undone: {action.description}"
             )
-            
+
             return True
-            
+
         except Exception as e:
             self.cli_interface.display_message(f"Error undoing action: {e}")
             return False
@@ -1015,36 +1048,30 @@ class WorkflowManager(IWorkflowManager):
         try:
             redo_actions = self.undo_redo_manager.get_redo_actions(limit=1)
             if not redo_actions:
-                self.cli_interface.display_message(
-                    "No actions available to redo."
-                )
+                self.cli_interface.display_message("No actions available to redo.")
                 return False
 
             action = redo_actions[0]
             restored_state = self.undo_redo_manager.redo_action(action.id)
-            
+
             if not restored_state:
-                self.cli_interface.display_message(
-                    "Error: Could not redo action"
-                )
+                self.cli_interface.display_message("Error: Could not redo action")
                 return False
 
             # Update current state
             self.current_project_state = restored_state
-            
+
             # Save restored state
             if not self.state_manager.save_project_state(restored_state):
-                self.cli_interface.display_message(
-                    "Error: Could not save redone state"
-                )
+                self.cli_interface.display_message("Error: Could not save redone state")
                 return False
 
             self.cli_interface.display_message(
                 f"Successfully redone: {action.description}"
             )
-            
+
             return True
-            
+
         except Exception as e:
             self.cli_interface.display_message(f"Error redoing action: {e}")
             return False

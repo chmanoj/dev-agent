@@ -1,7 +1,7 @@
-"""Token counting and cost estimation for Azure OpenAI operations.
+"""Token counting and cost estimation for LLM operations.
 
-This module provides accurate token counting using tiktoken and cost estimation
-based on Azure OpenAI pricing for different models.
+This module provides token counting and cost estimation for different LLM providers
+including Azure OpenAI and Google Gemini.
 """
 
 from __future__ import annotations
@@ -9,62 +9,88 @@ from __future__ import annotations
 import logging
 from enum import Enum
 
-import tiktoken
-
 logger = logging.getLogger(__name__)
 
 
 class ModelType(Enum):
-    """Supported Azure OpenAI model types."""
+    """Supported model types across providers."""
 
+    # Azure OpenAI models
     GPT_4 = "gpt-4"
     GPT_4_32K = "gpt-4-32k"
     GPT_4_TURBO = "gpt-4-turbo"
     GPT_4O = "gpt-4o"
     GPT_35_TURBO = "gpt-3.5-turbo"
 
+    # Gemini models
+    GEMINI_PRO = "gemini-pro"
+    GEMINI_2_5_FLASH = "gemini-2.5-flash"
+    GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
+    GEMINI_2_5_PRO = "gemini-2.5-pro"
+
 
 class TokenCounter:
-    """Token counter for Azure OpenAI models.
+    """Token counter for multiple LLM providers.
 
-    Provides accurate token counting using tiktoken, cost estimation based on
-    Azure OpenAI pricing, and context window validation.
+    Provides token counting and cost estimation for Azure OpenAI and Gemini models.
+    Uses tiktoken for OpenAI models and approximation for Gemini models.
 
     Attributes:
         model: The model type to use for token counting
-        encoding: The tiktoken encoding for the model
+        provider: The LLM provider (azure_openai or gemini)
+        encoding: The tiktoken encoding for OpenAI models (None for Gemini)
     """
 
     # Context window limits for different models
     CONTEXT_LIMITS = {
+        # Azure OpenAI
         ModelType.GPT_4: 8192,
         ModelType.GPT_4_32K: 32768,
         ModelType.GPT_4_TURBO: 128000,
         ModelType.GPT_4O: 128000,
         ModelType.GPT_35_TURBO: 16385,
+        # Gemini
+        ModelType.GEMINI_PRO: 32768,
+        ModelType.GEMINI_2_5_FLASH: 1048576,  # 1M tokens
+        ModelType.GEMINI_2_5_FLASH_LITE: 1048576,  # 1M tokens
+        ModelType.GEMINI_2_5_PRO: 2097152,  # 2M tokens
     }
 
-    # Azure OpenAI pricing per 1K tokens (USD)
-    # Note: Update these values based on current Azure pricing
+    # Pricing per 1K tokens (USD) - approximate values
     PRICING = {
+        # Azure OpenAI pricing
         ModelType.GPT_4: {"prompt": 0.03, "completion": 0.06},
         ModelType.GPT_4_32K: {"prompt": 0.06, "completion": 0.12},
         ModelType.GPT_4_TURBO: {"prompt": 0.01, "completion": 0.03},
         ModelType.GPT_4O: {"prompt": 0.005, "completion": 0.015},
         ModelType.GPT_35_TURBO: {"prompt": 0.0015, "completion": 0.002},
+        # Gemini pricing (approximate)
+        ModelType.GEMINI_PRO: {"prompt": 0.0005, "completion": 0.0015},
+        ModelType.GEMINI_2_5_FLASH: {"prompt": 0.000075, "completion": 0.0003},
+        ModelType.GEMINI_2_5_FLASH_LITE: {"prompt": 0.000075, "completion": 0.0003},
+        ModelType.GEMINI_2_5_PRO: {"prompt": 0.00125, "completion": 0.005},
     }
 
     def __init__(self, model: str = "gpt-4") -> None:
         """Initialize token counter for specified model.
 
         Args:
-            model: Model name (e.g., "gpt-4", "gpt-4-turbo")
-
-        Raises:
-            ValueError: If model is not supported
+            model: Model name (e.g., "gpt-4", "gemini-2.5-flash")
         """
-        self.model = self._parse_model_type(model)
-        self.encoding = self._get_encoding()
+        try:
+            self.model = self._parse_model_type(model)
+            self.provider = self._get_provider()
+            self.encoding = (
+                self._get_encoding() if self.provider == "azure_openai" else None
+            )
+        except ValueError as e:
+            # For unsupported models, use a default configuration
+            logger.warning(
+                f"Unsupported model '{model}': {e}. Using default configuration."
+            )
+            self.model = ModelType.GPT_4
+            self.provider = "azure_openai"
+            self.encoding = self._get_encoding()
 
     def _parse_model_type(self, model: str) -> ModelType:
         """Parse model string to ModelType enum.
@@ -80,7 +106,7 @@ class TokenCounter:
         """
         model_lower = model.lower()
 
-        # Map model strings to ModelType
+        # Azure OpenAI models
         if "gpt-4o" in model_lower:
             return ModelType.GPT_4O
         elif "gpt-4-turbo" in model_lower or "gpt-4-1106" in model_lower:
@@ -91,30 +117,68 @@ class TokenCounter:
             return ModelType.GPT_4
         elif "gpt-3.5-turbo" in model_lower:
             return ModelType.GPT_35_TURBO
+
+        # Gemini models
+        elif "gemini-2.5-flash-lite" in model_lower:
+            return ModelType.GEMINI_2_5_FLASH_LITE
+        elif "gemini-2.5-flash" in model_lower:
+            return ModelType.GEMINI_2_5_FLASH
+        elif "gemini-2.5-pro" in model_lower:
+            return ModelType.GEMINI_2_5_PRO
+        elif "gemini-pro" in model_lower:
+            return ModelType.GEMINI_PRO
+
         else:
             raise ValueError(
                 f"Unsupported model: {model}. "
                 f"Supported models: {[m.value for m in ModelType]}"
             )
 
-    def _get_encoding(self) -> tiktoken.Encoding:
-        """Get tiktoken encoding for the model.
+    def _get_provider(self) -> str:
+        """Get the provider for the current model.
 
         Returns:
-            tiktoken.Encoding instance
+            Provider name ("azure_openai" or "gemini")
+        """
+        if self.model in [
+            ModelType.GPT_4,
+            ModelType.GPT_4_32K,
+            ModelType.GPT_4_TURBO,
+            ModelType.GPT_4O,
+            ModelType.GPT_35_TURBO,
+        ]:
+            return "azure_openai"
+        else:
+            return "gemini"
+
+    def _get_encoding(self):
+        """Get tiktoken encoding for Azure OpenAI models.
+
+        Returns:
+            tiktoken.Encoding instance for OpenAI models, None for others
 
         Raises:
-            RuntimeError: If encoding cannot be loaded
+            RuntimeError: If encoding cannot be loaded for OpenAI models
         """
+        if self.provider != "azure_openai":
+            return None
+
         try:
+            import tiktoken
+
             # Use cl100k_base encoding for GPT-4 and GPT-3.5-turbo models
             return tiktoken.get_encoding("cl100k_base")
+        except ImportError:
+            logger.warning(
+                "tiktoken not available, using approximation for token counting"
+            )
+            return None
         except Exception as e:
             logger.error(f"Failed to load tiktoken encoding: {e}")
             raise RuntimeError(f"Failed to initialize token encoding: {e}") from e
 
     def count_tokens(self, text: str) -> int:
-        """Count tokens in text using tiktoken.
+        """Count tokens in text using provider-specific methods.
 
         Args:
             text: Text to count tokens for
@@ -123,7 +187,7 @@ class TokenCounter:
             Number of tokens in the text
 
         Raises:
-            ValueError: If text is None or encoding fails
+            ValueError: If text is None
         """
         if text is None:
             raise ValueError("Text cannot be None")
@@ -132,11 +196,20 @@ class TokenCounter:
             return 0
 
         try:
-            tokens = self.encoding.encode(text)
-            return len(tokens)
+            if self.provider == "azure_openai" and self.encoding:
+                # Use tiktoken for accurate OpenAI token counting
+                tokens = self.encoding.encode(text)
+                return len(tokens)
+            else:
+                # Use approximation for Gemini or when tiktoken is not available
+                # Rough approximation: 1 token ≈ 4 characters for English text
+                return max(1, len(text) // 4)
         except Exception as e:
-            logger.error(f"Failed to count tokens: {e}")
-            raise ValueError(f"Failed to encode text: {e}") from e
+            logger.warning(
+                f"Failed to count tokens accurately, using approximation: {e}"
+            )
+            # Fallback to character-based approximation
+            return max(1, len(text) // 4)
 
     def count_messages_tokens(
         self,

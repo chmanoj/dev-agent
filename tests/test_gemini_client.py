@@ -746,7 +746,7 @@ class TestConfigurationIntegration:
         """Test client with custom configuration."""
         config = GeminiConfig(
             api_key=SecretStr("AIzaSyTest123456789012345678901234567890"),
-            model_name="gemini-1.5-pro",
+            model_name="gemini-2.5-pro",
             temperature=0.3,
             max_output_tokens=4096,
             top_p=0.8,
@@ -761,7 +761,7 @@ class TestConfigurationIntegration:
 
     def test_client_with_different_models(self, mock_genai):
         """Test client with different Gemini models."""
-        models = ["gemini-pro", "gemini-1.5-pro", "gemini-1.5-flash"]
+        models = ["gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash"]
 
         for model_name in models:
             config = GeminiConfig(

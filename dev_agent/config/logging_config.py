@@ -136,7 +136,25 @@ def log_config_info(config) -> None:
     logger.debug("=== Configuration ===")
     logger.debug(f"Version: {config.version}")
     logger.debug(f"Logging level: {config.logging.level}")
-    logger.debug(f"Indexing model: {config.indexing.embedding_model}")
+
+    # Log active LLM provider and embedding model
+    try:
+        from .config_manager import ConfigManager
+
+        config_manager = ConfigManager()
+        provider = config_manager.get_llm_provider()
+        logger.debug(f"LLM Provider: {provider.value}")
+
+        if provider.value == "azure_openai" and config.azure_openai:
+            logger.debug(f"Embedding model: {config.azure_openai.embedding_deployment}")
+        elif provider.value == "gemini" and config.gemini:
+            logger.debug(f"Embedding model: {config.gemini.embedding_model}")
+        else:
+            logger.debug(f"Legacy embedding model: {config.indexing.embedding_model}")
+    except Exception:
+        # Fallback to legacy config if provider detection fails
+        logger.debug(f"Legacy embedding model: {config.indexing.embedding_model}")
+
     logger.debug(f"Vector DB type: {config.indexing.vector_db_type}")
     logger.debug(f"Auto approve: {config.cli.auto_approve}")
     logger.debug("=== End Configuration ===")

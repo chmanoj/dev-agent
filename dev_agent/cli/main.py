@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Annotated, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console
@@ -17,6 +17,7 @@ from ..config import (
     log_system_info,
     setup_logging,
 )
+from ..models.enums import LLMProvider
 from .enhanced_cli import EnhancedCLI
 from .interactive_cli import InteractiveCLI
 from .session_manager import SessionManager
@@ -81,21 +82,21 @@ def setup_cli_logging(
 
 def create_workflow_manager(cli_interface: "ICLIInterface") -> "WorkflowManager":
     """Create a WorkflowManager with proper initialization.
-    
+
     This helper function ensures that the WorkflowManager is created with
     all necessary components including the embedding client for vector search.
-    
+
     Args:
         cli_interface: CLI interface instance
-        
+
     Returns:
         Configured WorkflowManager instance with embedding client
     """
     from ..llm.embeddings import AzureEmbeddingClient
     from ..workflow.workflow_manager import WorkflowManager
-    
+
     config = config_manager.get_config()
-    
+
     embedding_client = None
     if config.azure_openai:
         try:
@@ -104,17 +105,20 @@ def create_workflow_manager(cli_interface: "ICLIInterface") -> "WorkflowManager"
                 logger.info("Initialized Azure OpenAI embedding client for workflow")
         except Exception as e:
             if logger:
-                logger.error(f"Failed to initialize embedding client: {e}", exc_info=True)
+                logger.error(
+                    f"Failed to initialize embedding client: {e}", exc_info=True
+                )
             console.print(
                 f"[yellow]Warning: Could not initialize embedding client: {e}[/yellow]"
             )
             console.print(
                 "[yellow]Some features may be limited. Run 'dev-agent azure configure' to set up Azure OpenAI.[/yellow]"
             )
-    else:
-        if logger:
-            logger.warning("Azure OpenAI not configured - vector search features will be limited")
-    
+    elif logger:
+        logger.warning(
+            "Azure OpenAI not configured - vector search features will be limited"
+        )
+
     return WorkflowManager(cli_interface, embedding_client=embedding_client)
 
 
@@ -122,7 +126,8 @@ def create_workflow_manager(cli_interface: "ICLIInterface") -> "WorkflowManager"
 def main(
     ctx: typer.Context,
     provider: Annotated[
-        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+        str | None,
+        typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)"),
     ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
@@ -137,62 +142,73 @@ def main(
         bool, typer.Option("--version", help="Show version and exit")
     ] = False,
     insecure: Annotated[
-        bool, typer.Option("--insecure", help="Disable SSL certificate verification (INSECURE - for testing only)")
+        bool,
+        typer.Option(
+            "--insecure",
+            help="Disable SSL certificate verification (INSECURE - for testing only)",
+        ),
     ] = False,
 ) -> None:
     """AI-powered development workflow assistant.
-    
+
     When invoked without a command, starts interactive mode in the current directory.
     Use 'dev-agent help' for a list of all commands and 'dev-agent examples' for
     common workflow examples.
-    
+
     Provider Selection:
     Use --provider to specify which AI provider to use (azure_openai or gemini).
     If not specified, the system will use the configured default provider.
-    
+
     Examples:
         # Start with default provider
         dev-agent
-        
+
         # Start with Gemini provider
         dev-agent --provider gemini
-        
+
         # Start with Azure OpenAI provider
         dev-agent --provider azure_openai
     """
     if version:
         from ..config import ConfigManager
+
         config = ConfigManager().get_config()
         console.print(f"[bold cyan]dev-agent[/bold cyan] version {config.version}")
         raise typer.Exit(0)
-    
+
     # Store insecure flag in context for subcommands to access
     if insecure:
-        console.print(Panel(
-            "[yellow]⚠️  SSL CERTIFICATE VERIFICATION DISABLED[/yellow]\n\n"
-            "Running in insecure mode. SSL certificates will NOT be verified.\n"
-            "This should ONLY be used for testing/development.\n"
-            "NEVER use this in production environments.",
-            title="⚠️  Security Warning",
-            border_style="yellow"
-        ))
+        console.print(
+            Panel(
+                "[yellow]⚠️  SSL CERTIFICATE VERIFICATION DISABLED[/yellow]\n\n"
+                "Running in insecure mode. SSL certificates will NOT be verified.\n"
+                "This should ONLY be used for testing/development.\n"
+                "NEVER use this in production environments.",
+                title="⚠️  Security Warning",
+                border_style="yellow",
+            )
+        )
         console.print()
         # Set environment variable so all Azure OpenAI clients use it
         import os
+
         os.environ["AZURE_OPENAI_VERIFY_SSL"] = "false"
-    
+
     if config_path:
         # TODO: Handle custom config path
         pass
-    
+
     # If no subcommand was provided, start interactive mode
     if ctx.invoked_subcommand is None:
         # Start interactive mode in current directory
         try:
-            interactive(project_path=None, provider=provider, verbose=verbose, debug=debug)
+            interactive(
+                project_path=None, provider=provider, verbose=verbose, debug=debug
+            )
         except Exception:
             # If interactive mode fails, show help
             from dev_agent.cli.help_system import help_system
+
             help_system.show_quick_reference()
 
 
@@ -231,7 +247,12 @@ def _run_indexing_with_progress(
         summary_table.add_column("Property", style="cyan")
         summary_table.add_column("Value", style="green")
 
-        summary_table.add_row("Languages", ", ".join(project_context.languages_detected) if project_context.languages_detected else "Unknown")
+        summary_table.add_row(
+            "Languages",
+            ", ".join(project_context.languages_detected)
+            if project_context.languages_detected
+            else "Unknown",
+        )
         summary_table.add_row("File Count", str(project_context.file_count))
         summary_table.add_row("Project Size", project_context.estimated_size.title())
         summary_table.add_row("Complexity", project_context.complexity.title())
@@ -239,52 +260,72 @@ def _run_indexing_with_progress(
         console.print(summary_table)
         console.print()
 
-        # Initialize indexing engine with embedding client from config
+        # Initialize indexing engine with embedding client from configured provider
         embedding_client = None
         try:
-            from dev_agent.llm.embeddings import AzureEmbeddingClient
-            from dev_agent.errors.exceptions import IndexingError
-            
+            from dev_agent.llm import create_embedding_client
+
             config = config_manager.get_config()
-            
-            # Check if Azure OpenAI is configured
-            if not config.azure_openai:
+
+            # Get the configured LLM provider and create embedding client
+            try:
+                provider = config_manager.get_llm_provider()
+
+                # Create embedding client using factory function
+                cache_dir = Path(project_path) / ".dev_agent" / "embedding_cache"
+                embedding_client = create_embedding_client(
+                    provider=provider, cache_dir=cache_dir
+                )
+
+                console.print(f"[green]✓[/green] Using {provider.value} for embeddings")
+
+            except ValueError as e:
                 console.print()
-                console.print(Panel(
-                    "[red]Azure OpenAI is not configured.[/red]\n\n"
-                    "dev-agent requires Azure OpenAI for embeddings generation.\n\n"
-                    "Please configure Azure OpenAI first:\n"
-                    "  [cyan]dev-agent azure configure[/cyan]\n\n"
-                    "Or set environment variables:\n"
-                    "  [cyan]AZURE_OPENAI_ENDPOINT[/cyan]\n"
-                    "  [cyan]AZURE_OPENAI_API_KEY[/cyan]\n"
-                    "  [cyan]AZURE_OPENAI_DEPLOYMENT_NAME[/cyan]\n"
-                    "  [cyan]AZURE_OPENAI_EMBEDDING_DEPLOYMENT[/cyan]",
-                    title="❌ Configuration Required",
-                    border_style="red"
-                ))
+                console.print(
+                    Panel(
+                        f"[red]No valid LLM provider configured.[/red]\n\n"
+                        f"Error: {e}\n\n"
+                        "Please configure one of the supported providers:\n\n"
+                        "[cyan]Azure OpenAI:[/cyan]\n"
+                        "  [cyan]dev-agent azure configure[/cyan]\n"
+                        "  Or set environment variables:\n"
+                        "    AZURE_OPENAI_ENDPOINT\n"
+                        "    AZURE_OPENAI_API_KEY\n"
+                        "    AZURE_OPENAI_DEPLOYMENT_NAME\n"
+                        "    AZURE_OPENAI_EMBEDDING_DEPLOYMENT\n\n"
+                        "[cyan]Google Gemini:[/cyan]\n"
+                        "  Set environment variables:\n"
+                        "    GEMINI_API_KEY\n"
+                        "    PREFERRED_LLM_PROVIDER=gemini\n"
+                        "    GEMINI_EMBEDDING_MODEL=gemini-embedding-001",
+                        title="❌ Configuration Required",
+                        border_style="red",
+                    )
+                )
                 raise typer.Exit(1)
-            
-            embedding_client = AzureEmbeddingClient(config.azure_openai)
-            
+
         except typer.Exit:
             raise
         except Exception as e:
             console.print()
-            console.print(Panel(
-                f"[red]Failed to initialize Azure OpenAI embedding client:[/red]\n\n"
-                f"{e}\n\n"
-                "Please verify your Azure OpenAI configuration:\n"
-                "  [cyan]dev-agent azure status[/cyan]\n\n"
-                "Test your connection:\n"
-                "  [cyan]dev-agent azure test[/cyan]\n\n"
-                "Reconfigure if needed:\n"
-                "  [cyan]dev-agent azure configure[/cyan]",
-                title="❌ Initialization Failed",
-                border_style="red"
-            ))
+            console.print(
+                Panel(
+                    f"[red]Failed to initialize embedding client:[/red]\n\n"
+                    f"{e}\n\n"
+                    "Please verify your configuration:\n"
+                    "  [cyan]dev-agent status[/cyan]\n\n"
+                    "For Azure OpenAI:\n"
+                    "  [cyan]dev-agent azure test[/cyan]\n\n"
+                    "For Gemini:\n"
+                    "  Check your GEMINI_API_KEY is valid",
+                    title="❌ Initialization Failed",
+                    border_style="red",
+                )
+            )
             if logger:
-                logger.error(f"Could not initialize embedding client: {e}", exc_info=True)
+                logger.error(
+                    f"Could not initialize embedding client: {e}", exc_info=True
+                )
             raise typer.Exit(1)
 
         indexing_engine = IndexingEngine(
@@ -302,12 +343,8 @@ def _run_indexing_with_progress(
             TimeElapsedColumn(),
             console=console,
         ) as progress:
-
             # Add progress task
-            indexing_task = progress.add_task(
-                "[cyan]Indexing codebase...",
-                total=100
-            )
+            indexing_task = progress.add_task("[cyan]Indexing codebase...", total=100)
 
             # Set up progress callback
             def update_progress(current: int, total: int, message: str = ""):
@@ -325,7 +362,9 @@ def _run_indexing_with_progress(
             result = indexing_engine.build_index()
 
             # Complete progress
-            progress.update(indexing_task, completed=100, description="[green]✓ Indexing complete!")
+            progress.update(
+                indexing_task, completed=100, description="[green]✓ Indexing complete!"
+            )
 
         console.print()
 
@@ -335,24 +374,26 @@ def _run_indexing_with_progress(
             console.print()
 
             # Create summary table
-            summary = Table(title="Indexing Summary", show_header=True, header_style="bold cyan")
+            summary = Table(
+                title="Indexing Summary", show_header=True, header_style="bold cyan"
+            )
             summary.add_column("Metric", style="cyan", width=30)
             summary.add_column("Value", justify="right", style="green", width=20)
 
             metadata = result.metadata
             summary.add_row("Files Indexed", str(metadata.get("total_files", 0)))
             summary.add_row("Lines of Code", f"{metadata.get('total_lines', 0):,}")
-            summary.add_row("Code Chunks", str(metadata.get('total_chunks', 0)))
+            summary.add_row("Code Chunks", str(metadata.get("total_chunks", 0)))
             summary.add_row("Embeddings Generated", str(result.embeddings_count))
-            summary.add_row("Functions Found", str(metadata.get('functions_count', 0)))
-            summary.add_row("Classes Found", str(metadata.get('classes_count', 0)))
-            summary.add_row("Imports Found", str(metadata.get('imports_count', 0)))
+            summary.add_row("Functions Found", str(metadata.get("functions_count", 0)))
+            summary.add_row("Classes Found", str(metadata.get("classes_count", 0)))
+            summary.add_row("Imports Found", str(metadata.get("imports_count", 0)))
 
-            languages = metadata.get('languages_detected', [])
+            languages = metadata.get("languages_detected", [])
             if languages:
                 summary.add_row("Languages Detected", ", ".join(languages))
 
-            indexing_time = metadata.get('indexing_time_seconds', 0)
+            indexing_time = metadata.get("indexing_time_seconds", 0)
             summary.add_row("Indexing Time", f"{indexing_time:.2f}s")
 
             console.print(summary)
@@ -361,7 +402,9 @@ def _run_indexing_with_progress(
             # Display patterns found
             if result.ast_index:
                 console.print("[bold cyan]🔍 Patterns Detected:[/bold cyan]")
-                console.print(f"  • {len(result.ast_index.functions)} function definitions")
+                console.print(
+                    f"  • {len(result.ast_index.functions)} function definitions"
+                )
                 console.print(f"  • {len(result.ast_index.classes)} class definitions")
                 console.print(f"  • {len(result.ast_index.imports)} import statements")
                 console.print(f"  • {len(result.ast_index.symbols)} symbols")
@@ -376,8 +419,12 @@ def _run_indexing_with_progress(
             # Update project state with indexing results
             if workflow_manager.current_project_state:
                 workflow_manager.current_project_state.indexing_complete = True
-                workflow_manager.current_project_state.index_metadata = indexing_engine.get_index_metadata()
-                workflow_manager.state_manager.save_project_state(workflow_manager.current_project_state)
+                workflow_manager.current_project_state.index_metadata = (
+                    indexing_engine.get_index_metadata()
+                )
+                workflow_manager.state_manager.save_project_state(
+                    workflow_manager.current_project_state
+                )
 
         else:
             console.print("[bold red]❌ Indexing Failed[/bold red]")
@@ -401,7 +448,8 @@ def init(
         str | None, typer.Argument(help="Project directory path")
     ] = None,
     provider: Annotated[
-        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+        str | None,
+        typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)"),
     ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
@@ -411,38 +459,38 @@ def init(
     ] = False,
 ) -> None:
     """Initialize a new dev-agent project.
-    
+
     This command initializes dev-agent for a project directory. It will:
     - Detect if this is a new or existing project
     - Guide you through setup if not configured
     - Offer template selection for new projects
     - Index existing code for existing projects
     - Create the .dev_agent/ directory structure
-    
+
     For new projects, you'll be guided through template selection and initial
     specification creation. For existing codebases, the tool will automatically
     index your code to understand patterns and conventions.
-    
+
     Provider Selection:
     Use --provider to specify which AI provider to use (azure_openai or gemini).
     If not specified, the system will use the configured default provider.
-    
+
     Examples:
         # Initialize in current directory
         dev-agent init
-        
+
         # Initialize with Gemini provider
         dev-agent init --provider gemini
-        
+
         # Initialize specific directory with Azure OpenAI
         dev-agent init /path/to/project --provider azure_openai
-        
+
         # Initialize with verbose output
         dev-agent init --verbose
-        
+
         # Initialize and see detailed logging
         dev-agent init --debug
-    
+
     After initialization, use 'dev-agent' to start interactive mode or
     'dev-agent resume' to continue an existing project.
     """
@@ -470,24 +518,26 @@ def init(
         # Validate provider selection if specified
         if provider:
             from ..models.enums import LLMProvider
-            
+
             provider_mapping = {
                 "azure": LLMProvider.AZURE_OPENAI,
                 "azure_openai": LLMProvider.AZURE_OPENAI,
                 "gemini": LLMProvider.GEMINI,
             }
-            
+
             if provider.lower() not in provider_mapping:
                 console.print(
                     f"[red]Error: Unsupported provider '{provider}'. "
                     f"Supported providers: {', '.join(provider_mapping.keys())}[/red]"
                 )
                 raise typer.Exit(1)
-            
+
             selected_provider = provider_mapping[provider.lower()]
-            
+
             # Validate provider configuration
-            is_valid, error_msg = config_manager.validate_provider_config(selected_provider)
+            is_valid, error_msg = config_manager.validate_provider_config(
+                selected_provider
+            )
             if not is_valid:
                 console.print(
                     f"[red]Error: Provider '{provider}' is not properly configured: {error_msg}[/red]"
@@ -496,10 +546,12 @@ def init(
                     f"[yellow]Please configure {provider} first or use a different provider.[/yellow]"
                 )
                 raise typer.Exit(1)
-            
+
             # Set the provider preference for this session
             os.environ["PREFERRED_LLM_PROVIDER"] = selected_provider.value
-            console.print(f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]")
+            console.print(
+                f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]"
+            )
             console.print()
 
         # Initialize journey manager to detect project type
@@ -525,9 +577,7 @@ def init(
             console.print(
                 "[cyan]This appears to be a new project (empty directory).[/cyan]"
             )
-            console.print(
-                "dev-agent will help you set up and scaffold your project.\n"
-            )
+            console.print("dev-agent will help you set up and scaffold your project.\n")
         else:
             console.print(
                 f"[cyan]Detected existing {project_context.project_type} project with "
@@ -558,12 +608,12 @@ def init(
                 "\n[cyan]Would you like to use a project template?[/cyan]",
                 default=False,
             ):
-                console.print(
-                    "\n[green]Great! You can browse templates with:[/green]"
-                )
+                console.print("\n[green]Great! You can browse templates with:[/green]")
                 console.print("  [cyan]dev-agent scaffold list[/cyan]")
                 console.print("\n[green]Then create from a template with:[/green]")
-                console.print("  [cyan]dev-agent scaffold create <template-name>[/cyan]")
+                console.print(
+                    "  [cyan]dev-agent scaffold create <template-name>[/cyan]"
+                )
                 console.print(
                     "\n[yellow]After scaffolding, run [cyan]dev-agent init[/cyan] again to continue.[/yellow]"
                 )
@@ -656,8 +706,12 @@ def init(
                 "  1. Generate specifications for new features using the indexed code"
             )
             console.print("  2. Create designs that match your existing architecture")
-            console.print("  3. Generate implementation tasks consistent with your code style")
-            console.print("  4. Use [cyan]dev-agent resume[/cyan] to continue your workflow")
+            console.print(
+                "  3. Generate implementation tasks consistent with your code style"
+            )
+            console.print(
+                "  4. Use [cyan]dev-agent resume[/cyan] to continue your workflow"
+            )
             console.print()
 
         # Start interactive mode after initialization
@@ -682,7 +736,8 @@ def resume(
         str | None, typer.Argument(help="Project directory path")
     ] = None,
     provider: Annotated[
-        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+        str | None,
+        typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)"),
     ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
@@ -692,34 +747,34 @@ def resume(
     ] = False,
 ) -> None:
     """Resume an existing dev-agent project.
-    
+
     Load a previously initialized dev-agent project and continue from where
     you left off. The project state is automatically restored, including the
     current phase, generated documents, and workflow progress.
-    
+
     This command will:
     - Load the project state from .dev_agent/
     - Display current phase and progress
     - Start interactive mode to continue workflow
     - Restore all previous context and documents
-    
+
     Provider Selection:
     Use --provider to specify which AI provider to use (azure_openai or gemini).
     If not specified, the system will use the configured default provider.
-    
+
     Examples:
         # Resume project in current directory
         dev-agent resume
-        
+
         # Resume with Gemini provider
         dev-agent resume --provider gemini
-        
+
         # Resume specific project with Azure OpenAI
         dev-agent resume /path/to/project --provider azure_openai
-        
+
         # Resume with verbose output
         dev-agent resume --verbose
-    
+
     If the project hasn't been initialized yet, you'll see an error message
     suggesting to use 'dev-agent init' first.
     """
@@ -740,24 +795,26 @@ def resume(
         # Validate provider selection if specified
         if provider:
             from ..models.enums import LLMProvider
-            
+
             provider_mapping = {
                 "azure": LLMProvider.AZURE_OPENAI,
                 "azure_openai": LLMProvider.AZURE_OPENAI,
                 "gemini": LLMProvider.GEMINI,
             }
-            
+
             if provider.lower() not in provider_mapping:
                 console.print(
                     f"[red]Error: Unsupported provider '{provider}'. "
                     f"Supported providers: {', '.join(provider_mapping.keys())}[/red]"
                 )
                 raise typer.Exit(1)
-            
+
             selected_provider = provider_mapping[provider.lower()]
-            
+
             # Validate provider configuration
-            is_valid, error_msg = config_manager.validate_provider_config(selected_provider)
+            is_valid, error_msg = config_manager.validate_provider_config(
+                selected_provider
+            )
             if not is_valid:
                 console.print(
                     f"[red]Error: Provider '{provider}' is not properly configured: {error_msg}[/red]"
@@ -766,10 +823,12 @@ def resume(
                     f"[yellow]Please configure {provider} first or use a different provider.[/yellow]"
                 )
                 raise typer.Exit(1)
-            
+
             # Set the provider preference for this session
             os.environ["PREFERRED_LLM_PROVIDER"] = selected_provider.value
-            console.print(f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]")
+            console.print(
+                f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]"
+            )
             console.print()
 
         dev_agent_dir = os.path.join(project_path, ".dev_agent")
@@ -831,7 +890,8 @@ def interactive(
         str | None, typer.Argument(help="Project directory path")
     ] = None,
     provider: Annotated[
-        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+        str | None,
+        typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)"),
     ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
@@ -841,21 +901,21 @@ def interactive(
     ] = False,
 ) -> None:
     """Start interactive mode (default command).
-    
+
     Launch the interactive chat interface for dev-agent. This provides a
     conversational way to work with your project through the four-phase workflow.
-    
+
     Provider Selection:
     Use --provider to specify which AI provider to use (azure_openai or gemini).
     If not specified, the system will use the configured default provider.
-    
+
     Examples:
         # Start interactive mode in current directory
         dev-agent interactive
-        
+
         # Start with Gemini provider
         dev-agent interactive --provider gemini
-        
+
         # Start in specific directory with Azure OpenAI
         dev-agent interactive /path/to/project --provider azure_openai
     """
@@ -870,24 +930,26 @@ def interactive(
         # Validate provider selection if specified
         if provider:
             from ..models.enums import LLMProvider
-            
+
             provider_mapping = {
                 "azure": LLMProvider.AZURE_OPENAI,
                 "azure_openai": LLMProvider.AZURE_OPENAI,
                 "gemini": LLMProvider.GEMINI,
             }
-            
+
             if provider.lower() not in provider_mapping:
                 console.print(
                     f"[red]Error: Unsupported provider '{provider}'. "
                     f"Supported providers: {', '.join(provider_mapping.keys())}[/red]"
                 )
                 raise typer.Exit(1)
-            
+
             selected_provider = provider_mapping[provider.lower()]
-            
+
             # Validate provider configuration
-            is_valid, error_msg = config_manager.validate_provider_config(selected_provider)
+            is_valid, error_msg = config_manager.validate_provider_config(
+                selected_provider
+            )
             if not is_valid:
                 console.print(
                     f"[red]Error: Provider '{provider}' is not properly configured: {error_msg}[/red]"
@@ -896,10 +958,12 @@ def interactive(
                     f"[yellow]Please configure {provider} first or use a different provider.[/yellow]"
                 )
                 raise typer.Exit(1)
-            
+
             # Set the provider preference for this session
             os.environ["PREFERRED_LLM_PROVIDER"] = selected_provider.value
-            console.print(f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]")
+            console.print(
+                f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]"
+            )
             console.print()
 
         session_manager = SessionManager(project_path)
@@ -1083,7 +1147,9 @@ def setup(
                 "Would you like to reconfigure?",
                 default=False,
             ):
-                console.print("[green]Setup cancelled. Configuration unchanged.[/green]")
+                console.print(
+                    "[green]Setup cancelled. Configuration unchanged.[/green]"
+                )
                 raise typer.Exit(0)
 
             console.print()
@@ -1116,7 +1182,10 @@ def setup(
 @app.command()
 def validate(
     provider: Annotated[
-        str | None, typer.Option("--provider", help="LLM provider to validate (azure_openai, gemini, or all)")
+        str | None,
+        typer.Option(
+            "--provider", help="LLM provider to validate (azure_openai, gemini, or all)"
+        ),
     ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
@@ -1131,17 +1200,17 @@ def validate(
     - File system permissions (read/write access)
 
     Provider Selection:
-    Use --provider to validate a specific provider (azure_openai, gemini) or 
+    Use --provider to validate a specific provider (azure_openai, gemini) or
     'all' to validate all configured providers. If not specified, validates
     the active provider.
 
     Examples:
         # Validate active provider
         dev-agent validate
-        
+
         # Validate specific provider
         dev-agent validate --provider gemini
-        
+
         # Validate all configured providers
         dev-agent validate --provider all
 
@@ -1184,9 +1253,9 @@ def validate(
 
         # 1. Check LLM Provider Configuration
         from ..models.enums import LLMProvider
-        
+
         config = config_manager.get_config()
-        
+
         # Determine which providers to validate
         providers_to_validate = []
         if provider:
@@ -1201,7 +1270,9 @@ def validate(
                 if provider.lower() in provider_mapping:
                     providers_to_validate = [provider_mapping[provider.lower()]]
                 else:
-                    console.print(f"[red]Error: Unsupported provider '{provider}'[/red]")
+                    console.print(
+                        f"[red]Error: Unsupported provider '{provider}'[/red]"
+                    )
                     raise typer.Exit(1)
         else:
             # Validate active provider
@@ -1211,17 +1282,21 @@ def validate(
             except Exception:
                 # If no active provider, validate all available
                 providers_to_validate = [LLMProvider.AZURE_OPENAI, LLMProvider.GEMINI]
-        
-        console.print(f"[cyan]Checking LLM provider configuration...[/cyan]")
-        
+
+        console.print("[cyan]Checking LLM provider configuration...[/cyan]")
+
         for llm_provider in providers_to_validate:
             provider_name = llm_provider.value.replace("_", " ").title()
-            
+
             is_valid, error_msg = config_manager.validate_provider_config(llm_provider)
-            
+
             if is_valid:
                 if llm_provider == LLMProvider.AZURE_OPENAI and config.azure_openai:
-                    endpoint_display = config.azure_openai.endpoint[:40] + "..." if len(config.azure_openai.endpoint) > 40 else config.azure_openai.endpoint
+                    endpoint_display = (
+                        config.azure_openai.endpoint[:40] + "..."
+                        if len(config.azure_openai.endpoint) > 40
+                        else config.azure_openai.endpoint
+                    )
                     results_table.add_row(
                         f"{provider_name} Config",
                         "[green]✓ Pass[/green]",
@@ -1255,7 +1330,11 @@ def validate(
 
         # 2. Test API Connectivity
         console.print("[cyan]Testing Azure OpenAI connectivity...[/cyan]")
-        if config.azure_openai and config.azure_openai.api_key and config.azure_openai.endpoint:
+        if (
+            config.azure_openai
+            and config.azure_openai.api_key
+            and config.azure_openai.endpoint
+        ):
             try:
                 from dev_agent.llm.azure_client import AzureOpenAIClient
 
@@ -1536,7 +1615,10 @@ def audit(
         bool, typer.Option("--skip-azure", help="Skip Azure OpenAI integration tests")
     ] = False,
     save_report: Annotated[
-        bool, typer.Option("--save-report/--no-save-report", help="Save detailed report to file")
+        bool,
+        typer.Option(
+            "--save-report/--no-save-report", help="Save detailed report to file"
+        ),
     ] = True,
     report_path: Annotated[
         str | None, typer.Option("--report-path", help="Path to save audit report")
@@ -1571,11 +1653,13 @@ def audit(
     try:
         setup_cli_logging(verbose, False)
 
-        console.print(Panel.fit(
-            "[bold blue]Dev-Agent Comprehensive Audit[/bold blue]\n"
-            "Verifying all core functionality...",
-            border_style="blue"
-        ))
+        console.print(
+            Panel.fit(
+                "[bold blue]Dev-Agent Comprehensive Audit[/bold blue]\n"
+                "Verifying all core functionality...",
+                border_style="blue",
+            )
+        )
         console.print()
 
         # Import audit engine
@@ -1605,11 +1689,9 @@ def audit(
             TaskProgressColumn(),
             console=console,
         ) as progress:
-
             # Create progress task
             audit_task = progress.add_task(
-                "[cyan]Running audit checks...",
-                total=7 if not skip_azure else 6
+                "[cyan]Running audit checks...", total=7 if not skip_azure else 6
             )
 
             # Run the audit (this will take some time)
@@ -1637,14 +1719,18 @@ def audit(
             "fail": "❌",
         }[report.overall_status]
 
-        console.print(Panel.fit(
-            f"[bold {status_color}]{status_emoji} Overall Status: {report.overall_status.upper()}[/bold {status_color}]",
-            border_style=status_color
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold {status_color}]{status_emoji} Overall Status: {report.overall_status.upper()}[/bold {status_color}]",
+                border_style=status_color,
+            )
+        )
         console.print()
 
         # Display statistics
-        stats_table = Table(title="Audit Statistics", show_header=True, header_style="bold cyan")
+        stats_table = Table(
+            title="Audit Statistics", show_header=True, header_style="bold cyan"
+        )
         stats_table.add_column("Metric", style="cyan")
         stats_table.add_column("Count", justify="right", style="white")
 
@@ -1657,7 +1743,9 @@ def audit(
         console.print()
 
         # Display detailed results
-        results_table = Table(title="Detailed Results", show_header=True, header_style="bold cyan")
+        results_table = Table(
+            title="Detailed Results", show_header=True, header_style="bold cyan"
+        )
         results_table.add_column("Component", style="cyan", width=30)
         results_table.add_column("Status", justify="center", width=10)
         results_table.add_column("Message", width=60)
@@ -1669,11 +1757,7 @@ def audit(
                 "fail": "[red]❌ FAIL[/red]",
             }[result.status]
 
-            results_table.add_row(
-                result.component,
-                status_display,
-                result.message
-            )
+            results_table.add_row(result.component, status_display, result.message)
 
         console.print(results_table)
         console.print()
@@ -1682,10 +1766,9 @@ def audit(
         all_recommendations = []
         for result in report.results:
             if result.recommendations:
-                all_recommendations.extend([
-                    f"[{result.component}] {rec}"
-                    for rec in result.recommendations
-                ])
+                all_recommendations.extend(
+                    [f"[{result.component}] {rec}" for rec in result.recommendations]
+                )
 
         if all_recommendations:
             console.print("[bold yellow]Recommendations:[/bold yellow]")
@@ -1695,7 +1778,9 @@ def audit(
 
         # Display report save location
         if save_report:
-            console.print(f"[dim]📄 Detailed report saved to: {audit_config.report_path}[/dim]")
+            console.print(
+                f"[dim]📄 Detailed report saved to: {audit_config.report_path}[/dim]"
+            )
             console.print()
 
         # Exit with appropriate code
@@ -1703,10 +1788,14 @@ def audit(
             console.print("[red]Audit failed. Please address the issues above.[/red]")
             raise typer.Exit(1)
         elif report.overall_status == "warning":
-            console.print("[yellow]Audit completed with warnings. Review recommendations above.[/yellow]")
+            console.print(
+                "[yellow]Audit completed with warnings. Review recommendations above.[/yellow]"
+            )
             raise typer.Exit(0)
         else:
-            console.print("[green]✅ All checks passed! Dev-agent is fully functional.[/green]")
+            console.print(
+                "[green]✅ All checks passed! Dev-agent is fully functional.[/green]"
+            )
             raise typer.Exit(0)
 
     except Exception as e:
@@ -1723,7 +1812,12 @@ def cost_report(
         str | None, typer.Argument(help="Project directory path")
     ] = None,
     phase: Annotated[
-        str | None, typer.Option("--phase", "-p", help="Filter by phase (indexing, specification, design, implementation)")
+        str | None,
+        typer.Option(
+            "--phase",
+            "-p",
+            help="Filter by phase (indexing, specification, design, implementation)",
+        ),
     ] = None,
     export: Annotated[
         str | None, typer.Option("--export", "-e", help="Export report to JSON file")
@@ -1733,7 +1827,7 @@ def cost_report(
     ] = False,
 ) -> None:
     """Display detailed cost report for Azure OpenAI usage.
-    
+
     This command provides comprehensive cost tracking and analysis including:
     - Token usage statistics (prompt, completion, embedding)
     - Cost breakdown by workflow phase
@@ -1741,17 +1835,17 @@ def cost_report(
     - Budget threshold warnings
     - Time period analysis
     - JSON export for further analysis
-    
+
     Examples:
         # Show complete cost report
         dev-agent cost-report
-        
+
         # Show costs for specific phase
         dev-agent cost-report --phase specification
-        
+
         # Export report to JSON
         dev-agent cost-report --export cost_report.json
-        
+
         # Phase-specific export
         dev-agent cost-report --phase indexing --export indexing_costs.json
     """
@@ -1783,7 +1877,9 @@ def cost_report(
         try:
             workflow_manager.resume_project(project_path)
         except Exception:
-            console.print("[yellow]Could not load project state, showing empty report[/yellow]")
+            console.print(
+                "[yellow]Could not load project state, showing empty report[/yellow]"
+            )
             console.print()
 
         # Get cost report
@@ -1791,29 +1887,31 @@ def cost_report(
         if phase:
             try:
                 from ..models.enums import PhaseType
+
                 phase_enum = PhaseType(phase.lower())
                 report = workflow_manager.cost_tracker.get_phase_report(phase_enum)
                 title = f"Cost Report: {phase_enum.value.title()} Phase"
             except ValueError:
                 console.print(f"[red]Invalid phase: {phase}[/red]")
-                console.print("[yellow]Valid phases: indexing, specification, design, implementation[/yellow]")
+                console.print(
+                    "[yellow]Valid phases: indexing, specification, design, implementation[/yellow]"
+                )
                 raise typer.Exit(1)
         else:
             report = workflow_manager.cost_tracker.get_report()
             title = "Complete Cost Report"
 
         # Display header
-        console.print(Panel.fit(
-            f"[bold blue]{title}[/bold blue]",
-            border_style="blue"
-        ))
+        console.print(Panel.fit(f"[bold blue]{title}[/bold blue]", border_style="blue"))
         console.print()
 
         # Check if there's any data
         if report.operations_count == 0:
             console.print("[yellow]No operations recorded yet.[/yellow]")
             console.print()
-            console.print("[dim]Operations will be tracked as you use dev-agent features like:[/dim]")
+            console.print(
+                "[dim]Operations will be tracked as you use dev-agent features like:[/dim]"
+            )
             console.print("  • Indexing codebases")
             console.print("  • Generating specifications")
             console.print("  • Creating designs")
@@ -1833,11 +1931,15 @@ def cost_report(
         summary_table.add_row("Total Operations", str(report.operations_count))
         summary_table.add_row("Total Tokens", f"{report.total_tokens:,}")
         summary_table.add_row("Total Cost", f"${report.total_cost:.4f}")
-        
+
         if report.operations_count > 0:
-            summary_table.add_row("Avg Cost/Operation", f"${report.average_cost_per_operation:.4f}")
-            summary_table.add_row("Avg Tokens/Operation", f"{report.average_tokens_per_operation:.1f}")
-        
+            summary_table.add_row(
+                "Avg Cost/Operation", f"${report.average_cost_per_operation:.4f}"
+            )
+            summary_table.add_row(
+                "Avg Tokens/Operation", f"{report.average_tokens_per_operation:.1f}"
+            )
+
         duration_hours = report.duration_seconds / 3600
         if duration_hours < 1:
             duration_str = f"{report.duration_seconds / 60:.1f} minutes"
@@ -1864,11 +1966,25 @@ def cost_report(
             prompt_pct = (report.total_prompt_tokens / total_tokens) * 100
             completion_pct = (report.total_completion_tokens / total_tokens) * 100
             embedding_pct = (report.total_embedding_tokens / total_tokens) * 100
-            
-            token_table.add_row("Prompt Tokens", f"{report.total_prompt_tokens:,}", f"{prompt_pct:.1f}%")
-            token_table.add_row("Completion Tokens", f"{report.total_completion_tokens:,}", f"{completion_pct:.1f}%")
-            token_table.add_row("Embedding Tokens", f"{report.total_embedding_tokens:,}", f"{embedding_pct:.1f}%")
-            token_table.add_row("[bold]Total[/bold]", f"[bold]{total_tokens:,}[/bold]", "[bold]100.0%[/bold]")
+
+            token_table.add_row(
+                "Prompt Tokens", f"{report.total_prompt_tokens:,}", f"{prompt_pct:.1f}%"
+            )
+            token_table.add_row(
+                "Completion Tokens",
+                f"{report.total_completion_tokens:,}",
+                f"{completion_pct:.1f}%",
+            )
+            token_table.add_row(
+                "Embedding Tokens",
+                f"{report.total_embedding_tokens:,}",
+                f"{embedding_pct:.1f}%",
+            )
+            token_table.add_row(
+                "[bold]Total[/bold]",
+                f"[bold]{total_tokens:,}[/bold]",
+                "[bold]100.0%[/bold]",
+            )
 
         console.print(token_table)
         console.print()
@@ -1882,10 +1998,14 @@ def cost_report(
                 border_style="cyan",
             )
             op_table.add_column("Operation Type", style="cyan", width=25)
-            op_table.add_column("Token Count", justify="right", style="yellow", width=15)
+            op_table.add_column(
+                "Token Count", justify="right", style="yellow", width=15
+            )
             op_table.add_column("Percentage", justify="right", style="blue", width=15)
 
-            for op_type, token_count in sorted(report.by_operation.items(), key=lambda x: x[1], reverse=True):
+            for op_type, token_count in sorted(
+                report.by_operation.items(), key=lambda x: x[1], reverse=True
+            ):
                 pct = (token_count / total_tokens) * 100 if total_tokens > 0 else 0
                 op_table.add_row(op_type.title(), f"{token_count:,}", f"{pct:.1f}%")
 
@@ -1902,11 +2022,17 @@ def cost_report(
             )
             phase_table.add_column("Phase", style="cyan", width=25)
             phase_table.add_column("Cost", justify="right", style="green", width=15)
-            phase_table.add_column("Percentage", justify="right", style="blue", width=15)
+            phase_table.add_column(
+                "Percentage", justify="right", style="blue", width=15
+            )
 
-            for phase_type, cost in sorted(report.by_phase.items(), key=lambda x: x[1], reverse=True):
+            for phase_type, cost in sorted(
+                report.by_phase.items(), key=lambda x: x[1], reverse=True
+            ):
                 pct = (cost / report.total_cost) * 100 if report.total_cost > 0 else 0
-                phase_table.add_row(phase_type.value.title(), f"${cost:.4f}", f"{pct:.1f}%")
+                phase_table.add_row(
+                    phase_type.value.title(), f"${cost:.4f}", f"{pct:.1f}%"
+                )
 
             console.print(phase_table)
             console.print()
@@ -1914,38 +2040,48 @@ def cost_report(
         # Budget warnings
         budget_threshold = workflow_manager.cost_tracker.budget_threshold
         budget_limit = workflow_manager.cost_tracker.budget_limit
-        
+
         if budget_threshold is not None or budget_limit is not None:
             console.print("[bold cyan]Budget Status:[/bold cyan]")
-            
+
             if budget_threshold is not None:
                 threshold_pct = (report.total_cost / budget_threshold) * 100
                 if report.total_cost >= budget_threshold:
-                    console.print(f"  [red]⚠ Budget threshold exceeded: ${report.total_cost:.2f} / ${budget_threshold:.2f} ({threshold_pct:.1f}%)[/red]")
+                    console.print(
+                        f"  [red]⚠ Budget threshold exceeded: ${report.total_cost:.2f} / ${budget_threshold:.2f} ({threshold_pct:.1f}%)[/red]"
+                    )
                 else:
                     remaining = budget_threshold - report.total_cost
-                    console.print(f"  [green]✓ Within threshold: ${report.total_cost:.2f} / ${budget_threshold:.2f} ({threshold_pct:.1f}%)[/green]")
+                    console.print(
+                        f"  [green]✓ Within threshold: ${report.total_cost:.2f} / ${budget_threshold:.2f} ({threshold_pct:.1f}%)[/green]"
+                    )
                     console.print(f"    [dim]Remaining: ${remaining:.2f}[/dim]")
-            
+
             if budget_limit is not None:
                 limit_pct = (report.total_cost / budget_limit) * 100
                 if report.total_cost >= budget_limit:
-                    console.print(f"  [bold red]❌ BUDGET LIMIT EXCEEDED: ${report.total_cost:.2f} / ${budget_limit:.2f} ({limit_pct:.1f}%)[/bold red]")
+                    console.print(
+                        f"  [bold red]❌ BUDGET LIMIT EXCEEDED: ${report.total_cost:.2f} / ${budget_limit:.2f} ({limit_pct:.1f}%)[/bold red]"
+                    )
                 else:
                     remaining = budget_limit - report.total_cost
-                    console.print(f"  [green]✓ Within limit: ${report.total_cost:.2f} / ${budget_limit:.2f} ({limit_pct:.1f}%)[/green]")
+                    console.print(
+                        f"  [green]✓ Within limit: ${report.total_cost:.2f} / ${budget_limit:.2f} ({limit_pct:.1f}%)[/green]"
+                    )
                     console.print(f"    [dim]Remaining: ${remaining:.2f}[/dim]")
-            
+
             console.print()
 
         # Time period
-        console.print(f"[dim]Period: {report.start_time.strftime('%Y-%m-%d %H:%M:%S')} to {report.end_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
+        console.print(
+            f"[dim]Period: {report.start_time.strftime('%Y-%m-%d %H:%M:%S')} to {report.end_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]"
+        )
         console.print()
 
         # Export to JSON if requested
         if export:
             export_path = Path(export)
-            
+
             # Build export data
             export_data = {
                 "title": title,
@@ -1987,18 +2123,26 @@ def cost_report(
                     for op in report.operations
                 ],
             }
-            
+
             # Add budget status if configured
             if budget_threshold is not None:
                 export_data["budget_status"]["threshold"] = budget_threshold
-                export_data["budget_status"]["threshold_exceeded"] = report.total_cost >= budget_threshold
-                export_data["budget_status"]["threshold_percentage"] = (report.total_cost / budget_threshold) * 100
-            
+                export_data["budget_status"]["threshold_exceeded"] = (
+                    report.total_cost >= budget_threshold
+                )
+                export_data["budget_status"]["threshold_percentage"] = (
+                    report.total_cost / budget_threshold
+                ) * 100
+
             if budget_limit is not None:
                 export_data["budget_status"]["limit"] = budget_limit
-                export_data["budget_status"]["limit_exceeded"] = report.total_cost >= budget_limit
-                export_data["budget_status"]["limit_percentage"] = (report.total_cost / budget_limit) * 100
-            
+                export_data["budget_status"]["limit_exceeded"] = (
+                    report.total_cost >= budget_limit
+                )
+                export_data["budget_status"]["limit_percentage"] = (
+                    report.total_cost / budget_limit
+                ) * 100
+
             # Write JSON file
             try:
                 export_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2033,21 +2177,20 @@ def status(
     ] = False,
 ) -> None:
     """Display current project status with phase progress and cost information.
-    
+
     Shows:
     - Current workflow phase with progress percentage
     - Completed phases with checkmarks
     - Cost information (current and by phase)
     - Last activity timestamp
     - Next steps guidance
-    
+
     Use --detailed for verbose output including:
     - Detailed phase information
     - Token usage breakdown
     - Index metadata
     - Session information
     """
-    from pathlib import Path
 
     from rich.panel import Panel
     from rich.table import Table
@@ -2082,7 +2225,7 @@ def status(
 
         # Display header with provider information
         console.print()
-        
+
         # Get active provider information
         try:
             active_provider = config_manager.get_llm_provider()
@@ -2091,7 +2234,7 @@ def status(
             provider_display = "Not Configured"
             if logger:
                 logger.warning(f"Could not determine active provider: {e}")
-        
+
         console.print(
             Panel.fit(
                 f"[bold cyan]Project Status[/bold cyan]\n"
@@ -2224,7 +2367,9 @@ def status(
                 index_table.add_column("Property", style="cyan")
                 index_table.add_column("Value", style="white")
 
-                index_table.add_row("Total Files", str(project_state.index_metadata.total_files))
+                index_table.add_row(
+                    "Total Files", str(project_state.index_metadata.total_files)
+                )
                 index_table.add_row(
                     "Total Lines", f"{project_state.index_metadata.total_lines:,}"
                 )
@@ -2488,55 +2633,102 @@ def _convert_config_value(value: str):
 
 def _check_configuration_and_warn(config) -> None:
     """Check configuration and provide helpful warnings.
-    
+
     Offers to run setup wizard on first invocation if not configured.
     """
     from rich.prompt import Confirm
 
     from dev_agent.onboarding.setup_wizard import SetupWizard
 
-    # Check if Azure OpenAI is configured
-    if not config.azure_openai.api_key or not config.azure_openai.endpoint:
+    global config_manager
+
+    # Determine which LLM provider is being used
+    try:
+        provider = config_manager.get_llm_provider()
+
+        # If Gemini is configured, no need to warn about Azure OpenAI
+        if provider == LLMProvider.GEMINI:
+            return
+
+        # For Azure OpenAI, check if it's configured
+        if provider == LLMProvider.AZURE_OPENAI:
+            if (
+                config.azure_openai
+                and config.azure_openai.api_key
+                and config.azure_openai.endpoint
+            ):
+                return
+    except ValueError:
+        # No valid provider configuration found
+        pass
+
+    # Check if Azure OpenAI is configured (fallback for backward compatibility)
+    if (
+        config.azure_openai
+        and config.azure_openai.api_key
+        and config.azure_openai.endpoint
+    ):
+        return
+
+    # No valid configuration found - show warning
+    if (
+        not config.azure_openai
+        or not config.azure_openai.api_key
+        or not config.azure_openai.endpoint
+    ):
         console.print("[yellow]⚠ Azure OpenAI not configured[/yellow]")
-        
+
         # Check if this is first run
         wizard = SetupWizard()
         prefs = wizard.load_existing_preferences()
         is_first_run = prefs is None or not prefs.azure_configured
-        
+
         if is_first_run:
-            console.print("\n[cyan]It looks like this is your first time using dev-agent.[/cyan]")
-            console.print("Would you like to run the setup wizard to configure Azure OpenAI?")
+            console.print(
+                "\n[cyan]It looks like this is your first time using dev-agent.[/cyan]"
+            )
+            console.print(
+                "Would you like to run the setup wizard to configure Azure OpenAI?"
+            )
             console.print()
-            
+
             if Confirm.ask("Run setup wizard now?", default=True):
                 console.print()
                 result = wizard.run()
-                
+
                 if result.ready_to_use:
-                    console.print("\n[green]✓ Setup complete! Continuing with initialization...[/green]")
+                    console.print(
+                        "\n[green]✓ Setup complete! Continuing with initialization...[/green]"
+                    )
                     # Reload config after setup
-                    global config_manager
                     config_manager = ConfigManager()
                 else:
-                    console.print("\n[red]Setup incomplete. Please run [cyan]dev-agent setup[/cyan] to configure.[/red]")
+                    console.print(
+                        "\n[red]Setup incomplete. Please run [cyan]dev-agent setup[/cyan] to configure.[/red]"
+                    )
                     raise typer.Exit(1)
             else:
-                console.print("\n[yellow]You can run setup later with: [cyan]dev-agent setup[/cyan][/yellow]")
-                console.print("[yellow]Azure OpenAI configuration is required to use dev-agent.[/yellow]")
+                console.print(
+                    "\n[yellow]You can run setup later with: [cyan]dev-agent setup[/cyan][/yellow]"
+                )
+                console.print(
+                    "[yellow]Azure OpenAI configuration is required to use dev-agent.[/yellow]"
+                )
                 raise typer.Exit(1)
         else:
-            console.print("\n[yellow]Please configure Azure OpenAI with: [cyan]dev-agent setup[/cyan][/yellow]")
+            console.print(
+                "\n[yellow]Please configure Azure OpenAI with: [cyan]dev-agent setup[/cyan][/yellow]"
+            )
             raise typer.Exit(1)
 
 
 def _check_configuration_and_offer_setup(config, is_new_project: bool = False) -> bool:
     """Check configuration and offer setup wizard if needed.
-    
+
     Args:
         config: Current configuration
         is_new_project: Whether this is a new project (empty directory)
-        
+
     Returns:
         True if configuration is complete, False otherwise
     """
@@ -2544,18 +2736,55 @@ def _check_configuration_and_offer_setup(config, is_new_project: bool = False) -
 
     from dev_agent.onboarding.setup_wizard import SetupWizard
 
-    # Check if Azure OpenAI is configured
-    if not config.azure_openai.api_key or not config.azure_openai.endpoint:
+    global config_manager
+
+    # Determine which LLM provider is being used
+    try:
+        provider = config_manager.get_llm_provider()
+
+        # Check if the selected provider is configured
+        if provider == LLMProvider.GEMINI:
+            # Gemini is configured, no need for Azure OpenAI setup
+            return True
+
+        # For Azure OpenAI, check if it's configured
+        if provider == LLMProvider.AZURE_OPENAI:
+            if (
+                config.azure_openai
+                and config.azure_openai.api_key
+                and config.azure_openai.endpoint
+            ):
+                return True
+    except ValueError:
+        # No valid provider configuration found
+        pass
+
+    # Check if Azure OpenAI is configured (fallback for backward compatibility)
+    if (
+        config.azure_openai
+        and config.azure_openai.api_key
+        and config.azure_openai.endpoint
+    ):
+        return True
+
+    # No valid configuration found - offer setup wizard
+    if (
+        not config.azure_openai
+        or not config.azure_openai.api_key
+        or not config.azure_openai.endpoint
+    ):
         console.print("[yellow]⚠ Azure OpenAI not configured[/yellow]")
-        
+
         # Check if this is first run
         wizard = SetupWizard()
         prefs = wizard.load_existing_preferences()
         is_first_run = prefs is None or not prefs.azure_configured
-        
+
         if is_first_run:
-            console.print("\n[cyan]It looks like this is your first time using dev-agent.[/cyan]")
-            
+            console.print(
+                "\n[cyan]It looks like this is your first time using dev-agent.[/cyan]"
+            )
+
             if is_new_project:
                 console.print(
                     "Before starting your new project, let's configure Azure OpenAI.\n"
@@ -2564,17 +2793,16 @@ def _check_configuration_and_offer_setup(config, is_new_project: bool = False) -
                 console.print(
                     "Before analyzing your codebase, let's configure Azure OpenAI.\n"
                 )
-            
+
             if Confirm.ask("Run setup wizard now?", default=True):
                 console.print()
                 result = wizard.run()
-                
+
                 if result.ready_to_use:
                     console.print(
                         "\n[green]✓ Setup complete! Continuing with initialization...[/green]\n"
                     )
                     # Reload config after setup
-                    global config_manager
                     config_manager = ConfigManager()
                     return True
                 else:
@@ -2595,7 +2823,7 @@ def _check_configuration_and_offer_setup(config, is_new_project: bool = False) -
                 "\n[yellow]Please configure Azure OpenAI with: [cyan]dev-agent setup[/cyan][/yellow]"
             )
             return False
-    
+
     # Configuration is complete
     return True
 
@@ -2603,7 +2831,8 @@ def _check_configuration_and_offer_setup(config, is_new_project: bool = False) -
 @scaffold_app.command("list")
 def scaffold_list(
     language: Annotated[
-        str | None, typer.Option("--language", "-l", help="Filter by programming language")
+        str | None,
+        typer.Option("--language", "-l", help="Filter by programming language"),
     ] = None,
     project_type: Annotated[
         str | None, typer.Option("--type", "-t", help="Filter by project type")
@@ -2626,16 +2855,22 @@ def scaffold_list(
                 language_filter = LanguageType(language.lower())
             except ValueError:
                 console.print(f"[red]Invalid language: {language}[/red]")
-                console.print(f"Available languages: {', '.join([l.value for l in LanguageType])}")
+                console.print(
+                    f"Available languages: {', '.join([l.value for l in LanguageType])}"
+                )
                 raise typer.Exit(1)
 
         project_type_filter = None
         if project_type:
             try:
-                project_type_filter = ProjectType(project_type.lower().replace("-", "_"))
+                project_type_filter = ProjectType(
+                    project_type.lower().replace("-", "_")
+                )
             except ValueError:
                 console.print(f"[red]Invalid project type: {project_type}[/red]")
-                console.print(f"Available types: {', '.join([t.value for t in ProjectType])}")
+                console.print(
+                    f"Available types: {', '.join([t.value for t in ProjectType])}"
+                )
                 raise typer.Exit(1)
 
         framework_filter = None
@@ -2644,7 +2879,9 @@ def scaffold_list(
                 framework_filter = FrameworkType(framework.lower())
             except ValueError:
                 console.print(f"[red]Invalid framework: {framework}[/red]")
-                console.print(f"Available frameworks: {', '.join([f.value for f in FrameworkType])}")
+                console.print(
+                    f"Available frameworks: {', '.join([f.value for f in FrameworkType])}"
+                )
                 raise typer.Exit(1)
 
         # Get filtered templates
@@ -2655,19 +2892,29 @@ def scaffold_list(
         )
 
         if not templates:
-            console.print("[yellow]No templates found matching the specified criteria.[/yellow]")
+            console.print(
+                "[yellow]No templates found matching the specified criteria.[/yellow]"
+            )
             return
 
-        console.print(f"[bold blue]Available Templates ({len(templates)} found):[/bold blue]")
+        console.print(
+            f"[bold blue]Available Templates ({len(templates)} found):[/bold blue]"
+        )
         console.print("=" * 60)
 
         for template in templates:
             console.print(f"[bold green]{template.name}[/bold green] ({template.id})")
             console.print(f"  Description: {template.description}")
-            console.print(f"  Languages: {', '.join([l.value for l in template.supported_languages])}")
-            console.print(f"  Project Types: {', '.join([t.value for t in template.project_types])}")
+            console.print(
+                f"  Languages: {', '.join([l.value for l in template.supported_languages])}"
+            )
+            console.print(
+                f"  Project Types: {', '.join([t.value for t in template.project_types])}"
+            )
             if template.supported_frameworks:
-                console.print(f"  Frameworks: {', '.join([f.value for f in template.supported_frameworks])}")
+                console.print(
+                    f"  Frameworks: {', '.join([f.value for f in template.supported_frameworks])}"
+                )
             console.print()
 
     except Exception as e:
@@ -2688,7 +2935,8 @@ def scaffold_create(
         str | None, typer.Option("--description", "-d", help="Project description")
     ] = None,
     language: Annotated[
-        str | None, typer.Option("--language", "-l", help="Primary programming language")
+        str | None,
+        typer.Option("--language", "-l", help="Primary programming language"),
     ] = None,
     project_type: Annotated[
         str | None, typer.Option("--type", help="Project type")
@@ -2759,7 +3007,9 @@ def scaffold_create(
 
         # Interactive project configuration
         if description is None:
-            description = typer.prompt("Project description", default=f"A {template.name} project")
+            description = typer.prompt(
+                "Project description", default=f"A {template.name} project"
+            )
 
         if language is None and len(template.supported_languages) > 1:
             console.print("Available languages:")
@@ -2814,14 +3064,20 @@ def scaffold_create(
         )
 
         # Create the project
-        console.print(f"[blue]Creating project '{name}' using template '{template.name}'...[/blue]")
+        console.print(
+            f"[blue]Creating project '{name}' using template '{template.name}'...[/blue]"
+        )
 
         result = template_system.create_project_scaffold(project_spec, output_path)
 
         if result.success:
-            console.print(f"[green]✓ Project created successfully at: {result.project_path}[/green]")
+            console.print(
+                f"[green]✓ Project created successfully at: {result.project_path}[/green]"
+            )
             console.print(f"[green]✓ Created {len(result.created_files)} files[/green]")
-            console.print(f"[green]✓ Created {len(result.created_directories)} directories[/green]")
+            console.print(
+                f"[green]✓ Created {len(result.created_directories)} directories[/green]"
+            )
 
             if result.warnings:
                 console.print("[yellow]Warnings:[/yellow]")
@@ -2853,7 +3109,8 @@ def scaffold_microservices(
         str | None, typer.Option("--output", "-o", help="Output directory path")
     ] = None,
     services: Annotated[
-        str | None, typer.Option("--services", help="Comma-separated list of service names")
+        str | None,
+        typer.Option("--services", help="Comma-separated list of service names"),
     ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
@@ -2904,10 +3161,12 @@ def scaffold_microservices(
 
                 service_description = typer.prompt(
                     "Service description",
-                    default=f"{service_name.replace('-', ' ').title()} service"
+                    default=f"{service_name.replace('-', ' ').title()} service",
                 )
 
-                port = typer.prompt("Service port", default=str(8000 + len(service_specs)))
+                port = typer.prompt(
+                    "Service port", default=str(8000 + len(service_specs))
+                )
 
                 service_specs.append(
                     MicroserviceSpec(
@@ -2940,12 +3199,18 @@ def scaffold_microservices(
 
         console.print(f"[blue]Creating microservices architecture '{name}'...[/blue]")
 
-        result = scaffolder.scaffold_microservices_architecture(architecture, output_path)
+        result = scaffolder.scaffold_microservices_architecture(
+            architecture, output_path
+        )
 
         if result.success:
-            console.print(f"[green]✓ Microservices architecture created successfully at: {result.project_path}[/green]")
+            console.print(
+                f"[green]✓ Microservices architecture created successfully at: {result.project_path}[/green]"
+            )
             console.print(f"[green]✓ Created {len(result.created_files)} files[/green]")
-            console.print(f"[green]✓ Created {len(result.created_directories)} directories[/green]")
+            console.print(
+                f"[green]✓ Created {len(result.created_directories)} directories[/green]"
+            )
             console.print(f"[green]✓ Configured {len(service_specs)} services[/green]")
 
             if result.warnings:
@@ -3428,9 +3693,7 @@ def cleanup_execute(
 
         # Confirmation prompt
         if not yes:
-            console.print(
-                "[yellow]⚠️  A backup will be created before cleanup[/yellow]"
-            )
+            console.print("[yellow]⚠️  A backup will be created before cleanup[/yellow]")
             console.print()
 
             if not Confirm.ask(
@@ -3491,7 +3754,9 @@ def cleanup_execute(
             for error in result.errors[:10]:
                 console.print(f"  [red]✗ {error}[/red]")
             if len(result.errors) > 10:
-                console.print(f"  [dim]... and {len(result.errors) - 10} more errors[/dim]")
+                console.print(
+                    f"  [dim]... and {len(result.errors) - 10} more errors[/dim]"
+                )
             console.print()
 
         # Generate and save report
