@@ -1,5 +1,6 @@
 """Core data models and enums for the dev-agent system."""
 
+from .cost_tracking import CostReport, TokenUsage
 from .documents import (
     DesignDocument,
     Requirement,
@@ -17,12 +18,11 @@ from .enums import (
     SpecificationSource,
     TaskStatus,
 )
-from .project_state import IndexMetadata, ProjectState, SessionData
 
 # LLM-related models
-from .llm_config import AzureOpenAIConfig
+from .llm_config import AzureOpenAIConfig, GeminiConfig
 from .llm_responses import CompletionResponse, EmbeddingResponse
-from .cost_tracking import CostReport, TokenUsage
+from .project_state import IndexMetadata, ProjectState, SessionData
 
 # Optional imports that may have external dependencies
 try:
@@ -113,31 +113,32 @@ except ImportError:
 
 # Base exports that are always available
 __all__ = [
-    # Enums
-    "PhaseType",
-    "PhaseStatus",
-    "TaskStatus",
-    "Priority",
-    "DocumentType",
-    "SpecificationSource",
-    "LLMProvider",
-    "LLMOperationType",
-    # Project State
-    "ProjectState",
-    "IndexMetadata",
-    "SessionData",
-    # Documents
-    "SpecificationDocument",
-    "DesignDocument",
-    "TaskList",
-    "Requirement",
-    "Task",
     # LLM Models
     "AzureOpenAIConfig",
     "CompletionResponse",
-    "EmbeddingResponse",
-    "TokenUsage",
     "CostReport",
+    "DesignDocument",
+    "DocumentType",
+    "EmbeddingResponse",
+    "GeminiConfig",
+    "IndexMetadata",
+    "LLMOperationType",
+    "LLMProvider",
+    "PhaseStatus",
+    # Enums
+    "PhaseType",
+    "Priority",
+    # Project State
+    "ProjectState",
+    "Requirement",
+    "SessionData",
+    # Documents
+    "SpecificationDocument",
+    "SpecificationSource",
+    "Task",
+    "TaskList",
+    "TaskStatus",
+    "TokenUsage",
 ]
 
 # Add optional exports if available
@@ -187,7 +188,7 @@ if _VISUALIZATION_AVAILABLE:
         [
             "ArchitectureVisualization",
             "ComponentVisualization",
-            "DataFlowVisualization", 
+            "DataFlowVisualization",
             "DependencyVisualization",
             "DiagramExportOptions",
             "DiagramMetadata",

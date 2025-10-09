@@ -55,6 +55,7 @@ class SpecificationSource(Enum):
     EXISTING_CODE = "existing_code"
     USER_INPUT = "user_input"
 
+
 class LanguageType(Enum):
     """Supported programming languages."""
 
@@ -178,12 +179,13 @@ class CICDPlatform(Enum):
 
 class LLMProvider(Enum):
     """Supported LLM providers.
-    
+
     This enum defines the AI providers that can be used for code generation,
     specification creation, and embedding generation.
     """
 
     AZURE_OPENAI = "azure_openai"
+    GEMINI = "gemini"
     # Future providers can be added here:
     # AWS_BEDROCK = "aws_bedrock"
     # OPENAI = "openai"
@@ -191,7 +193,7 @@ class LLMProvider(Enum):
 
 class LLMOperationType(Enum):
     """Types of LLM operations.
-    
+
     This enum categorizes different types of operations performed with LLM
     providers, which is useful for tracking usage, costs, and performance.
     """
