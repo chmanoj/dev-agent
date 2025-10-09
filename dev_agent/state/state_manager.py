@@ -42,8 +42,19 @@ class StateManager:
         self.documents_dir.mkdir(exist_ok=True)
 
     def _serialize_dataclass(self, obj: Any) -> Any:
-        """Recursively serialize dataclass objects to dictionaries."""
-        if is_dataclass(obj):
+        """Recursively serialize dataclass objects to dictionaries.
+        
+        Handles datetime objects FIRST before other type checks to ensure
+        proper serialization to ISO format strings. This is critical for
+        JSON serialization across all document types.
+        """
+        # Check datetime FIRST before other type checks
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif hasattr(obj, "value"):  # Handle enums
+            return obj.value
+        elif is_dataclass(obj):
+            # Manually iterate through fields to maintain recursive handling
             result = {}
             for field_name, field_value in asdict(obj).items():
                 result[field_name] = self._serialize_dataclass(field_value)
@@ -52,10 +63,6 @@ class StateManager:
             return [self._serialize_dataclass(item) for item in obj]
         elif isinstance(obj, dict):
             return {key: self._serialize_dataclass(value) for key, value in obj.items()}
-        elif isinstance(obj, datetime):
-            return obj.isoformat()
-        elif hasattr(obj, "value"):  # Handle enums
-            return obj.value
         else:
             return obj
 
