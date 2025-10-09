@@ -66,8 +66,17 @@ class StateManager:
         else:
             return obj
 
-    def _deserialize_datetime(self, date_str: str) -> datetime:
-        """Deserialize ISO format datetime string."""
+    def _deserialize_datetime(self, date_str: str | None) -> datetime | None:
+        """Deserialize ISO format datetime string, handling None values.
+        
+        Args:
+            date_str: ISO format datetime string or None
+            
+        Returns:
+            datetime object if date_str is not None, otherwise None
+        """
+        if date_str is None:
+            return None
         return datetime.fromisoformat(date_str)
 
     def save_project_state(self, state: ProjectState) -> bool:
@@ -146,24 +155,24 @@ class StateManager:
             return None
 
     def _reconstruct_project_state(self, state_dict: dict[str, Any]) -> ProjectState:
-        """Reconstruct ProjectState from dictionary."""
-        # Handle datetime fields
-        created_at = self._deserialize_datetime(state_dict["created_at"])
-        updated_at = self._deserialize_datetime(state_dict["updated_at"])
+        """Reconstruct ProjectState from dictionary with None-safe datetime handling."""
+        # Handle datetime fields with None checks
+        created_at = self._deserialize_datetime(state_dict.get("created_at"))
+        updated_at = self._deserialize_datetime(state_dict.get("updated_at"))
 
-        # Handle session data
+        # Handle session data with None-safe datetime deserialization
         session_data_dict = state_dict["session_data"]
         session_data = SessionData(
             session_id=session_data_dict["session_id"],
-            started_at=self._deserialize_datetime(session_data_dict["started_at"]),
+            started_at=self._deserialize_datetime(session_data_dict.get("started_at")),
             last_activity=self._deserialize_datetime(
-                session_data_dict["last_activity"]
+                session_data_dict.get("last_activity")
             ),
             user_approvals=session_data_dict["user_approvals"],
             pending_approvals=session_data_dict["pending_approvals"],
         )
 
-        # Handle index metadata
+        # Handle index metadata with None-safe datetime deserialization
         index_metadata = None
         if state_dict["index_metadata"]:
             idx_dict = state_dict["index_metadata"]
@@ -172,7 +181,7 @@ class StateManager:
                 total_lines=idx_dict["total_lines"],
                 languages_detected=idx_dict["languages_detected"],
                 index_size_mb=idx_dict["index_size_mb"],
-                last_indexed=self._deserialize_datetime(idx_dict["last_indexed"]),
+                last_indexed=self._deserialize_datetime(idx_dict.get("last_indexed")),
                 index_version=idx_dict["index_version"],
             )
 
@@ -236,8 +245,9 @@ class StateManager:
             )
             requirements.append(requirement)
 
+        # Handle approval_timestamp - check if None before deserializing
         approval_timestamp = None
-        if spec_dict["approval_timestamp"]:
+        if spec_dict.get("approval_timestamp") is not None:
             approval_timestamp = self._deserialize_datetime(
                 spec_dict["approval_timestamp"]
             )
@@ -319,6 +329,14 @@ class StateManager:
             test_coverage_target=ts_dict["test_coverage_target"],
         )
 
+        # Handle approval_timestamp if field exists (future-proofing)
+        approval_timestamp = None
+        if "approval_timestamp" in design_dict and design_dict["approval_timestamp"] is not None:
+            approval_timestamp = self._deserialize_datetime(
+                design_dict["approval_timestamp"]
+            )
+
+        # Build DesignDocument (approval_timestamp not currently in model)
         return DesignDocument(
             overview=design_dict["overview"],
             architecture=architecture,
@@ -352,6 +370,14 @@ class StateManager:
             )
             tasks.append(task)
 
+        # Handle approval_timestamp if field exists (future-proofing)
+        approval_timestamp = None
+        if "approval_timestamp" in tasks_dict and tasks_dict["approval_timestamp"] is not None:
+            approval_timestamp = self._deserialize_datetime(
+                tasks_dict["approval_timestamp"]
+            )
+
+        # Build TaskList (approval_timestamp not currently in model)
         return TaskList(
             tasks=tasks,
             dependencies=tasks_dict["dependencies"],

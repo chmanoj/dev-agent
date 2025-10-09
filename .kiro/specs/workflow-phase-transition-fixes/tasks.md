@@ -7,7 +7,7 @@
   - Test serialization with all document types
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [-] 2. Fix datetime deserialization in StateManager
+- [ ] 2. Fix datetime deserialization in StateManager
   - Update `_deserialize_datetime()` to handle None values by returning None immediately
   - Add None checks in `_reconstruct_specification()` before deserializing approval_timestamp
   - Add None checks in `_reconstruct_design()` before deserializing approval_timestamp (if field exists)
