@@ -526,6 +526,7 @@ class GeminiConfig(BaseModel):
         # Gemini embedding models can produce different dimensions
         # Allow configuration via environment variable
         import os
+
         return int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
 
     def get_api_key_value(self) -> str:

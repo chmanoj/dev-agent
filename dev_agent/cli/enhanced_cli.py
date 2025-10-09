@@ -1705,37 +1705,43 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
         try:
             current_phase = self.workflow_manager.get_current_phase()
-            
+
             # Get project state to check if current phase is complete
             project_state = None
-            if hasattr(self.workflow_manager, 'current_project_state'):
+            if hasattr(self.workflow_manager, "current_project_state"):
                 project_state = self.workflow_manager.current_project_state
-            elif hasattr(self.workflow_manager, 'state_manager'):
+            elif hasattr(self.workflow_manager, "state_manager"):
                 project_state = self.workflow_manager.state_manager.load_project_state()
-            
+
             if not project_state:
                 return "❌ No project state available"
-            
+
             # Import enums at the top
             from dev_agent.models.enums import PhaseType
-            
+
             # Check if current phase is complete
             phase_complete = False
             if current_phase == PhaseType.INDEXING:
                 phase_complete = project_state.indexing_complete
             elif current_phase == PhaseType.SPECIFICATION:
-                phase_complete = (project_state.specification and project_state.specification.approved)
+                phase_complete = (
+                    project_state.specification and project_state.specification.approved
+                )
             elif current_phase == PhaseType.DESIGN:
-                phase_complete = (project_state.design and project_state.design.approved)
+                phase_complete = project_state.design and project_state.design.approved
             elif current_phase == PhaseType.IMPLEMENTATION:
                 if project_state.implementation_progress:
                     total_tasks = len(project_state.implementation_progress)
-                    completed_tasks = sum(1 for status in project_state.implementation_progress.values() if status == TaskStatus.COMPLETED)
-                    phase_complete = (completed_tasks == total_tasks and total_tasks > 0)
-            
+                    completed_tasks = sum(
+                        1
+                        for status in project_state.implementation_progress.values()
+                        if status == TaskStatus.COMPLETED
+                    )
+                    phase_complete = completed_tasks == total_tasks and total_tasks > 0
+
             if not phase_complete:
                 return f"❌ Cannot proceed: {current_phase.value.title()} phase is not yet complete"
-            
+
             # Determine next phase
 
             phase_order = list(PhaseType)

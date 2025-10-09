@@ -121,9 +121,7 @@ class GeminiEmbeddingClient(IEmbeddingClient):
         # Configure Gemini API
         genai.configure(api_key=config.get_api_key_value())
 
-        logger.info(
-            f"Initialized Gemini embedding client with model: {self.model}"
-        )
+        logger.info(f"Initialized Gemini embedding client with model: {self.model}")
 
     @property
     def dimension(self) -> int:
@@ -183,7 +181,7 @@ class GeminiEmbeddingClient(IEmbeddingClient):
             if len(embedding) != self.EMBEDDING_DIMENSION:
                 raise LLMAPIError(
                     f"Unexpected embedding dimension: {len(embedding)}, expected {self.EMBEDDING_DIMENSION}",
-                    "This may indicate a model configuration issue"
+                    "This may indicate a model configuration issue",
                 )
 
             # Cache the result
@@ -273,7 +271,7 @@ class GeminiEmbeddingClient(IEmbeddingClient):
         if any(emb is None for emb in embeddings_result):
             raise LLMAPIError(
                 "Failed to generate embeddings for some texts",
-                "Check logs for details about which texts failed"
+                "Check logs for details about which texts failed",
             )
 
         # Type narrowing: we've verified no None values
@@ -359,16 +357,18 @@ class GeminiEmbeddingClient(IEmbeddingClient):
             if len(batch_embeddings) != len(batch_texts):
                 raise LLMAPIError(
                     f"Expected {len(batch_texts)} embeddings, got {len(batch_embeddings)}",
-                    "This may indicate an API response format issue"
+                    "This may indicate an API response format issue",
                 )
 
             # Store embeddings in result list at correct indices
-            for (original_idx, text), embedding in zip(batch, batch_embeddings, strict=False):
+            for (original_idx, text), embedding in zip(
+                batch, batch_embeddings, strict=False
+            ):
                 # Validate embedding dimension
                 if len(embedding) != self.EMBEDDING_DIMENSION:
                     raise LLMAPIError(
                         f"Unexpected embedding dimension: {len(embedding)}, expected {self.EMBEDDING_DIMENSION}",
-                        "This may indicate a model configuration issue"
+                        "This may indicate a model configuration issue",
                     )
 
                 embeddings_result[original_idx] = embedding
@@ -377,8 +377,12 @@ class GeminiEmbeddingClient(IEmbeddingClient):
                 self.cache.set(text, self.model, embedding, self.EMBEDDING_DIMENSION)
 
             # Track token usage and cost if cost tracker is available
-            if (hasattr(self, "cost_tracker") and self.cost_tracker and CostTracker
-                and isinstance(self.cost_tracker, CostTracker)):
+            if (
+                hasattr(self, "cost_tracker")
+                and self.cost_tracker
+                and CostTracker
+                and isinstance(self.cost_tracker, CostTracker)
+            ):
                 # Estimate token count (Gemini doesn't provide exact counts)
                 estimated_tokens = sum(len(text.split()) for text in batch_texts)
                 self.cost_tracker.record_embedding(
@@ -386,10 +390,7 @@ class GeminiEmbeddingClient(IEmbeddingClient):
                     model=self.model,
                 )
 
-
-            logger.debug(
-                f"Generated {len(batch_texts)} embeddings successfully"
-            )
+            logger.debug(f"Generated {len(batch_texts)} embeddings successfully")
 
         except Exception as e:
             logger.error(f"Error processing batch: {e}")
@@ -430,40 +431,39 @@ class GeminiEmbeddingClient(IEmbeddingClient):
             raise LLMAuthenticationError(
                 "Failed to authenticate with Google Gemini API",
                 "Check that GEMINI_API_KEY is set correctly. "
-                "Get your API key at: https://makersuite.google.com/app/apikey"
+                "Get your API key at: https://makersuite.google.com/app/apikey",
             ) from error
 
         if isinstance(error, google_exceptions.ResourceExhausted):
             logger.warning("Gemini API rate limit exceeded")
             raise LLMRateLimitError(
                 "Gemini API rate limit exceeded",
-                "The request will be retried automatically with exponential backoff"
+                "The request will be retried automatically with exponential backoff",
             ) from error
 
         if isinstance(error, google_exceptions.DeadlineExceeded):
             logger.error("Gemini API request timed out")
             raise LLMTimeoutError(
                 f"Request to Gemini API timed out after {self.config.timeout} seconds",
-                "The request will be retried automatically"
+                "The request will be retried automatically",
             ) from error
 
         if isinstance(error, google_exceptions.InvalidArgument):
             logger.error(f"Invalid request to Gemini API: {error}")
             raise LLMBadRequestError(
                 f"Invalid request to Gemini API: {error}",
-                "Check that the model name and parameters are correct"
+                "Check that the model name and parameters are correct",
             ) from error
 
         if isinstance(error, google_exceptions.GoogleAPIError):
             logger.error(f"Gemini API error: {error}")
             raise LLMAPIError(
                 f"Gemini API error: {error}",
-                "Check Gemini service status or try again later"
+                "Check Gemini service status or try again later",
             ) from error
 
         # Re-raise unexpected errors
         logger.error(f"Unexpected error in Gemini embedding client: {error}")
         raise LLMAPIError(
-            f"Unexpected error: {error}",
-            "Check logs for details"
+            f"Unexpected error: {error}", "Check logs for details"
         ) from error

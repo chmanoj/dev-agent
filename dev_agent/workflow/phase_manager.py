@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..analysis.codebase_analyzer import CodebaseAnalyzer
 from ..generation.python_code_generator import PythonCodeGenerator
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 class PhaseManager(IPhaseManager):
     """Manages execution of individual workflow phases with validation and recovery.
-    
+
     This class orchestrates the execution of the four workflow phases (indexing,
     specification, design, and implementation) with proper LLM client integration,
     validation, and error recovery.
@@ -256,8 +256,10 @@ class PhaseManager(IPhaseManager):
                 )
 
             # Execute specification generation (async)
-            specification = await self.specification_workflow.execute_specification_phase(
-                context.project_state.project_path
+            specification = (
+                await self.specification_workflow.execute_specification_phase(
+                    context.project_state.project_path
+                )
             )
 
             if specification and specification.approved:
