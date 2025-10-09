@@ -30,7 +30,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from dev_agent.interfaces.cli_interface import ICLIInterface
-from dev_agent.models.enums import PhaseType
+from dev_agent.models.enums import PhaseType, TaskStatus
 
 if TYPE_CHECKING:
     from dev_agent.interfaces.workflow_interface import IWorkflowManager
@@ -1178,16 +1178,16 @@ class EnhancedCLI(ICLIInterface):
 
         # Initialize workflow manager if not provided
         if not self.workflow_manager:
-            from dev_agent.config import ConfigManager  # noqa: PLC0415
-            from dev_agent.llm.embeddings import AzureEmbeddingClient  # noqa: PLC0415
-            from dev_agent.workflow.workflow_manager import (  # noqa: PLC0415
+            from dev_agent.config import ConfigManager
+            from dev_agent.llm.embeddings import AzureEmbeddingClient
+            from dev_agent.workflow.workflow_manager import (
                 WorkflowManager,
             )
 
             # Initialize embedding client for workflow
             config_manager = ConfigManager()
             config = config_manager.get_config()
-            
+
             embedding_client = None
             if config.azure_openai:
                 try:
@@ -1196,11 +1196,11 @@ class EnhancedCLI(ICLIInterface):
                     self.console.print(
                         f"[yellow]Warning: Could not initialize embedding client: {e}[/yellow]"
                     )
-                    self.console.print(
-                        "[yellow]Some features may be limited.[/yellow]"
-                    )
+                    self.console.print("[yellow]Some features may be limited.[/yellow]")
 
-            self.workflow_manager = WorkflowManager(self, embedding_client=embedding_client)
+            self.workflow_manager = WorkflowManager(
+                self, embedding_client=embedding_client
+            )
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""
@@ -1259,13 +1259,14 @@ class EnhancedCLI(ICLIInterface):
         # Get active provider information
         try:
             from ..config import ConfigManager
+
             config_manager = ConfigManager()
             active_provider = config_manager.get_llm_provider()
             provider_display = active_provider.value.replace("_", " ").title()
             provider_info = f"[dim]Active AI Provider: {provider_display}[/dim]"
         except Exception:
             provider_info = "[dim]Active AI Provider: Not Configured[/dim]"
-        
+
         banner_text = f"""
 [bold blue]🤖 dev-agent[/bold blue] - AI-powered development workflow assistant
 
@@ -1543,6 +1544,53 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
         try:
             current_phase = self.workflow_manager.get_current_phase()
 
+            # Get project state to determine actual status
+            project_state = None
+            if hasattr(self.workflow_manager, "current_project_state"):
+                project_state = self.workflow_manager.current_project_state
+            elif hasattr(self.workflow_manager, "state_manager"):
+                project_state = self.workflow_manager.state_manager.load_project_state()
+
+            # Determine phase status
+            phase_status = "Active"
+            if project_state:
+                if current_phase == PhaseType.INDEXING:
+                    phase_status = (
+                        "Completed" if project_state.indexing_complete else "Active"
+                    )
+                elif current_phase == PhaseType.SPECIFICATION:
+                    phase_status = (
+                        "Completed"
+                        if (
+                            project_state.specification
+                            and project_state.specification.approved
+                        )
+                        else "Active"
+                    )
+                elif current_phase == PhaseType.DESIGN:
+                    phase_status = (
+                        "Completed"
+                        if (project_state.design and project_state.design.approved)
+                        else "Active"
+                    )
+                elif current_phase == PhaseType.IMPLEMENTATION:
+                    # Check if all tasks are completed
+                    if project_state.implementation_progress:
+                        completed_tasks = sum(
+                            1
+                            for status in project_state.implementation_progress.values()
+                            if status == TaskStatus.COMPLETED
+                        )
+                        total_tasks = len(project_state.implementation_progress)
+                        if completed_tasks == total_tasks and total_tasks > 0:
+                            phase_status = "Completed"
+                        else:
+                            phase_status = (
+                                f"Active ({completed_tasks}/{total_tasks} tasks)"
+                            )
+                    else:
+                        phase_status = "Active"
+
             # Create status table
             table = Table(
                 title="Project Status", show_header=True, header_style="bold magenta"
@@ -1551,7 +1599,16 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             table.add_column("Value", style="green")
 
             table.add_row("Current Phase", current_phase.value.title())
-            table.add_row("Status", "Active")
+
+            # Color code the status
+            if phase_status == "Completed":
+                status_display = f"[green]{phase_status}[/green]"
+            elif "Active" in phase_status:
+                status_display = f"[yellow]{phase_status}[/yellow]"
+            else:
+                status_display = phase_status
+
+            table.add_row("Status", status_display)
             table.add_row("Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
             # Print table directly instead of capturing
@@ -1563,7 +1620,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
     def _handle_run_command(self) -> str:
         """Handle run/start command.
-        
+
         Note: This method uses asyncio.run() to execute the async workflow.
         This is safe because enhanced_cli methods are called synchronously
         from the main CLI loop.
@@ -1576,7 +1633,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
         try:
             import asyncio
-            
+
             with self.progress_manager.progress:
                 # Execute async workflow using asyncio.run()
                 # This creates a new event loop for the async operation
@@ -1592,7 +1649,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
     def _handle_phase_command(self, phase_name: str) -> str:
         """Handle phase transition command.
-        
+
         Note: This method uses asyncio.run() to execute the async phase transition.
         This is safe because enhanced_cli methods are called synchronously
         from the main CLI loop.
@@ -1608,7 +1665,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
         try:
             import asyncio
-            
+
             # Try to match phase name case-insensitively
             phase_name_upper = phase_name.upper()
             phase = None
@@ -1682,6 +1739,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
             # Transition to next phase using asyncio.run()
             import asyncio
+
             success = asyncio.run(self.workflow_manager.transition_to_phase(next_phase))
 
             if success:

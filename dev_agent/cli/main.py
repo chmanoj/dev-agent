@@ -2276,16 +2276,23 @@ def status(
                 status = "[green]✓ Complete[/green]"
                 progress = "[green]100%[/green]"
             elif i == current_phase_index:
-                # Current phase
-                status = "[yellow]⚡ In Progress[/yellow]"
+                # Current phase - check if it's actually completed
+                phase_completed = False
 
-                # Calculate progress based on phase
                 if phase == PhaseType.INDEXING:
+                    phase_completed = project_state.indexing_complete
                     progress_pct = 100 if project_state.indexing_complete else 50
                 elif phase == PhaseType.SPECIFICATION:
-                    progress_pct = 100 if project_state.specification else 50
+                    phase_completed = (
+                        project_state.specification
+                        and project_state.specification.approved
+                    )
+                    progress_pct = 100 if phase_completed else 50
                 elif phase == PhaseType.DESIGN:
-                    progress_pct = 100 if project_state.design else 50
+                    phase_completed = (
+                        project_state.design and project_state.design.approved
+                    )
+                    progress_pct = 100 if phase_completed else 50
                 elif phase == PhaseType.IMPLEMENTATION:
                     if project_state.tasks and project_state.implementation_progress:
                         total_tasks = len(project_state.implementation_progress)
@@ -2299,12 +2306,23 @@ def status(
                             if total_tasks > 0
                             else 0
                         )
+                        phase_completed = (
+                            completed_tasks == total_tasks and total_tasks > 0
+                        )
                     else:
                         progress_pct = 0
+                        phase_completed = False
                 else:
                     progress_pct = 0
+                    phase_completed = False
 
-                progress = f"[yellow]{progress_pct}%[/yellow]"
+                # Set status based on completion
+                if phase_completed:
+                    status = "[green]✓ Complete[/green]"
+                    progress = "[green]100%[/green]"
+                else:
+                    status = "[yellow]⚡ In Progress[/yellow]"
+                    progress = f"[yellow]{progress_pct}%[/yellow]"
             else:
                 # Not started
                 status = "[dim]○ Not Started[/dim]"
