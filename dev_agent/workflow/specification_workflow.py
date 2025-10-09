@@ -257,6 +257,17 @@ class SpecificationWorkflow:
         else:
             self.cli_interface.display_message("✅ Specification generated successfully!")
 
+        # Display requirements count
+        req_count = len(spec.functional_requirements)
+        if req_count > 0:
+            self.cli_interface.display_message(
+                f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
+            )
+        else:
+            self.cli_interface.display_message(
+                "⚠️ Warning: No requirements were generated. The specification may be incomplete."
+            )
+
         return spec
 
     async def _generate_from_user_input(
@@ -292,6 +303,17 @@ class SpecificationWorkflow:
             )
         else:
             self.cli_interface.display_message("✅ Specification generated successfully!")
+
+        # Display requirements count
+        req_count = len(spec.functional_requirements)
+        if req_count > 0:
+            self.cli_interface.display_message(
+                f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
+            )
+        else:
+            self.cli_interface.display_message(
+                "⚠️ Warning: No requirements were generated. The specification may be incomplete."
+            )
 
         return spec
 
@@ -494,8 +516,12 @@ class SpecificationWorkflow:
             # Save using state manager
             self.state_manager.save_document(formatted_spec, "specification")
 
+            # Get the full path for display
+            spec_path = self.state_manager.documents_dir / "SPECIFICATION.md"
+            relative_path = spec_path.relative_to(Path.cwd()) if spec_path.is_relative_to(Path.cwd()) else spec_path
+
             self.cli_interface.display_message(
-                "Specification saved to SPECIFICATION.md"
+                f"Specification saved to {relative_path}"
             )
 
         except Exception as e:

@@ -975,8 +975,8 @@ class SpecificationGenerator(ISpecificationGenerator):
         
         # Look for requirements in various sections
         req_sections = [
-            "functional requirements",
             "requirements",
+            "functional requirements",
             "acceptance criteria",
             "technical requirements",
         ]
@@ -985,19 +985,30 @@ class SpecificationGenerator(ISpecificationGenerator):
             if section_name in sections:
                 section_content = sections[section_name]
                 
-                # Extract requirement blocks (look for numbered items or bullet points)
-                req_blocks = self._split_requirement_blocks(section_content)
+                # Extract requirement blocks using improved parsing
+                req_blocks = self._split_requirement_blocks_improved(section_content)
                 
                 for block in req_blocks:
                     # Try to extract user story and acceptance criteria
                     user_story = self._extract_user_story(block)
                     acceptance_criteria = self._extract_acceptance_criteria(block)
                     
-                    if user_story or acceptance_criteria:
+                    # Only add if we have meaningful content
+                    if user_story and acceptance_criteria:
                         requirement = Requirement(
                             id=f"FR-{req_id_counter}",
-                            user_story=user_story or "As a user, I want this functionality",
-                            acceptance_criteria=acceptance_criteria or ["WHEN using this feature THEN it SHALL work as expected"],
+                            user_story=user_story,
+                            acceptance_criteria=acceptance_criteria,
+                            priority=Priority.MEDIUM,
+                        )
+                        requirements.append(requirement)
+                        req_id_counter += 1
+                    elif user_story:
+                        # At least we have a user story
+                        requirement = Requirement(
+                            id=f"FR-{req_id_counter}",
+                            user_story=user_story,
+                            acceptance_criteria=["WHEN using this feature THEN it SHALL work as expected"],
                             priority=Priority.MEDIUM,
                         )
                         requirements.append(requirement)
@@ -1033,6 +1044,43 @@ class SpecificationGenerator(ISpecificationGenerator):
         
         return blocks
 
+    def _split_requirement_blocks_improved(self, content: str) -> list[str]:
+        """Split content into requirement blocks with improved parsing.
+        
+        This method looks for "#### Requirement" headers to split blocks,
+        which is more reliable than looking for numbered items.
+        
+        Args:
+            content: Section content
+            
+        Returns:
+            List of requirement blocks
+        """
+        blocks = []
+        current_block = []
+        
+        for line in content.split("\n"):
+            # Check if this is a requirement header
+            if line.strip().startswith("####") and "requirement" in line.lower():
+                # Save previous block if it exists
+                if current_block:
+                    blocks.append("\n".join(current_block))
+                # Start new block with this header
+                current_block = [line]
+            elif current_block:
+                # Add line to current block
+                current_block.append(line)
+        
+        # Add the last block
+        if current_block:
+            blocks.append("\n".join(current_block))
+        
+        # If no blocks found with headers, fall back to old method
+        if not blocks:
+            return self._split_requirement_blocks(content)
+        
+        return blocks
+
     def _extract_user_story(self, block: str) -> str:
         """Extract user story from requirement block.
         
@@ -1042,15 +1090,40 @@ class SpecificationGenerator(ISpecificationGenerator):
         Returns:
             User story or empty string
         """
-        # Look for "As a" pattern
+        # Look for "User Story:" label first
+        in_user_story = False
+        user_story_lines = []
+        
+        for line in block.split("\n"):
+            line_stripped = line.strip()
+            
+            # Check for user story label
+            if "**user story:**" in line_stripped.lower() or "user story:" in line_stripped.lower():
+                in_user_story = True
+                # Extract content after the label
+                parts = line_stripped.split(":", 1)
+                if len(parts) > 1:
+                    content = parts[1].strip().lstrip("*").strip()
+                    if content:
+                        user_story_lines.append(content)
+                continue
+            
+            # If we're in user story section, collect lines until we hit another section
+            if in_user_story:
+                if line_stripped.startswith("**") or line_stripped.lower().startswith("acceptance criteria"):
+                    break
+                if line_stripped:
+                    user_story_lines.append(line_stripped)
+        
+        if user_story_lines:
+            return " ".join(user_story_lines)
+        
+        # Fallback: Look for "As a" pattern anywhere in block
         for line in block.split("\n"):
             if "as a" in line.lower():
-                return line.strip().lstrip("-*0123456789. ")
-        
-        # If no user story found, use first line
-        lines = [l.strip() for l in block.split("\n") if l.strip()]
-        if lines:
-            return lines[0].lstrip("-*0123456789. ")
+                cleaned = line.strip().lstrip("-*0123456789. ").lstrip("*").strip()
+                if cleaned:
+                    return cleaned
         
         return ""
 
@@ -1064,14 +1137,41 @@ class SpecificationGenerator(ISpecificationGenerator):
             List of acceptance criteria
         """
         criteria = []
+        in_criteria_section = False
         
         for line in block.split("\n"):
-            line = line.strip()
-            # Look for WHEN/THEN or SHALL patterns
-            if ("when" in line.lower() and "then" in line.lower()) or "shall" in line.lower():
-                criterion = line.lstrip("-*0123456789. ")
-                if criterion:
-                    criteria.append(criterion)
+            line_stripped = line.strip()
+            
+            # Check for acceptance criteria label
+            if "**acceptance criteria:**" in line_stripped.lower() or "acceptance criteria:" in line_stripped.lower():
+                in_criteria_section = True
+                continue
+            
+            # If we're in criteria section, extract numbered/bulleted items
+            if in_criteria_section:
+                # Stop if we hit another section
+                if line_stripped.startswith("**") or line_stripped.startswith("####"):
+                    break
+                
+                # Look for WHEN/THEN, IF/THEN, or SHALL patterns
+                if ("when" in line_stripped.lower() and "then" in line_stripped.lower()) or \
+                   ("if" in line_stripped.lower() and "then" in line_stripped.lower()) or \
+                   "shall" in line_stripped.lower():
+                    # Clean up the criterion
+                    criterion = line_stripped.lstrip("-*0123456789. ").strip()
+                    if criterion:
+                        criteria.append(criterion)
+        
+        # Fallback: Look for WHEN/THEN or SHALL patterns anywhere in block
+        if not criteria:
+            for line in block.split("\n"):
+                line_stripped = line.strip()
+                if ("when" in line_stripped.lower() and "then" in line_stripped.lower()) or \
+                   ("if" in line_stripped.lower() and "then" in line_stripped.lower()) or \
+                   "shall" in line_stripped.lower():
+                    criterion = line_stripped.lstrip("-*0123456789. ").strip()
+                    if criterion:
+                        criteria.append(criterion)
         
         return criteria
 

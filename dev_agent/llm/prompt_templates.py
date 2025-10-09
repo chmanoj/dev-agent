@@ -173,15 +173,32 @@ Provide a structured specification with:
 
 ### Requirements
 
-#### Requirement 1
+For each requirement, use this EXACT format:
+
+#### Requirement 1: [Brief Title]
+
 **User Story:** As a [role], I want [specific feature from request], so that [benefit]
 
 **Acceptance Criteria:**
-1. WHEN [event] THEN [system] SHALL [response]
-2. IF [precondition] THEN [system] SHALL [response]
-3. WHERE [condition] THEN [system] SHALL [response]
+
+1. WHEN [event] THEN the system SHALL [response]
+2. IF [precondition] THEN the system SHALL [response]
+3. WHERE [condition] THEN the system SHALL [response]
+
+#### Requirement 2: [Brief Title]
+
+**User Story:** As a [role], I want [another aspect of feature], so that [benefit]
+
+**Acceptance Criteria:**
+
+1. WHEN [event] THEN the system SHALL [response]
+2. IF [precondition] THEN the system SHALL [response]
 
 [Continue with additional requirements ONLY for the requested feature...]
+
+CRITICAL: You MUST include at least 3-5 detailed requirements with complete user stories and acceptance criteria. Each requirement must have:
+- A clear user story in the format "As a [role], I want [feature], so that [benefit]"
+- At least 2-3 acceptance criteria using WHEN/THEN, IF/THEN, or SHALL format
 
 REMEMBER: Focus exclusively on the feature described in the Feature Request section.""",
     
@@ -435,15 +452,32 @@ Provide a structured specification with:
 
 ### Requirements
 
-#### Requirement 1
+For each requirement, use this EXACT format:
+
+#### Requirement 1: [Brief Title]
+
 **User Story:** As a [role], I want [specific feature from request], so that [benefit]
 
 **Acceptance Criteria:**
-1. WHEN [event related to request] THEN [system] SHALL [response]
-2. IF [precondition related to request] THEN [system] SHALL [response]
-3. WHERE [condition related to request] THEN [system] SHALL [response]
+
+1. WHEN [event related to request] THEN the system SHALL [response]
+2. IF [precondition related to request] THEN the system SHALL [response]
+3. WHERE [condition related to request] THEN the system SHALL [response]
+
+#### Requirement 2: [Brief Title]
+
+**User Story:** As a [role], I want [another aspect of feature], so that [benefit]
+
+**Acceptance Criteria:**
+
+1. WHEN [event] THEN the system SHALL [response]
+2. IF [precondition] THEN the system SHALL [response]
 
 [Continue with additional requirements ONLY for the requested feature...]
+
+CRITICAL: You MUST include at least 3-5 detailed requirements with complete user stories and acceptance criteria. Each requirement must have:
+- A clear user story in the format "As a [role], I want [feature], so that [benefit]"
+- At least 2-3 acceptance criteria using WHEN/THEN, IF/THEN, or SHALL format
 
 REMEMBER: Focus exclusively on what the user requested. Do not add generic features.""",
     

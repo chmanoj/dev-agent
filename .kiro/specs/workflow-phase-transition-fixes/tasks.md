@@ -1,178 +1,144 @@
 # Implementation Plan
 
-- [x] 1. Update PhaseManager to support LLM components
-  - Add llm_client, token_counter, and vector_db parameters to __init__
-  - Store these components as instance variables
-  - Update type hints and docstrings
-  - _Requirements: 2.1, 2.2_
+- [ ] 1. Fix datetime serialization in StateManager
+  - Update `_serialize_dataclass()` to check `isinstance(obj, datetime)` FIRST before other type checks
+  - Convert datetime objects to ISO format strings using `.isoformat()`
+  - Ensure recursive handling works for nested structures (specification, design, tasks, session_data, index_metadata)
+  - Test serialization with all document types
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [x] 2. Implement automatic phase transition after indexing
-  - [x] 2.1 Modify execute_indexing_phase to update project state after completion
-    - After successful indexing, load project state
-    - Update current_phase to PhaseType.SPECIFICATION
-    - Save updated project state
-    - Display transition message to user
-    - _Requirements: 1.1, 1.3_
+- [ ] 2. Fix datetime deserialization in StateManager
+  - Update `_deserialize_datetime()` to handle None values by returning None immediately
+  - Add None checks in `_reconstruct_specification()` before deserializing approval_timestamp
+  - Add None checks in `_reconstruct_design()` before deserializing approval_timestamp (if field exists)
+  - Add None checks in `_reconstruct_tasks()` before deserializing approval_timestamp (if field exists)
+  - Fix SessionData datetime deserialization (started_at, last_activity) in `_reconstruct_project_state()`
+  - Fix IndexMetadata datetime deserialization (last_indexed) in `_reconstruct_project_state()`
+  - Fix ProjectState datetime deserialization (created_at, updated_at) in `_reconstruct_project_state()`
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [x] 2.2 Handle transition for skipped indexing (already up-to-date)
-    - Apply same transition logic when index is current
-    - Ensure consistent behavior for both paths
-    - _Requirements: 1.4_
+- [ ] 3. Enhance prompt templates for complete requirements generation
+  - Update SPECIFICATION_TEMPLATE system prompt with explicit completeness requirements
+  - Update SPECIFICATION_NEW_PROJECT_TEMPLATE system prompt with explicit completeness requirements
+  - Add reference to `dev_agent/REQUIREMENTS_FORMAT_GUIDE.md` format in prompts
+  - Emphasize minimum 3-5 requirements with complete user stories and acceptance criteria
+  - Add validation instructions for AI to self-check output completeness
+  - _Requirements: 1.1, 1.2, 1.3_
 
-  - [x] 2.3 Display clear completion and transition messages
-    - Show "✅ Indexing complete! Moving to specification phase..."
-    - Ensure message is visible before transition
-    - _Requirements: 1.2_
+- [ ] 4. Improve specification parsing and validation
+  - Enhance `_parse_ai_specification()` regex patterns to handle format variations
+  - Add `_validate_specification()` method to check requirement completeness
+  - Validate that each requirement has a user story and at least 2 acceptance criteria
+  - Add logging for parsing failures with detailed error information
+  - _Requirements: 1.4, 1.5, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [x] 3. Update SpecificationWorkflow to accept and use LLM components
-  - [x] 3.1 Modify __init__ to accept LLM components
-    - Add llm_client, cost_tracker, token_counter, vector_db parameters
-    - Store as instance variables
-    - Pass all components to SpecificationGenerator
-    - Update docstrings
-    - _Requirements: 2.1, 2.2_
+- [ ] 5. Add validation to specification workflow
+  - Call `_validate_specification()` after generation in `_generate_from_existing_code()`
+  - Call `_validate_specification()` after generation in `_generate_from_user_input()`
+  - Display warning with Rich panel if specification has fewer than 3 requirements
+  - Display requirement count to user after generation
+  - _Requirements: 1.4, 5.1, 5.2, 5.3, 5.4, 5.5_
 
-  - [x] 3.2 Add LLM client validation in execute_specification_phase
-    - Check if llm_client is None at start of phase
-    - Display clear error message if missing
-    - Raise ValueError with helpful message
-    - _Requirements: 2.3, 2.4_
+- [ ] 6. Enhance error handling and user feedback
+  - Add detailed error messages for datetime serialization failures with field context
+  - Add detailed error messages for datetime deserialization failures with field context
+  - Add clear error messages for state loading failures (missing file, corrupted data, deserialization error)
+  - Use Rich panels for user-facing error messages with appropriate colors
+  - Add logging for all error scenarios with detailed context
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-  - [x] 3.3 Add feature description prompt
-    - Prompt user for feature description before generation
-    - Validate that description is not empty
-    - Display error if empty and re-prompt
-    - _Requirements: 3.1, 3.2, 3.3_
+- [ ] 7. Add state validation and recovery
+  - Add validation in `load_project_state()` to check all required fields are present
+  - Add try/except blocks with specific exception handling (FileNotFoundError, JSONDecodeError, ValueError)
+  - Provide clear error messages explaining the type of failure
+  - Offer to create fresh state if loading fails
+  - Log validation errors with details for debugging
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-  - [x] 3.4 Implement AI-powered specification generation path
-    - Call generate_from_existing_code_ai for existing codebases
-    - Call generate_from_user_input_ai for new projects
-    - Pass feature_description to generation methods
-    - Handle async/await properly
-    - _Requirements: 3.4_
+- [ ]* 8. Write unit tests for datetime handling
+  - Create `tests/test_state_manager_datetime.py` with tests for datetime serialization
+  - Test datetime serialization to ISO format
+  - Test datetime deserialization from ISO format
+  - Test None datetime values are preserved during serialization
+  - Test None datetime values are handled correctly during deserialization
+  - Test specification with approval_timestamp serialization
+  - Test specification without approval_timestamp (None) serialization
+  - Test design document datetime handling
+  - Test task list datetime handling
+  - Test session_data datetime handling
+  - Test index_metadata datetime handling
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [x] 3.5 Implement AI-powered approval workflow
-    - Create _approval_workflow_ai method (async)
-    - Use AI refinement instead of rule-based refinement
-    - Pass feature_description to refinement
-    - Display progress messages during AI operations
-    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
+- [ ]* 9. Write unit tests for specification validation
+  - Create `tests/test_specification_generator_validation.py`
+  - Test validation passes for complete specification (3+ requirements)
+  - Test validation fails for incomplete specification (< 3 requirements)
+  - Test parsing AI output with complete requirements
+  - Test parsing AI output with missing requirements
+  - Test parsing handles format variations gracefully
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [x] 4. Implement AI-powered specification generation methods
-  - [x] 4.1 Implement generate_from_user_input_ai in SpecificationGenerator
-    - Accept feature_description parameter
-    - Build context for new project template
-    - Use "specification_new_project" template
-    - Generate specification using LLM client
-    - Parse AI response into SpecificationDocument
-    - Handle errors gracefully
-    - _Requirements: 3.1, 3.2, 3.3, 3.4_
+- [ ]* 10. Write integration tests for workflow phases
+  - Enhance `tests/test_specification_workflow_integration.py`
+  - Test specification approval saves state correctly with datetime
+  - Test resume project after specification approval loads datetime correctly
+  - Test incomplete specification triggers warning
+  - Test design phase approval saves state correctly
+  - Test task phase approval saves state correctly
+  - Test full workflow end-to-end with all phase transitions
+  - Test provider switching (Azure OpenAI ↔ Gemini) across phases
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [x] 4.2 Implement refine_specification_ai in SpecificationGenerator
-    - Accept spec, feedback, and feature_description parameters
-    - Format current specification as text
-    - Build refinement context
-    - Use "specification_refinement" template
-    - Generate refined specification using LLM
-    - Parse refined response
-    - Update version and reset approval status
-    - _Requirements: 4.1, 4.2, 4.3, 4.4_
+- [ ]* 11. Add provider-specific tests
+  - Create `tests/test_multi_provider_workflow.py`
+  - Test specification generation with Azure OpenAI provider
+  - Test specification generation with Gemini provider
+  - Test state persistence works with both providers
+  - Test validation works with output from both providers
+  - Test datetime handling is provider-agnostic
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [x] 4.3 Create prompt templates for new methods
-    - Create specification_new_project template in prompt_templates.py
-    - Create specification_refinement template in prompt_templates.py
-    - Include clear instructions for AI
-    - Set appropriate temperature and max_tokens
-    - _Requirements: 3.4, 4.1, 4.2_
+- [ ] 12. Manual testing and verification
+  - Test complete workflow with Azure OpenAI (indexing → specification → design → tasks)
+  - Test complete workflow with Gemini (indexing → specification → design → tasks)
+  - Test resume at each phase with both providers
+  - Test with incomplete AI output to verify warnings
+  - Test state file corruption recovery
+  - Test provider switching across phases
+  - Verify all datetime fields persist and load correctly
+  - Verify error messages are clear and helpful
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [x] 5. Update WorkflowManager to initialize and pass LLM components
-  - [x] 5.1 Initialize LLM client in WorkflowManager.__init__
-    - Check if Azure OpenAI is configured
-    - Create AzureOpenAIClient instance
-    - Create CostTracker instance
-    - Create TokenCounter instance
-    - Handle missing configuration gracefully
-    - _Requirements: 2.1, 2.2_
+---
 
-  - [x] 5.2 Initialize VectorDatabase in WorkflowManager.__init__
-    - Check if embedding_client is available
-    - Create VectorDatabase instance with correct path
-    - Handle missing embedding client gracefully
-    - _Requirements: 2.1, 2.2_
+## Notes
 
-  - [x] 5.3 Pass LLM components to PhaseManager
-    - Update PhaseManager initialization call
-    - Pass llm_client, cost_tracker, token_counter, vector_db
-    - Ensure all components are available
-    - _Requirements: 2.1, 2.2_
+- Tasks 1-7 are core implementation tasks (REQUIRED)
+- Tasks 8-11 are testing tasks (OPTIONAL but recommended)
+- Task 12 is manual verification (REQUIRED before merging)
+- All datetime fixes must work across ALL workflow phases (specification, design, tasks, implementation)
+- All fixes must be provider-agnostic (work with both Azure OpenAI and Gemini)
+- Focus on simplicity - no complex migration, just clear error messages and recovery options
 
-- [x] 6. Update PhaseManager.execute_specification_phase to pass components
-  - Initialize SpecificationWorkflow with all LLM components
-  - Pass llm_client, cost_tracker, token_counter, vector_db
-  - Ensure components are available before initialization
-  - _Requirements: 2.1, 2.2, 2.3_
+## Task Dependencies
 
-- [x] 7. Add error handling and user feedback
-  - [x] 7.1 Add clear error messages for missing LLM client
-    - Use Rich Panel for formatted error display
-    - Include instructions for configuration
-    - Suggest running 'dev-agent azure configure'
-    - _Requirements: 2.4, 5.4_
+```
+1 (datetime serialization) → 2 (datetime deserialization) → 7 (validation/recovery)
+                                                          ↓
+3 (prompt templates) → 4 (parsing/validation) → 5 (workflow validation) → 6 (error handling)
+                                                                         ↓
+                                                                    8, 9, 10, 11 (tests)
+                                                                         ↓
+                                                                    12 (manual testing)
+```
 
-  - [x] 7.2 Add progress indicators for AI operations
-    - Display "🤖 Generating specification..." messages
-    - Show "🤖 Refining specification..." during refinement
-    - Display cost information after generation
-    - _Requirements: 5.2, 5.3_
+## Estimated Effort
 
-  - [x] 7.3 Add validation for user inputs
-    - Validate feature description is not empty
-    - Validate feedback is not empty when provided
-    - Display helpful prompts and instructions
-    - _Requirements: 5.1, 5.5_
+- Tasks 1-2: 2-3 hours (datetime handling is critical and needs careful testing)
+- Tasks 3-5: 2-3 hours (prompt and validation enhancements)
+- Tasks 6-7: 1-2 hours (error handling and recovery)
+- Tasks 8-11: 3-4 hours (comprehensive testing)
+- Task 12: 1-2 hours (manual verification)
 
-- [x] 8. Update execute_specification_phase to be async
-  - Change method signature to async def
-  - Update all callers to use await
-  - Ensure proper async/await throughout call chain
-  - Handle async context properly
-  - _Requirements: 3.4, 4.1, 4.2, 4.4_
-
-- [x] 9. Update CLI integration for async specification phase
-  - Update workflow_manager calls to handle async
-  - Use asyncio.run() or similar for async execution
-  - Ensure proper event loop handling
-  - Test in interactive mode
-  - _Requirements: 3.4, 4.4_
-
-- [ ]* 10. Add comprehensive tests
-  - [ ]* 10.1 Unit test automatic phase transition
-    - Mock indexing completion
-    - Verify state update to SPECIFICATION
-    - Verify no user input required
-    - _Requirements: 1.1, 1.3, 1.4_
-
-  - [ ]* 10.2 Unit test LLM component initialization
-    - Verify components passed through workflow
-    - Verify no warnings about missing client
-    - Test with and without Azure OpenAI config
-    - _Requirements: 2.1, 2.2, 2.3_
-
-  - [ ]* 10.3 Unit test feature description prompt
-    - Mock user input
-    - Verify prompt displayed
-    - Test empty input rejection
-    - _Requirements: 3.1, 3.2_
-
-  - [ ]* 10.4 Unit test AI-powered refinement
-    - Mock LLM responses
-    - Verify feedback incorporated
-    - Verify specification changes
-    - _Requirements: 4.1, 4.2, 4.3_
-
-  - [ ]* 10.5 Integration test end-to-end workflow
-    - Test complete workflow from init to specification
-    - Verify automatic transitions
-    - Test with real Azure OpenAI (optional, gated by env var)
-    - _Requirements: 1.1, 2.1, 3.1, 4.1_
+**Total: 9-14 hours**
 
