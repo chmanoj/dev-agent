@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from ..analysis.codebase_analyzer import CodebaseAnalyzer
@@ -172,7 +173,7 @@ class PhaseManager(IPhaseManager):
                             total_lines=result.total_lines,
                             languages_detected=result.languages_detected,
                             index_size_mb=result.index_size_mb,
-                            last_indexed=time.time(),
+                            last_indexed=datetime.now(),
                             index_version="1.0",
                         )
 

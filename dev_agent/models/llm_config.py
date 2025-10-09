@@ -521,10 +521,12 @@ class GeminiConfig(BaseModel):
         """Get the embedding dimension for the configured embedding model.
 
         Returns:
-            Embedding dimension (768 for all current Gemini embedding models)
+            Embedding dimension (configurable via GEMINI_EMBEDDING_DIMENSION env var, default 768)
         """
-        # All current Gemini embedding models use 768 dimensions
-        return 768
+        # Gemini embedding models can produce different dimensions
+        # Allow configuration via environment variable
+        import os
+        return int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
 
     def get_api_key_value(self) -> str:
         """Get the API key value for client initialization.

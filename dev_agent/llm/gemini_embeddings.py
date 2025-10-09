@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import google.generativeai as genai
@@ -81,8 +82,9 @@ class GeminiEmbeddingClient(IEmbeddingClient):
         ```
     """
 
-    # Gemini embedding models produce 768-dimensional vectors
-    EMBEDDING_DIMENSION = 768
+    # Gemini embedding models can produce different dimensional vectors
+    # Default to 768 but allow configuration via environment variable
+    EMBEDDING_DIMENSION = int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
 
     # Default batch size for API calls (Gemini supports up to 100)
     DEFAULT_BATCH_SIZE = 16

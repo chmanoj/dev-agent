@@ -897,6 +897,7 @@ class ContextualHelpSystem:
                 "description": "Analyzing and indexing your codebase",
                 "commands": [
                     ("status", "Check indexing progress"),
+                    ("next", "Proceed to next phase (when current is complete)"),
                     ("skip", "Skip to next phase (not recommended)"),
                     ("cancel", "Cancel current operation"),
                 ],
@@ -1404,6 +1405,9 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             elif command == "skip":
                 return self._handle_skip_command()
 
+            elif command in ("next", "proceed", "continue"):
+                return self._handle_next_command()
+
             elif command == "cancel":
                 return self._handle_cancel_command()
 
@@ -1689,6 +1693,74 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
         except Exception as e:
             return f"Error transitioning to phase: {e!s}"
+
+    def _handle_next_command(self) -> str:
+        """Handle next/proceed command to move to next phase when current is complete.
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+            
+            # Get project state to check if current phase is complete
+            project_state = None
+            if hasattr(self.workflow_manager, 'current_project_state'):
+                project_state = self.workflow_manager.current_project_state
+            elif hasattr(self.workflow_manager, 'state_manager'):
+                project_state = self.workflow_manager.state_manager.load_project_state()
+            
+            if not project_state:
+                return "❌ No project state available"
+            
+            # Import enums at the top
+            from dev_agent.models.enums import PhaseType
+            
+            # Check if current phase is complete
+            phase_complete = False
+            if current_phase == PhaseType.INDEXING:
+                phase_complete = project_state.indexing_complete
+            elif current_phase == PhaseType.SPECIFICATION:
+                phase_complete = (project_state.specification and project_state.specification.approved)
+            elif current_phase == PhaseType.DESIGN:
+                phase_complete = (project_state.design and project_state.design.approved)
+            elif current_phase == PhaseType.IMPLEMENTATION:
+                if project_state.implementation_progress:
+                    total_tasks = len(project_state.implementation_progress)
+                    completed_tasks = sum(1 for status in project_state.implementation_progress.values() if status == TaskStatus.COMPLETED)
+                    phase_complete = (completed_tasks == total_tasks and total_tasks > 0)
+            
+            if not phase_complete:
+                return f"❌ Cannot proceed: {current_phase.value.title()} phase is not yet complete"
+            
+            # Determine next phase
+
+            phase_order = list(PhaseType)
+            current_index = phase_order.index(current_phase)
+
+            if current_index >= len(phase_order) - 1:
+                return "✅ Already at the last phase. Workflow complete!"
+
+            next_phase = phase_order[current_index + 1]
+
+            self.console.print(
+                f"[green]Proceeding to {next_phase.value} phase...[/green]"
+            )
+
+            # Transition to next phase using asyncio.run()
+            import asyncio
+
+            success = asyncio.run(self.workflow_manager.transition_to_phase(next_phase))
+
+            if success:
+                return f"✅ Successfully moved to {next_phase.value.title()} phase"
+            return f"❌ Failed to move to {next_phase.value.title()} phase"
+
+        except Exception as e:
+            return f"Error proceeding to next phase: {e!s}"
 
     def _handle_skip_command(self) -> str:
         """Handle skip command to skip current phase.
