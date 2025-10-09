@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from dev_agent.llm.cost_tracker import PRICING, CostTracker
-from dev_agent.models.enums import LLMOperationType, PhaseType
+from dev_agent.models.enums import LLMOperationType, LLMProvider, PhaseType
 
 
 class TestCostTrackerInitialization:
@@ -530,8 +530,14 @@ class TestUtilityMethods:
 class TestPricingConstants:
     """Test pricing constants."""
 
-    def test_pricing_has_all_models(self) -> None:
-        """Test that PRICING dict has all expected models."""
+    def test_pricing_has_all_providers(self) -> None:
+        """Test that PRICING dict has all expected providers."""
+        assert LLMProvider.AZURE_OPENAI in PRICING
+        assert LLMProvider.GEMINI in PRICING
+
+    def test_pricing_has_all_azure_models(self) -> None:
+        """Test that Azure OpenAI pricing has all expected models."""
+        azure_pricing = PRICING[LLMProvider.AZURE_OPENAI]
         expected_models = [
             "gpt-4",
             "gpt-4-32k",
@@ -542,20 +548,22 @@ class TestPricingConstants:
         ]
         
         for model in expected_models:
-            assert model in PRICING
+            assert model in azure_pricing
 
     def test_pricing_has_correct_structure(self) -> None:
         """Test that pricing entries have correct structure."""
+        azure_pricing = PRICING[LLMProvider.AZURE_OPENAI]
+        
         # Completion models should have prompt and completion prices
         for model in ["gpt-4", "gpt-4-32k", "gpt-4-turbo", "gpt-4o", "gpt-3.5-turbo"]:
-            assert "prompt" in PRICING[model]
-            assert "completion" in PRICING[model]
-            assert PRICING[model]["prompt"] > 0
-            assert PRICING[model]["completion"] > 0
+            assert "prompt" in azure_pricing[model]
+            assert "completion" in azure_pricing[model]
+            assert azure_pricing[model]["prompt"] > 0
+            assert azure_pricing[model]["completion"] > 0
         
         # Embedding models should have embedding price
-        assert "embedding" in PRICING["text-embedding-ada-002"]
-        assert PRICING["text-embedding-ada-002"]["embedding"] > 0
+        assert "embedding" in azure_pricing["text-embedding-ada-002"]
+        assert azure_pricing["text-embedding-ada-002"]["embedding"] > 0
 
 
 class TestEdgeCases:
@@ -617,3 +625,418 @@ class TestEdgeCases:
         assert PhaseType.INDEXING in report.by_phase
         assert PhaseType.SPECIFICATION in report.by_phase
         assert PhaseType.DESIGN in report.by_phase
+
+
+class TestMultiProviderSupport:
+    """Test multi-provider cost tracking functionality."""
+
+    def test_record_completion_with_azure_provider(self) -> None:
+        """Test recording completion with Azure OpenAI provider."""
+        tracker = CostTracker()
+        
+        cost = tracker.record_completion(
+            prompt_tokens=100,
+            completion_tokens=200,
+            model="gpt-4",
+            provider=LLMProvider.AZURE_OPENAI,
+        )
+        
+        assert cost > 0
+        assert tracker.get_provider_cost(LLMProvider.AZURE_OPENAI) == cost
+        assert tracker.get_provider_cost(LLMProvider.GEMINI) == 0.0
+
+    def test_record_completion_with_gemini_provider(self) -> None:
+        """Test recording completion with Gemini provider."""
+        tracker = CostTracker()
+        
+        cost = tracker.record_completion(
+            prompt_tokens=100,
+            completion_tokens=200,
+            model="gemini-pro",
+            provider=LLMProvider.GEMINI,
+        )
+        
+        assert cost > 0
+        assert tracker.get_provider_cost(LLMProvider.GEMINI) == cost
+        assert tracker.get_provider_cost(LLMProvider.AZURE_OPENAI) == 0.0
+
+    def test_record_embedding_with_azure_provider(self) -> None:
+        """Test recording embedding with Azure OpenAI provider."""
+        tracker = CostTracker()
+        
+        cost = tracker.record_embedding(
+            tokens=1000,
+            model="text-embedding-ada-002",
+            provider=LLMProvider.AZURE_OPENAI,
+        )
+        
+        assert cost > 0
+        assert tracker.get_provider_cost(LLMProvider.AZURE_OPENAI) == cost
+
+    def test_record_embedding_with_gemini_provider(self) -> None:
+        """Test recording embedding with Gemini provider."""
+        tracker = CostTracker()
+        
+        cost = tracker.record_embedding(
+            tokens=1000,
+            model="embedding-001",
+            provider=LLMProvider.GEMINI,
+        )
+        
+        assert cost > 0
+        assert tracker.get_provider_cost(LLMProvider.GEMINI) == cost
+
+    def test_record_streaming_with_providers(self) -> None:
+        """Test recording streaming with different providers."""
+        tracker = CostTracker()
+        
+        azure_cost = tracker.record_streaming(
+            prompt_tokens=100,
+            completion_tokens=200,
+            model="gpt-4",
+            provider=LLMProvider.AZURE_OPENAI,
+        )
+        
+        gemini_cost = tracker.record_streaming(
+            prompt_tokens=100,
+            completion_tokens=200,
+            model="gemini-pro",
+            provider=LLMProvider.GEMINI,
+        )
+        
+        assert azure_cost > 0
+        assert gemini_cost > 0
+        assert tracker.get_provider_cost(LLMProvider.AZURE_OPENAI) == azure_cost
+        assert tracker.get_provider_cost(LLMProvider.GEMINI) == gemini_cost
+
+    def test_mixed_provider_operations(self) -> None:
+        """Test operations with mixed providers."""
+        tracker = CostTracker()
+        
+        # Azure operations
+        azure_completion_cost = tracker.record_completion(
+            100, 200, "gpt-4", LLMProvider.AZURE_OPENAI
+        )
+        azure_embedding_cost = tracker.record_embedding(
+            1000, "text-embedding-ada-002", LLMProvider.AZURE_OPENAI
+        )
+        
+        # Gemini operations
+        gemini_completion_cost = tracker.record_completion(
+            100, 200, "gemini-pro", LLMProvider.GEMINI
+        )
+        gemini_embedding_cost = tracker.record_embedding(
+            1000, "embedding-001", LLMProvider.GEMINI
+        )
+        
+        # Check provider-specific costs
+        expected_azure_cost = azure_completion_cost + azure_embedding_cost
+        expected_gemini_cost = gemini_completion_cost + gemini_embedding_cost
+        
+        assert abs(tracker.get_provider_cost(LLMProvider.AZURE_OPENAI) - expected_azure_cost) < 0.0001
+        assert abs(tracker.get_provider_cost(LLMProvider.GEMINI) - expected_gemini_cost) < 0.0001
+        
+        # Check total cost
+        expected_total = expected_azure_cost + expected_gemini_cost
+        assert abs(tracker.get_current_cost() - expected_total) < 0.0001
+
+    def test_get_report_separates_providers(self) -> None:
+        """Test that get_report separates costs by provider."""
+        tracker = CostTracker()
+        
+        # Record operations for both providers
+        tracker.record_completion(100, 200, "gpt-4", LLMProvider.AZURE_OPENAI)
+        tracker.record_completion(100, 200, "gemini-pro", LLMProvider.GEMINI)
+        tracker.record_embedding(1000, "text-embedding-ada-002", LLMProvider.AZURE_OPENAI)
+        tracker.record_embedding(1000, "embedding-001", LLMProvider.GEMINI)
+        
+        report = tracker.get_report()
+        
+        # Check that both providers are in the report
+        assert LLMProvider.AZURE_OPENAI in report.by_provider
+        assert LLMProvider.GEMINI in report.by_provider
+        
+        # Check that costs are positive for both providers
+        assert report.by_provider[LLMProvider.AZURE_OPENAI] > 0
+        assert report.by_provider[LLMProvider.GEMINI] > 0
+        
+        # Check that provider costs match individual tracking
+        assert abs(
+            report.get_provider_cost(LLMProvider.AZURE_OPENAI) - 
+            tracker.get_provider_cost(LLMProvider.AZURE_OPENAI)
+        ) < 0.0001
+        assert abs(
+            report.get_provider_cost(LLMProvider.GEMINI) - 
+            tracker.get_provider_cost(LLMProvider.GEMINI)
+        ) < 0.0001
+
+    def test_get_provider_cost_nonexistent_provider(self) -> None:
+        """Test getting cost for provider with no operations."""
+        tracker = CostTracker()
+        
+        # Only record Azure operations
+        tracker.record_completion(100, 200, "gpt-4", LLMProvider.AZURE_OPENAI)
+        
+        # Gemini should have zero cost
+        assert tracker.get_provider_cost(LLMProvider.GEMINI) == 0.0
+
+    def test_default_provider_backward_compatibility(self) -> None:
+        """Test that operations without provider default to Azure OpenAI."""
+        tracker = CostTracker()
+        
+        # Record operation without specifying provider (should default to Azure)
+        cost = tracker.record_completion(100, 200, "gpt-4")
+        
+        # Should be recorded under Azure OpenAI
+        assert tracker.get_provider_cost(LLMProvider.AZURE_OPENAI) == cost
+        assert tracker.get_provider_cost(LLMProvider.GEMINI) == 0.0
+
+
+class TestMultiProviderCostCalculation:
+    """Test cost calculation with different providers."""
+
+    def test_calculate_cost_azure_openai(self) -> None:
+        """Test cost calculation for Azure OpenAI models."""
+        tracker = CostTracker()
+        
+        # GPT-4 on Azure: $0.03 per 1K prompt, $0.06 per 1K completion
+        expected = (1000 / 1000) * 0.03 + (2000 / 1000) * 0.06
+        
+        cost = tracker.calculate_cost(
+            1000, 2000, "gpt-4", LLMProvider.AZURE_OPENAI
+        )
+        
+        assert abs(cost - expected) < 0.0001
+
+    def test_calculate_cost_gemini(self) -> None:
+        """Test cost calculation for Gemini models."""
+        tracker = CostTracker()
+        
+        # Gemini Pro: $0.0005 per 1K prompt, $0.0015 per 1K completion
+        expected = (1000 / 1000) * 0.0005 + (2000 / 1000) * 0.0015
+        
+        cost = tracker.calculate_cost(
+            1000, 2000, "gemini-pro", LLMProvider.GEMINI
+        )
+        
+        assert abs(cost - expected) < 0.0001
+
+    def test_calculate_cost_gemini_cheaper_than_azure(self) -> None:
+        """Test that Gemini is generally cheaper than Azure OpenAI."""
+        tracker = CostTracker()
+        
+        azure_cost = tracker.calculate_cost(
+            1000, 2000, "gpt-4", LLMProvider.AZURE_OPENAI
+        )
+        gemini_cost = tracker.calculate_cost(
+            1000, 2000, "gemini-pro", LLMProvider.GEMINI
+        )
+        
+        # Gemini should be significantly cheaper
+        assert gemini_cost < azure_cost
+
+    def test_calculate_cost_unknown_model_uses_default(self) -> None:
+        """Test that unknown models use default pricing for provider."""
+        tracker = CostTracker()
+        
+        # Unknown model should use first available model pricing for provider
+        cost_unknown = tracker.calculate_cost(
+            1000, 2000, "unknown-model", LLMProvider.GEMINI
+        )
+        cost_gemini_pro = tracker.calculate_cost(
+            1000, 2000, "gemini-pro", LLMProvider.GEMINI
+        )
+        
+        assert abs(cost_unknown - cost_gemini_pro) < 0.0001
+
+    def test_calculate_embedding_cost_azure(self) -> None:
+        """Test embedding cost calculation for Azure OpenAI."""
+        tracker = CostTracker()
+        
+        # text-embedding-ada-002: $0.0001 per 1K tokens
+        expected = (5000 / 1000) * 0.0001
+        
+        cost = tracker.calculate_embedding_cost(
+            5000, "text-embedding-ada-002", LLMProvider.AZURE_OPENAI
+        )
+        
+        assert abs(cost - expected) < 0.000001
+
+    def test_calculate_embedding_cost_gemini(self) -> None:
+        """Test embedding cost calculation for Gemini."""
+        tracker = CostTracker()
+        
+        # embedding-001: $0.00001 per 1K tokens
+        expected = (5000 / 1000) * 0.00001
+        
+        cost = tracker.calculate_embedding_cost(
+            5000, "embedding-001", LLMProvider.GEMINI
+        )
+        
+        assert abs(cost - expected) < 0.000001
+
+    def test_calculate_embedding_cost_gemini_cheaper(self) -> None:
+        """Test that Gemini embeddings are cheaper than Azure OpenAI."""
+        tracker = CostTracker()
+        
+        azure_cost = tracker.calculate_embedding_cost(
+            5000, "text-embedding-ada-002", LLMProvider.AZURE_OPENAI
+        )
+        gemini_cost = tracker.calculate_embedding_cost(
+            5000, "embedding-001", LLMProvider.GEMINI
+        )
+        
+        # Gemini embeddings should be much cheaper
+        assert gemini_cost < azure_cost
+
+
+class TestMultiProviderPricing:
+    """Test multi-provider pricing constants."""
+
+    def test_pricing_has_all_providers(self) -> None:
+        """Test that PRICING dict has all expected providers."""
+        assert LLMProvider.AZURE_OPENAI in PRICING
+        assert LLMProvider.GEMINI in PRICING
+
+    def test_azure_pricing_structure(self) -> None:
+        """Test Azure OpenAI pricing structure."""
+        azure_pricing = PRICING[LLMProvider.AZURE_OPENAI]
+        
+        # Check completion models
+        completion_models = ["gpt-4", "gpt-4-32k", "gpt-4-turbo", "gpt-4o", "gpt-3.5-turbo"]
+        for model in completion_models:
+            assert model in azure_pricing
+            assert "prompt" in azure_pricing[model]
+            assert "completion" in azure_pricing[model]
+            assert azure_pricing[model]["prompt"] > 0
+            assert azure_pricing[model]["completion"] > 0
+        
+        # Check embedding models
+        assert "text-embedding-ada-002" in azure_pricing
+        assert "embedding" in azure_pricing["text-embedding-ada-002"]
+        assert azure_pricing["text-embedding-ada-002"]["embedding"] > 0
+
+    def test_gemini_pricing_structure(self) -> None:
+        """Test Gemini pricing structure."""
+        gemini_pricing = PRICING[LLMProvider.GEMINI]
+        
+        # Check completion models
+        completion_models = ["gemini-pro", "gemini-pro-vision", "gemini-ultra"]
+        for model in completion_models:
+            assert model in gemini_pricing
+            assert "prompt" in gemini_pricing[model]
+            assert "completion" in gemini_pricing[model]
+            assert gemini_pricing[model]["prompt"] > 0
+            assert gemini_pricing[model]["completion"] > 0
+        
+        # Check embedding models
+        embedding_models = ["embedding-001", "text-embedding-004"]
+        for model in embedding_models:
+            assert model in gemini_pricing
+            assert "embedding" in gemini_pricing[model]
+            assert gemini_pricing[model]["embedding"] > 0
+
+    def test_gemini_generally_cheaper_than_azure(self) -> None:
+        """Test that Gemini pricing is generally lower than Azure OpenAI."""
+        azure_pricing = PRICING[LLMProvider.AZURE_OPENAI]
+        gemini_pricing = PRICING[LLMProvider.GEMINI]
+        
+        # Compare GPT-4 vs Gemini Pro
+        azure_gpt4_prompt = azure_pricing["gpt-4"]["prompt"]
+        gemini_pro_prompt = gemini_pricing["gemini-pro"]["prompt"]
+        assert gemini_pro_prompt < azure_gpt4_prompt
+        
+        azure_gpt4_completion = azure_pricing["gpt-4"]["completion"]
+        gemini_pro_completion = gemini_pricing["gemini-pro"]["completion"]
+        assert gemini_pro_completion < azure_gpt4_completion
+        
+        # Compare embeddings
+        azure_embedding = azure_pricing["text-embedding-ada-002"]["embedding"]
+        gemini_embedding = gemini_pricing["embedding-001"]["embedding"]
+        assert gemini_embedding < azure_embedding
+
+
+class TestMultiProviderReporting:
+    """Test reporting functionality with multiple providers."""
+
+    def test_cost_report_provider_breakdown(self) -> None:
+        """Test that CostReport includes provider breakdown."""
+        tracker = CostTracker()
+        
+        # Record operations for both providers
+        tracker.record_completion(100, 200, "gpt-4", LLMProvider.AZURE_OPENAI)
+        tracker.record_completion(100, 200, "gemini-pro", LLMProvider.GEMINI)
+        
+        report = tracker.get_report()
+        
+        # Check that by_provider is populated
+        assert len(report.by_provider) == 2
+        assert LLMProvider.AZURE_OPENAI in report.by_provider
+        assert LLMProvider.GEMINI in report.by_provider
+        
+        # Check that costs are positive
+        assert report.by_provider[LLMProvider.AZURE_OPENAI] > 0
+        assert report.by_provider[LLMProvider.GEMINI] > 0
+        
+        # Check that sum of provider costs equals total cost
+        provider_sum = sum(report.by_provider.values())
+        assert abs(provider_sum - report.total_cost) < 0.0001
+
+    def test_cost_report_get_provider_cost_method(self) -> None:
+        """Test CostReport.get_provider_cost method."""
+        tracker = CostTracker()
+        
+        azure_cost = tracker.record_completion(100, 200, "gpt-4", LLMProvider.AZURE_OPENAI)
+        gemini_cost = tracker.record_completion(100, 200, "gemini-pro", LLMProvider.GEMINI)
+        
+        report = tracker.get_report()
+        
+        assert abs(report.get_provider_cost(LLMProvider.AZURE_OPENAI) - azure_cost) < 0.0001
+        assert abs(report.get_provider_cost(LLMProvider.GEMINI) - gemini_cost) < 0.0001
+
+    def test_cost_report_get_provider_cost_nonexistent(self) -> None:
+        """Test getting cost for provider with no operations in report."""
+        tracker = CostTracker()
+        
+        # Only record Azure operations
+        tracker.record_completion(100, 200, "gpt-4", LLMProvider.AZURE_OPENAI)
+        
+        report = tracker.get_report()
+        
+        # Gemini should return 0.0
+        assert report.get_provider_cost(LLMProvider.GEMINI) == 0.0
+
+    def test_phase_report_with_providers(self) -> None:
+        """Test phase-specific reports with multiple providers."""
+        tracker = CostTracker(current_phase=PhaseType.INDEXING)
+        
+        # Indexing phase with both providers
+        tracker.record_embedding(1000, "text-embedding-ada-002", LLMProvider.AZURE_OPENAI)
+        tracker.record_embedding(1000, "embedding-001", LLMProvider.GEMINI)
+        
+        # Switch to specification phase
+        tracker.set_phase(PhaseType.SPECIFICATION)
+        tracker.record_completion(100, 200, "gpt-4", LLMProvider.AZURE_OPENAI)
+        tracker.record_completion(100, 200, "gemini-pro", LLMProvider.GEMINI)
+        
+        # Get phase-specific reports
+        indexing_report = tracker.get_phase_report(PhaseType.INDEXING)
+        spec_report = tracker.get_phase_report(PhaseType.SPECIFICATION)
+        
+        # Check that both phases have both providers
+        assert len(indexing_report.by_provider) == 2
+        assert len(spec_report.by_provider) == 2
+        
+        # Check operation counts
+        assert indexing_report.operations_count == 2
+        assert spec_report.operations_count == 2
+
+    def test_empty_report_has_empty_provider_breakdown(self) -> None:
+        """Test that empty reports have empty provider breakdown."""
+        tracker = CostTracker()
+        
+        report = tracker.get_report()
+        
+        assert len(report.by_provider) == 0
+        assert report.get_provider_cost(LLMProvider.AZURE_OPENAI) == 0.0
+        assert report.get_provider_cost(LLMProvider.GEMINI) == 0.0

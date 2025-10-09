@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from dev_agent.models.enums import LLMOperationType, PhaseType
+from dev_agent.models.enums import LLMOperationType, LLMProvider, PhaseType
 
 
 @dataclass
@@ -19,7 +19,7 @@ class TokenUsage:
     
     This dataclass tracks token consumption and cost for individual operations
     such as completions, embeddings, or streaming requests. It includes metadata
-    about the operation type, workflow phase, and timestamp.
+    about the operation type, workflow phase, provider, and timestamp.
     
     Attributes:
         operation_type: Type of LLM operation (completion, embedding, streaming)
@@ -29,7 +29,8 @@ class TokenUsage:
         estimated_cost: Estimated cost in USD for this operation
         timestamp: When the operation occurred
         phase: Workflow phase during which operation occurred
-        model: Model name used (e.g., "gpt-4", "text-embedding-ada-002")
+        model: Model name used (e.g., "gpt-4", "gemini-pro", "text-embedding-ada-002")
+        provider: LLM provider used for the operation
     
     Example:
         ```python
@@ -42,6 +43,7 @@ class TokenUsage:
             timestamp=datetime.now(),
             phase=PhaseType.SPECIFICATION,
             model="gpt-4",
+            provider=LLMProvider.AZURE_OPENAI,
         )
         ```
     """
@@ -54,6 +56,7 @@ class TokenUsage:
     timestamp: datetime
     phase: PhaseType
     model: str = "unknown"
+    provider: LLMProvider = LLMProvider.AZURE_OPENAI
 
     def __post_init__(self) -> None:
         """Validate token usage data after initialization."""
@@ -72,8 +75,9 @@ class CostReport:
     """Cost report for a session or workflow phase.
     
     This dataclass aggregates token usage and costs across multiple operations,
-    providing summaries by phase and operation type. It supports tracking costs
-    over time and generating detailed usage reports.
+    providing summaries by phase, operation type, and provider. It supports 
+    tracking costs over time and generating detailed usage reports with 
+    multi-provider breakdown.
     
     Attributes:
         total_prompt_tokens: Total prompt tokens across all operations
@@ -83,6 +87,7 @@ class CostReport:
         operations_count: Number of operations tracked
         by_phase: Cost breakdown by workflow phase (PhaseType -> cost)
         by_operation: Token count by operation type (operation name -> token count)
+        by_provider: Cost breakdown by provider (LLMProvider -> cost)
         start_time: When tracking started
         end_time: When tracking ended
         operations: List of individual TokenUsage records
@@ -97,10 +102,12 @@ class CostReport:
             operations_count=10,
             by_phase={PhaseType.SPECIFICATION: 0.08, PhaseType.DESIGN: 0.07},
             by_operation={"completion": 3000, "embedding": 500},
+            by_provider={LLMProvider.AZURE_OPENAI: 0.10, LLMProvider.GEMINI: 0.05},
             start_time=datetime.now(),
             end_time=datetime.now(),
         )
         print(f"Average cost per operation: ${report.average_cost_per_operation:.4f}")
+        print(f"Azure OpenAI cost: ${report.get_provider_cost(LLMProvider.AZURE_OPENAI):.4f}")
         ```
     """
 
@@ -111,6 +118,7 @@ class CostReport:
     operations_count: int
     by_phase: dict[PhaseType, float]
     by_operation: dict[str, int]
+    by_provider: dict[LLMProvider, float]
     start_time: datetime
     end_time: datetime
     operations: list[TokenUsage] = field(default_factory=list)
@@ -207,6 +215,13 @@ class CostReport:
         else:
             self.by_operation[op_name] = usage.total_tokens
         
+        # Update by_provider breakdown
+        provider = getattr(usage, 'provider', LLMProvider.AZURE_OPENAI)
+        if provider in self.by_provider:
+            self.by_provider[provider] += usage.estimated_cost
+        else:
+            self.by_provider[provider] = usage.estimated_cost
+        
         # Add to operations list
         self.operations.append(usage)
         
@@ -236,6 +251,17 @@ class CostReport:
         """
         return self.by_operation.get(operation_type.value, 0)
 
+    def get_provider_cost(self, provider: LLMProvider) -> float:
+        """Get total cost for a specific provider.
+        
+        Args:
+            provider: LLM provider to query
+            
+        Returns:
+            Total cost for the provider, or 0.0 if no operations with that provider
+        """
+        return self.by_provider.get(provider, 0.0)
+
     @classmethod
     def create_empty(cls, start_time: datetime | None = None) -> CostReport:
         """Create an empty cost report.
@@ -255,6 +281,7 @@ class CostReport:
             operations_count=0,
             by_phase={},
             by_operation={},
+            by_provider={},
             start_time=now,
             end_time=now,
             operations=[],

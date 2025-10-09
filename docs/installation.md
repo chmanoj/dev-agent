@@ -119,9 +119,20 @@ uv run pytest
 uv run mkdocs serve
 ```
 
-## Configure Azure OpenAI (Required)
+## AI Provider Configuration
 
-dev-agent requires Azure OpenAI for all AI-powered features. You must configure your Azure OpenAI credentials before using the tool.
+dev-agent supports multiple AI providers for flexibility and cost optimization. You must configure at least one provider before using the tool.
+
+### Supported Providers
+
+- **Azure OpenAI** (default): Enterprise-grade with GPT-4 models
+- **Google Gemini**: Cost-effective alternative with competitive performance
+
+Choose the provider that best fits your needs, or configure both for maximum flexibility.
+
+## Configure Azure OpenAI
+
+Azure OpenAI provides enterprise-grade AI with GPT-4 models and is the default provider.
 
 ### Prerequisites
 
@@ -181,6 +192,82 @@ Alternatively, create a configuration file at `~/.dev_agent/config.json`:
 ```
 
 **Security Note**: Never commit API keys to version control. Use environment variables or secure key management systems in production.
+
+## Configure Google Gemini (Alternative)
+
+Google Gemini offers competitive performance at significantly lower costs and is an excellent alternative to Azure OpenAI.
+
+### Prerequisites
+
+1. Google account with access to Google AI Studio or Vertex AI
+2. Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+
+### Dependencies
+
+Gemini support requires additional dependencies. Install them with:
+
+```bash
+# Install Gemini dependencies
+uv sync --extra gemini
+
+# Or manually install the packages
+uv add google-generativeai>=0.3.0 google-api-core>=2.15.0
+```
+
+### Configuration
+
+Set up Gemini using environment variables:
+
+```bash
+# Required settings
+export GEMINI_API_KEY="your-gemini-api-key-here"
+export PREFERRED_LLM_PROVIDER="gemini"
+
+# Optional settings
+export GEMINI_MODEL_NAME="gemini-pro"
+export GEMINI_EMBEDDING_MODEL="embedding-001"
+export GEMINI_MAX_OUTPUT_TOKENS="2048"
+export GEMINI_TEMPERATURE="0.7"
+```
+
+### Test Gemini Configuration
+
+```bash
+# Check Gemini status
+uv run dev-agent status
+
+# Test Gemini connection
+uv run dev-agent generate --prompt "Hello world function" --provider gemini
+```
+
+Expected output:
+```
+✅ LLM Provider: Google Gemini (gemini-pro)
+✅ Embedding Provider: Google Gemini (embedding-001)
+✅ API Key: Configured
+✅ Connection: Success
+```
+
+### Multi-Provider Setup
+
+You can configure both providers and switch between them:
+
+```bash
+# Azure OpenAI configuration
+export AZURE_OPENAI_API_KEY="your-azure-key"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4"
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-ada-002"
+
+# Gemini configuration
+export GEMINI_API_KEY="your-gemini-key"
+export GEMINI_MODEL_NAME="gemini-pro"
+
+# Choose active provider
+export PREFERRED_LLM_PROVIDER="gemini"  # or "azure"
+```
+
+For detailed setup instructions, see the [Gemini Setup Guide](configuration/gemini-setup.md).
 
 ## Verify Installation
 
@@ -253,24 +340,35 @@ temperature = 0.1
 
 ### Common Issues
 
-#### Azure OpenAI Not Configured
+#### No AI Provider Configured
 ```
-Error: Azure OpenAI embeddings are required
+Error: No LLM provider configured
 ```
-**Solution**: Configure Azure OpenAI using the interactive wizard:
+**Solution**: Configure at least one AI provider:
 ```bash
+# Configure Azure OpenAI
 uv run dev-agent azure configure
+
+# Or configure Gemini
+export GEMINI_API_KEY="your-key"
+export PREFERRED_LLM_PROVIDER="gemini"
 ```
 
-#### Azure OpenAI Authentication Failed
+#### Authentication Failed
 ```
-Error: Failed to initialize Azure OpenAI service
+Error: Failed to authenticate with AI provider
 ```
-**Solution**: 
+**Solution for Azure OpenAI**: 
 1. Verify your API key is correct
 2. Check that your endpoint URL is correct
 3. Ensure your Azure OpenAI resource is active
 4. Test the connection: `uv run dev-agent azure test`
+
+**Solution for Gemini**:
+1. Verify your API key from Google AI Studio
+2. Check that the Generative AI API is enabled
+3. Ensure you have sufficient quota
+4. Test: `uv run dev-agent status`
 
 #### Model Deployment Not Found
 ```
@@ -328,7 +426,9 @@ If you encounter issues:
 
 ## Next Steps
 
-- [Azure OpenAI Setup](azure-openai-integration.md) - Detailed Azure OpenAI configuration guide
+- [Provider Selection Guide](usage/provider-selection.md) - Choose between Azure OpenAI and Gemini
+- [Azure OpenAI Setup](azure-openai-integration.md) - Detailed Azure OpenAI configuration
+- [Gemini Setup Guide](configuration/gemini-setup.md) - Detailed Gemini configuration
 - [CLI Usage Guide](usage/cli.md) - Learn the command-line interface
 - [Workflow Guide](usage/workflow.md) - Understand the four-phase process
 - [Configuration](usage/configuration.md) - Customize dev-agent behavior

@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from ..interfaces.indexing_interface import IIndexingEngine
+from ..llm import create_embedding_client, get_preferred_provider
+from ..models.enums import LLMProvider
 from ..models.indexing import ASTIndex, CodeChunk, SymbolInfo
 from ..models.project_state import IndexMetadata
 from ..models.results import IndexResult
@@ -38,15 +40,17 @@ class IndexingEngine(IIndexingEngine):
         embedding_client: IEmbeddingClient | None = None,
         cost_tracker: CostTracker | None = None,
         batch_size: int = 16,
+        provider: LLMProvider | str | None = None,
     ):
         """Initialize the indexing engine.
 
         Args:
             project_path: Path to the project root
             index_path: Custom path for index storage (optional)
-            embedding_client: Embedding client for generating embeddings (optional)
+            embedding_client: Embedding client for generating embeddings (optional for backward compatibility)
             cost_tracker: Cost tracker for monitoring token usage (optional)
             batch_size: Number of chunks to process per embedding batch (default: 16)
+            provider: LLM provider to use for embeddings (optional, defaults to preferred provider)
         """
         self.project_path = Path(project_path)
         self.index_path = (
@@ -60,14 +64,32 @@ class IndexingEngine(IIndexingEngine):
 
         # Initialize components
         self.tree_sitter_parser = TreeSitterParser()
-        self.embedding_client = embedding_client
         self.cost_tracker = cost_tracker
         self.batch_size = batch_size
         
-        # Initialize vector database with embedding client if provided
+        # Initialize embedding client using factory pattern
+        if embedding_client is not None:
+            # Use provided client for backward compatibility
+            self.embedding_client = embedding_client
+            logger.info("IndexingEngine initialized with provided embedding client")
+        else:
+            # Create client using factory pattern
+            try:
+                self.embedding_client = create_embedding_client(
+                    provider=provider,
+                    cache_dir=self.index_path / "embedding_cache"
+                )
+                current_provider = get_preferred_provider()
+                logger.info(f"IndexingEngine initialized with {current_provider.value} embedding client")
+            except (ValueError, ImportError) as e:
+                logger.warning(f"Failed to create embedding client: {e}")
+                self.embedding_client = None
+                logger.warning("IndexingEngine initialized without embedding client")
+        
+        # Initialize vector database with embedding client
         self.vector_db = VectorDatabase(
             str(self.index_path),
-            embedding_client=embedding_client,
+            embedding_client=self.embedding_client,
         )
         self.code_chunker = CodeChunker(max_chunk_size=512, overlap_size=50)
 

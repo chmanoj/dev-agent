@@ -1256,8 +1256,20 @@ class EnhancedCLI(ICLIInterface):
 
     def _display_welcome_banner(self) -> None:
         """Display an enhanced welcome banner."""
-        banner_text = """
+        # Get active provider information
+        try:
+            from ..config import ConfigManager
+            config_manager = ConfigManager()
+            active_provider = config_manager.get_llm_provider()
+            provider_display = active_provider.value.replace("_", " ").title()
+            provider_info = f"[dim]Active AI Provider: {provider_display}[/dim]"
+        except Exception:
+            provider_info = "[dim]Active AI Provider: Not Configured[/dim]"
+        
+        banner_text = f"""
 [bold blue]🤖 dev-agent[/bold blue] - AI-powered development workflow assistant
+
+{provider_info}
 
 [dim]Enhanced Features:[/dim]
 • [green]Interactive progress tracking[/green] with time estimates
@@ -1266,6 +1278,8 @@ class EnhancedCLI(ICLIInterface):
 • [magenta]Visual architecture diagrams[/magenta] using Mermaid
 • [cyan]Advanced search and filtering[/cyan] capabilities
 • [red]Rich UI components[/red] for enhanced experience
+
+[dim]Supported Providers:[/dim] Azure OpenAI, Google Gemini
 
 Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
         """

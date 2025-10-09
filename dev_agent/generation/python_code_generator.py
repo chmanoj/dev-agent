@@ -11,13 +11,14 @@ from typing import Any
 
 from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.generation_interface import IPythonCodeGenerator
+from ..llm import create_llm_client, get_preferred_provider
 from ..llm.base import ILLMClient
 from ..llm.cost_tracker import CostTracker
 from ..llm.prompt_templates import CODE_GENERATION_TEMPLATE
 from ..llm.token_counter import TokenCounter
 from ..models.analysis import CodeContext, CodePattern, CodePatterns, ContextualCode
 from ..models.documents import Task
-from ..models.enums import PhaseType
+from ..models.enums import LLMProvider, PhaseType
 from ..models.indexing import ASTIndex
 from ..models.results import GeneratedCode
 
@@ -45,21 +46,39 @@ class PythonCodeGenerator(IPythonCodeGenerator):
         llm_client: ILLMClient | None = None,
         cost_tracker: CostTracker | None = None,
         token_counter: TokenCounter | None = None,
+        provider: LLMProvider | str | None = None,
     ):
         """Initialize the Python code generator.
 
         Args:
             codebase_analyzer: Analyzer for extracting codebase patterns
-            llm_client: LLM client for AI-powered code generation (optional)
+            llm_client: LLM client for AI-powered code generation (optional for backward compatibility)
             cost_tracker: Cost tracker for monitoring token usage (optional)
             token_counter: Token counter for validation (optional)
+            provider: LLM provider to use (optional, defaults to preferred provider)
         """
         self.codebase_analyzer = codebase_analyzer
-        self.llm_client = llm_client
         self.cost_tracker = cost_tracker
         self.token_counter = token_counter
         self.existing_patterns: CodePatterns | None = None
         self.style_guidelines: dict[str, Any] = {}
+        
+        # Initialize LLM client using factory pattern
+        if llm_client is not None:
+            # Use provided client for backward compatibility
+            self.llm_client = llm_client
+            logger.info("PythonCodeGenerator initialized with provided LLM client")
+        else:
+            # Create client using factory pattern
+            try:
+                self.llm_client = create_llm_client(provider=provider)
+                current_provider = get_preferred_provider()
+                logger.info(f"PythonCodeGenerator initialized with {current_provider.value} LLM client")
+            except (ValueError, ImportError) as e:
+                logger.warning(f"Failed to create LLM client: {e}")
+                self.llm_client = None
+                logger.warning("PythonCodeGenerator initialized without LLM client")
+        
         self._load_patterns()
 
     def _load_patterns(self) -> None:

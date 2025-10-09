@@ -11,7 +11,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from dev_agent.models.llm_config import AzureOpenAIConfig as PydanticAzureOpenAIConfig
+from dev_agent.models.llm_config import AzureOpenAIConfig as PydanticAzureOpenAIConfig, GeminiConfig
+from dev_agent.models.enums import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -60,16 +61,18 @@ class DevAgentConfig:
     logging: LoggingConfig
     cli: CLIConfig
     azure_openai: PydanticAzureOpenAIConfig | None
+    gemini: GeminiConfig | None = None
     version: str = "0.1.0"
 
     @classmethod
     def default(cls) -> DevAgentConfig:
-        """Create default configuration with optional Azure OpenAI."""
+        """Create default configuration with optional LLM providers."""
         return cls(
             indexing=IndexingConfig(),
             logging=LoggingConfig(),
             cli=CLIConfig(),
             azure_openai=None,  # Azure OpenAI config loaded from env vars
+            gemini=None,  # Gemini config loaded from env vars
         )
 
     def to_dict(self, redact_secrets: bool = True) -> dict[str, Any]:
@@ -104,6 +107,22 @@ class DevAgentConfig:
                     azure_dict["api_key"] = self.azure_openai.api_key.get_secret_value()
             config_dict["azure_openai"] = azure_dict
 
+        # Serialize Gemini config if present
+        if self.gemini is not None:
+            # Use model_dump to get dict, excluding unset fields
+            gemini_dict = self.gemini.model_dump(
+                mode="json",
+                exclude_unset=True,
+            )
+            # Convert SecretStr to string for serialization
+            if "api_key" in gemini_dict:
+                if redact_secrets:
+                    gemini_dict["api_key"] = "***REDACTED***"
+                else:
+                    # Get the actual secret value for saving
+                    gemini_dict["api_key"] = self.gemini.api_key.get_secret_value()
+            config_dict["gemini"] = gemini_dict
+
         return config_dict
 
     @classmethod
@@ -137,11 +156,24 @@ class DevAgentConfig:
                     # If validation fails, skip and rely on env vars
                     pass
 
+        # Parse Gemini config if present
+        gemini_config = None
+        if data.get("gemini"):
+            gemini_data = data["gemini"]
+            # Skip if API key is redacted (will be loaded from env vars)
+            if gemini_data.get("api_key") != "***REDACTED***":
+                try:
+                    gemini_config = GeminiConfig(**gemini_data)
+                except ValidationError:
+                    # If validation fails, skip and rely on env vars
+                    pass
+
         return cls(
             indexing=IndexingConfig(**data.get("indexing", {})),
             logging=LoggingConfig(**data.get("logging", {})),
             cli=CLIConfig(**data.get("cli", {})),
             azure_openai=azure_config,
+            gemini=gemini_config,
             version=data.get("version", "0.1.0"),
         )
 
@@ -332,10 +364,18 @@ class ConfigManager:
             self._config = DevAgentConfig.default()
             self.save_config()  # Save default config for future use
 
-        # Override Azure OpenAI config with environment variables (highest precedence)
+        # Override LLM provider configs with environment variables (highest precedence)
         env_azure_config = self._load_azure_config_from_env()
         if env_azure_config is not None:
             self._config.azure_openai = env_azure_config
+
+        # Try to load Gemini config from environment variables
+        try:
+            env_gemini_config = self.load_gemini_config()
+            self._config.gemini = env_gemini_config
+        except ValueError:
+            # Gemini config not available from env vars, that's okay
+            pass
 
         return self._config
 
@@ -437,10 +477,18 @@ class ConfigManager:
             # Fall back to global configuration
             config = self.load_config()
 
-        # Override Azure OpenAI config with environment variables (highest precedence)
+        # Override LLM provider configs with environment variables (highest precedence)
         env_azure_config = self._load_azure_config_from_env()
         if env_azure_config is not None:
             config.azure_openai = env_azure_config
+
+        # Try to load Gemini config from environment variables
+        try:
+            env_gemini_config = self.load_gemini_config()
+            config.gemini = env_gemini_config
+        except ValueError:
+            # Gemini config not available from env vars, that's okay
+            pass
 
         return config
 
@@ -519,3 +567,275 @@ class ConfigManager:
 
         except ValueError as e:
             return False, str(e)
+
+    def load_gemini_config(self) -> GeminiConfig:
+        """Load Gemini configuration from environment variables.
+
+        Environment Variables:
+            GEMINI_API_KEY: Gemini API key (required)
+            GEMINI_MODEL_NAME: Model for code generation (optional, default: gemini-pro)
+            GEMINI_EMBEDDING_MODEL: Model for embeddings (optional, default: embedding-001)
+            GEMINI_API_ENDPOINT: API endpoint (optional, default: generativelanguage.googleapis.com)
+            GEMINI_MAX_OUTPUT_TOKENS: Max output tokens (optional, default: 2048)
+            GEMINI_TEMPERATURE: Temperature (optional, default: 0.7)
+            GEMINI_TOP_P: Top-p parameter (optional, default: 0.95)
+            GEMINI_TOP_K: Top-k parameter (optional, default: 40)
+            GEMINI_MAX_RETRIES: Max retries (optional, default: 3)
+            GEMINI_TIMEOUT: Timeout in seconds (optional, default: 60)
+            GEMINI_BATCH_SIZE: Batch size (optional, default: 16)
+
+        Returns:
+            GeminiConfig instance loaded from environment variables
+
+        Raises:
+            ValueError: If required environment variables are missing or invalid
+        """
+        from dev_agent.models.llm_config import GeminiConfig
+        from pydantic import SecretStr
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY environment variable is required. "
+                "Get your API key at: https://makersuite.google.com/app/apikey"
+            )
+
+        try:
+            # Build config from env vars
+            config_data: dict[str, Any] = {
+                "api_key": SecretStr(api_key),
+            }
+
+            # Add optional env vars if present
+            if model_name := os.getenv("GEMINI_MODEL_NAME"):
+                config_data["model_name"] = model_name
+
+            if embedding_model := os.getenv("GEMINI_EMBEDDING_MODEL"):
+                config_data["embedding_model"] = embedding_model
+
+            if api_endpoint := os.getenv("GEMINI_API_ENDPOINT"):
+                config_data["api_endpoint"] = api_endpoint
+
+            if max_output_tokens := os.getenv("GEMINI_MAX_OUTPUT_TOKENS"):
+                config_data["max_output_tokens"] = int(max_output_tokens)
+
+            if temperature := os.getenv("GEMINI_TEMPERATURE"):
+                config_data["temperature"] = float(temperature)
+
+            if top_p := os.getenv("GEMINI_TOP_P"):
+                config_data["top_p"] = float(top_p)
+
+            if top_k := os.getenv("GEMINI_TOP_K"):
+                config_data["top_k"] = int(top_k)
+
+            if max_retries := os.getenv("GEMINI_MAX_RETRIES"):
+                config_data["max_retries"] = int(max_retries)
+
+            if timeout := os.getenv("GEMINI_TIMEOUT"):
+                config_data["timeout"] = int(timeout)
+
+            if batch_size := os.getenv("GEMINI_BATCH_SIZE"):
+                config_data["batch_size"] = int(batch_size)
+
+            # Parse safety settings from JSON string
+            if safety_settings_json := os.getenv("GEMINI_SAFETY_SETTINGS"):
+                try:
+                    safety_settings = json.loads(safety_settings_json)
+                    if isinstance(safety_settings, dict):
+                        config_data["safety_settings"] = safety_settings
+                    else:
+                        logger.warning(
+                            "GEMINI_SAFETY_SETTINGS must be a JSON object. "
+                            f"Got {type(safety_settings).__name__}. Using default safety settings."
+                        )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        f"Failed to parse GEMINI_SAFETY_SETTINGS as JSON: {e}. "
+                        "Using default safety settings."
+                    )
+
+            return GeminiConfig(**config_data)
+
+        except (ValidationError, ValueError) as e:
+            raise ValueError(f"Failed to load Gemini config from environment: {e}") from e
+
+    def load_azure_config(self) -> PydanticAzureOpenAIConfig:
+        """Load Azure OpenAI configuration from environment variables.
+
+        This is a convenience method that wraps _load_azure_config_from_env
+        and raises a clear error if configuration is not available.
+
+        Returns:
+            AzureOpenAIConfig instance loaded from environment variables
+
+        Raises:
+            ValueError: If required environment variables are missing or invalid
+        """
+        config = self._load_azure_config_from_env()
+        if config is None:
+            raise ValueError(
+                "Azure OpenAI configuration is not available. Please set environment variables:\n"
+                "  AZURE_OPENAI_ENDPOINT\n"
+                "  AZURE_OPENAI_API_KEY (or AZURE_OPENAI_TOKEN for Azure AD)\n"
+                "  AZURE_OPENAI_DEPLOYMENT_NAME\n"
+                "  AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
+            )
+        return config
+
+    def get_llm_provider(self) -> LLMProvider:
+        """Determine which LLM provider to use based on configuration and environment.
+
+        Provider selection logic:
+        1. Check PREFERRED_LLM_PROVIDER environment variable
+        2. If not set, default to Azure OpenAI for backward compatibility
+        3. Validate that the selected provider has valid credentials
+
+        Returns:
+            LLMProvider enum value for the active provider
+
+        Raises:
+            ValueError: If no valid provider configuration is found
+
+        Environment Variables:
+            PREFERRED_LLM_PROVIDER: "azure_openai" or "gemini" (optional, defaults to "azure_openai")
+        """
+        # Check environment variable for preferred provider
+        preferred_provider = os.getenv("PREFERRED_LLM_PROVIDER", "azure_openai").lower()
+        
+        # Map string values to enum
+        provider_mapping = {
+            "azure": LLMProvider.AZURE_OPENAI,
+            "azure_openai": LLMProvider.AZURE_OPENAI,
+            "gemini": LLMProvider.GEMINI,
+        }
+        
+        if preferred_provider not in provider_mapping:
+            raise ValueError(
+                f"Unsupported LLM provider: {preferred_provider}. "
+                f"Supported providers: {', '.join(provider_mapping.keys())}"
+            )
+        
+        provider = provider_mapping[preferred_provider]
+        
+        # Validate that the selected provider has valid configuration
+        is_valid, error_msg = self.validate_provider_config(provider)
+        if not is_valid:
+            # Try to fall back to the other provider if the preferred one is not configured
+            fallback_provider = (
+                LLMProvider.GEMINI if provider == LLMProvider.AZURE_OPENAI 
+                else LLMProvider.AZURE_OPENAI
+            )
+            
+            fallback_valid, _ = self.validate_provider_config(fallback_provider)
+            if fallback_valid:
+                logger.warning(
+                    f"Preferred provider {provider.value} is not configured: {error_msg}. "
+                    f"Falling back to {fallback_provider.value}"
+                )
+                return fallback_provider
+            
+            # Neither provider is configured
+            raise ValueError(
+                f"No valid LLM provider configuration found. "
+                f"Preferred provider ({provider.value}) error: {error_msg}. "
+                f"Please configure at least one provider."
+            )
+        
+        return provider
+
+    def validate_provider_config(self, provider: LLMProvider) -> tuple[bool, str]:
+        """Validate configuration for a specific LLM provider.
+
+        Args:
+            provider: LLM provider to validate
+
+        Returns:
+            Tuple of (is_valid, error_message)
+            If valid, error_message is empty string
+
+        Example:
+            ```python
+            config_manager = ConfigManager()
+            is_valid, error = config_manager.validate_provider_config(LLMProvider.GEMINI)
+            if not is_valid:
+                print(f"Gemini configuration error: {error}")
+            ```
+        """
+        try:
+            if provider == LLMProvider.AZURE_OPENAI:
+                # Try to load Azure OpenAI configuration
+                self.load_azure_config()
+                return True, ""
+            
+            elif provider == LLMProvider.GEMINI:
+                # Try to load Gemini configuration
+                self.load_gemini_config()
+                return True, ""
+            
+            else:
+                return False, f"Unsupported provider: {provider.value}"
+                
+        except ValueError as e:
+            return False, str(e)
+
+    def get_llm_config(self, provider: LLMProvider | None = None) -> PydanticAzureOpenAIConfig | GeminiConfig:
+        """Get LLM configuration for the specified or active provider.
+
+        Args:
+            provider: LLM provider to get config for (if None, uses active provider)
+
+        Returns:
+            Configuration object for the specified provider
+
+        Raises:
+            ValueError: If provider is not configured or unsupported
+
+        Example:
+            ```python
+            config_manager = ConfigManager()
+            
+            # Get config for active provider
+            llm_config = config_manager.get_llm_config()
+            
+            # Get config for specific provider
+            azure_config = config_manager.get_llm_config(LLMProvider.AZURE_OPENAI)
+            gemini_config = config_manager.get_llm_config(LLMProvider.GEMINI)
+            ```
+        """
+        if provider is None:
+            provider = self.get_llm_provider()
+
+        if provider == LLMProvider.AZURE_OPENAI:
+            return self.load_azure_config()
+        elif provider == LLMProvider.GEMINI:
+            return self.load_gemini_config()
+        else:
+            raise ValueError(f"Unsupported LLM provider: {provider.value}")
+
+    def get_gemini_config(self) -> GeminiConfig:
+        """Get Gemini configuration with validation.
+
+        Returns:
+            Validated Gemini configuration
+
+        Raises:
+            ValueError: If Gemini is not configured
+
+        Note:
+            This method checks environment variables first, then falls back
+            to the config file. If neither is available, raises an error.
+        """
+        config = self.get_config()
+
+        if config.gemini is None:
+            # Try to load from environment variables
+            try:
+                return self.load_gemini_config()
+            except ValueError:
+                raise ValueError(
+                    "Gemini is not configured. Please set environment variables:\n"
+                    "  GEMINI_API_KEY\n"
+                    "Or run: dev-agent gemini configure"
+                ) from None
+
+        return config.gemini

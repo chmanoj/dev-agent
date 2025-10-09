@@ -20,10 +20,11 @@ from ..errors.llm_exceptions import (
 )
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.generation_interface import ISpecificationGenerator
+from ..llm import create_llm_client, get_preferred_provider
 from ..llm.prompt_templates import get_template
 from ..models.analysis import RequirementEvidence, SpecificationAnalysis
 from ..models.documents import CodeAnalysisRef, Requirement, SpecificationDocument
-from ..models.enums import Priority, SpecificationSource
+from ..models.enums import LLMProvider, Priority, SpecificationSource
 
 if TYPE_CHECKING:
     from ..indexing.vector_database import VectorDatabase
@@ -71,6 +72,7 @@ class SpecificationGenerator(ISpecificationGenerator):
         cost_tracker: CostTracker | None = None,
         token_counter: TokenCounter | None = None,
         vector_db: VectorDatabase | None = None,
+        provider: LLMProvider | str | None = None,
     ):
         """Initialize the specification generator.
 
@@ -80,21 +82,32 @@ class SpecificationGenerator(ISpecificationGenerator):
             cost_tracker: Cost tracker for monitoring API usage (optional)
             token_counter: Token counter for validation (optional)
             vector_db: Vector database for context retrieval (optional)
+            provider: LLM provider to use (optional, defaults to preferred provider)
         """
         self.cli_interface = cli_interface
-        self.llm_client = llm_client
         self.cost_tracker = cost_tracker
         self.token_counter = token_counter
         self.vector_db = vector_db
         self.version = "1.0"
         
-        if llm_client:
-            logger.info("SpecificationGenerator initialized with LLM client")
+        # Initialize LLM client using factory pattern
+        if llm_client is not None:
+            # Use provided client for backward compatibility
+            self.llm_client = llm_client
+            logger.info("SpecificationGenerator initialized with provided LLM client")
         else:
-            logger.warning(
-                "SpecificationGenerator initialized without LLM client - "
-                "AI-powered generation will not be available"
-            )
+            # Create client using factory pattern
+            try:
+                self.llm_client = create_llm_client(provider=provider)
+                current_provider = get_preferred_provider()
+                logger.info(f"SpecificationGenerator initialized with {current_provider.value} LLM client")
+            except (ValueError, ImportError) as e:
+                logger.warning(f"Failed to create LLM client: {e}")
+                self.llm_client = None
+                logger.warning(
+                    "SpecificationGenerator initialized without LLM client - "
+                    "AI-powered generation will not be available"
+                )
 
     async def generate_from_existing_code_ai(
         self,

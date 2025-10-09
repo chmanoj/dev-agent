@@ -4,23 +4,27 @@ This document provides comprehensive API documentation for the LLM integration l
 
 ## Overview
 
-The LLM integration layer provides a clean abstraction for interacting with Azure OpenAI services. It includes:
+The LLM integration layer provides a clean abstraction for interacting with multiple AI providers. It includes:
 
-- **LLM Client**: Generate completions and stream responses
-- **Embedding Client**: Generate and cache embeddings
-- **Token Counter**: Count tokens and estimate costs
-- **Cost Tracker**: Track usage and costs
+- **LLM Client**: Generate completions and stream responses (Azure OpenAI and Gemini)
+- **Embedding Client**: Generate and cache embeddings (Azure OpenAI and Gemini)
+- **Token Counter**: Count tokens and estimate costs for both providers
+- **Cost Tracker**: Track usage and costs across providers
 - **Prompt Templates**: Structured prompts for each workflow phase
+- **Provider Factory**: Create clients based on provider selection
 
 ## Module Structure
 
 ```
 dev_agent/llm/
+├── __init__.py          # Provider factory functions
 ├── base.py              # Abstract interfaces
 ├── azure_client.py      # Azure OpenAI LLM client
-├── embeddings.py        # Embedding client
+├── gemini_client.py     # Google Gemini LLM client
+├── embeddings.py        # Azure OpenAI embedding client
+├── gemini_embeddings.py # Google Gemini embedding client
 ├── token_counter.py     # Token counting
-├── cost_tracker.py      # Cost tracking
+├── cost_tracker.py      # Multi-provider cost tracking
 ├── prompt_templates.py  # Prompt templates
 └── embedding_cache.py   # Embedding cache
 ```
@@ -36,6 +40,51 @@ dev_agent/llm/
     options:
       show_source: true
       heading_level: 3
+
+## Provider Factory
+
+::: dev_agent.llm.create_llm_client
+    options:
+      show_source: true
+      heading_level: 3
+
+::: dev_agent.llm.create_embedding_client
+    options:
+      show_source: true
+      heading_level: 3
+
+### Factory Usage Example
+
+```python
+import asyncio
+import os
+from dev_agent.llm import create_llm_client, create_embedding_client
+from dev_agent.models.llm_config import GeminiConfig
+from pydantic import SecretStr
+
+async def main():
+    # Create Gemini client
+    config = GeminiConfig(
+        api_key=SecretStr(os.getenv("GEMINI_API_KEY")),
+        model_name="gemini-pro",
+        embedding_model="embedding-001",
+    )
+    
+    llm_client = create_llm_client(provider="gemini", config=config)
+    embedding_client = create_embedding_client(provider="gemini", config=config)
+    
+    # Generate completion
+    response = await llm_client.generate_completion(
+        prompt="Write a Python function to calculate fibonacci",
+        system_prompt="You are a Python expert.",
+        temperature=0.7,
+        max_tokens=500,
+    )
+    
+    print(response)
+
+asyncio.run(main())
+```
 
 ## Azure OpenAI Client
 
@@ -83,7 +132,61 @@ async def main():
 asyncio.run(main())
 ```
 
-## Embedding Client
+## Google Gemini Client
+
+::: dev_agent.llm.gemini_client.GeminiClient
+    options:
+      show_source: true
+      heading_level: 3
+      members:
+        - __init__
+        - generate_completion
+        - generate_streaming
+        - count_tokens
+        - estimate_cost
+
+### Gemini Usage Example
+
+```python
+import asyncio
+import os
+from dev_agent.llm.gemini_client import GeminiClient
+from dev_agent.models.llm_config import GeminiConfig
+from pydantic import SecretStr
+
+async def main():
+    config = GeminiConfig(
+        api_key=SecretStr(os.getenv("GEMINI_API_KEY")),
+        model_name="gemini-pro",
+        embedding_model="embedding-001",
+        temperature=0.7,
+        max_output_tokens=2048,
+    )
+    
+    client = GeminiClient(config)
+    
+    # Generate completion
+    response = await client.generate_completion(
+        prompt="Write a Python function to calculate fibonacci",
+        system_prompt="You are a Python expert.",
+        temperature=0.7,
+        max_tokens=500,
+    )
+    
+    print(response)
+    
+    # Stream response
+    print("Streaming response:")
+    async for chunk in client.generate_streaming(
+        prompt="Explain how recursion works",
+        system_prompt="You are a computer science teacher.",
+    ):
+        print(chunk, end="", flush=True)
+
+asyncio.run(main())
+```
+
+## Azure OpenAI Embedding Client
 
 ::: dev_agent.llm.embeddings.AzureEmbeddingClient
     options:
@@ -123,6 +226,51 @@ async def main():
     texts = ["code1", "code2", "code3"]
     embeddings = await client.embed_batch(texts, batch_size=16)
     print(f"Generated {len(embeddings)} embeddings")
+
+asyncio.run(main())
+```
+
+## Google Gemini Embedding Client
+
+::: dev_agent.llm.gemini_embeddings.GeminiEmbeddingClient
+    options:
+      show_source: true
+      heading_level: 3
+      members:
+        - __init__
+        - embed_text
+        - embed_batch
+        - dimension
+
+### Gemini Embedding Usage Example
+
+```python
+import asyncio
+import os
+from dev_agent.llm.gemini_embeddings import GeminiEmbeddingClient
+from dev_agent.models.llm_config import GeminiConfig
+from pydantic import SecretStr
+
+async def main():
+    config = GeminiConfig(
+        api_key=SecretStr(os.getenv("GEMINI_API_KEY")),
+        model_name="gemini-pro",
+        embedding_model="embedding-001",
+    )
+    
+    client = GeminiEmbeddingClient(config)
+    
+    # Single embedding
+    embedding = await client.embed_text("def hello(): print('Hello')")
+    print(f"Embedding dimension: {len(embedding)}")  # 768 for Gemini
+    
+    # Batch embeddings
+    texts = ["code1", "code2", "code3"]
+    embeddings = await client.embed_batch(texts, batch_size=16)
+    print(f"Generated {len(embeddings)} embeddings")
+    
+    # Check dimension
+    print(f"Gemini embedding dimension: {client.dimension}")
 
 asyncio.run(main())
 ```
@@ -338,6 +486,67 @@ config = AzureOpenAIConfig(
 
 # API key is automatically redacted
 print(config)  # Shows: api_key=SecretStr('***REDACTED***')
+```
+
+::: dev_agent.models.llm_config.GeminiConfig
+    options:
+      show_source: true
+      heading_level: 3
+
+### Gemini Configuration Example
+
+```python
+from dev_agent.models.llm_config import GeminiConfig
+from pydantic import SecretStr
+
+config = GeminiConfig(
+    api_key=SecretStr("your-gemini-api-key-here"),
+    model_name="gemini-pro",
+    embedding_model="embedding-001",
+    api_endpoint="generativelanguage.googleapis.com",
+    max_output_tokens=2048,
+    temperature=0.7,
+    top_p=0.95,
+    top_k=40,
+    max_retries=3,
+    timeout=60,
+    batch_size=16,
+    safety_settings={"HARM_CATEGORY_HARASSMENT": "BLOCK_MEDIUM_AND_ABOVE"},
+)
+
+# API key is automatically redacted
+print(config)  # Shows: api_key=SecretStr('***REDACTED***')
+```
+
+### Multi-Provider Configuration Example
+
+```python
+from dev_agent.llm import create_llm_client
+from dev_agent.models.llm_config import AzureOpenAIConfig, GeminiConfig
+from pydantic import SecretStr
+import os
+
+# Configure both providers
+azure_config = AzureOpenAIConfig(
+    endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=SecretStr(os.getenv("AZURE_OPENAI_API_KEY")),
+    deployment_name="gpt-4",
+    embedding_deployment="text-embedding-ada-002",
+)
+
+gemini_config = GeminiConfig(
+    api_key=SecretStr(os.getenv("GEMINI_API_KEY")),
+    model_name="gemini-pro",
+    embedding_model="embedding-001",
+)
+
+# Create clients for different providers
+azure_client = create_llm_client(provider="azure", config=azure_config)
+gemini_client = create_llm_client(provider="gemini", config=gemini_config)
+
+# Use based on needs (cost vs features)
+cost_effective_client = gemini_client  # 95-98% cost savings
+enterprise_client = azure_client       # Enterprise features
 ```
 
 ## Response Models
@@ -613,15 +822,27 @@ async def test_completion(mock_azure_client):
 
 | Component | Purpose | Key Methods |
 |-----------|---------|-------------|
-| `AzureOpenAIClient` | Generate completions | `generate_completion()`, `generate_streaming()` |
-| `AzureEmbeddingClient` | Generate embeddings | `embed_text()`, `embed_batch()` |
+| `create_llm_client()` | Create LLM client | Factory function for provider selection |
+| `create_embedding_client()` | Create embedding client | Factory function for provider selection |
+| `AzureOpenAIClient` | Generate completions (Azure) | `generate_completion()`, `generate_streaming()` |
+| `GeminiClient` | Generate completions (Gemini) | `generate_completion()`, `generate_streaming()` |
+| `AzureEmbeddingClient` | Generate embeddings (Azure) | `embed_text()`, `embed_batch()` |
+| `GeminiEmbeddingClient` | Generate embeddings (Gemini) | `embed_text()`, `embed_batch()` |
 | `TokenCounter` | Count tokens | `count_tokens()`, `estimate_cost()` |
 | `CostTracker` | Track costs | `add_completion()`, `get_report()` |
 | `EmbeddingCache` | Cache embeddings | `get()`, `set()` |
 
 ## Version Information
 
+### Azure OpenAI
 - **API Version**: 2024-02-15-preview
 - **Supported Models**: GPT-4, GPT-4 Turbo, GPT-4o, text-embedding-ada-002
+- **Dependencies**: openai>=1.50.0, tiktoken>=0.6.0
+
+### Google Gemini
+- **Supported Models**: Gemini Pro, Gemini Pro Vision, Gemini Ultra, embedding-001, text-embedding-004
+- **Dependencies**: google-generativeai>=0.3.0, google-api-core>=2.15.0
+
+### General
 - **Python Version**: 3.10+
-- **Dependencies**: openai>=1.50.0, tiktoken>=0.6.0, tenacity>=8.2.0
+- **Common Dependencies**: tenacity>=8.2.0, pydantic>=2.10.0

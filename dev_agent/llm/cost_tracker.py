@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from dev_agent.models.cost_tracking import CostReport, TokenUsage
-from dev_agent.models.enums import LLMOperationType, PhaseType
+from dev_agent.models.enums import LLMOperationType, LLMProvider, PhaseType
 
 if TYPE_CHECKING:
     pass
@@ -20,44 +20,67 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Azure OpenAI pricing (as of 2024-02-15)
-# These are example prices - update with actual Azure pricing
+# Multi-provider pricing (as of 2024-02-15)
+# These are example prices - update with actual provider pricing
 PRICING = {
-    "gpt-4": {
-        "prompt": 0.03,  # per 1K tokens
-        "completion": 0.06,  # per 1K tokens
+    LLMProvider.AZURE_OPENAI: {
+        "gpt-4": {
+            "prompt": 0.03,  # per 1K tokens
+            "completion": 0.06,  # per 1K tokens
+        },
+        "gpt-4-32k": {
+            "prompt": 0.06,
+            "completion": 0.12,
+        },
+        "gpt-4-turbo": {
+            "prompt": 0.01,
+            "completion": 0.03,
+        },
+        "gpt-4o": {
+            "prompt": 0.005,
+            "completion": 0.015,
+        },
+        "gpt-3.5-turbo": {
+            "prompt": 0.0015,
+            "completion": 0.002,
+        },
+        "text-embedding-ada-002": {
+            "embedding": 0.0001,  # per 1K tokens
+        },
     },
-    "gpt-4-32k": {
-        "prompt": 0.06,
-        "completion": 0.12,
-    },
-    "gpt-4-turbo": {
-        "prompt": 0.01,
-        "completion": 0.03,
-    },
-    "gpt-4o": {
-        "prompt": 0.005,
-        "completion": 0.015,
-    },
-    "gpt-3.5-turbo": {
-        "prompt": 0.0015,
-        "completion": 0.002,
-    },
-    "text-embedding-ada-002": {
-        "embedding": 0.0001,  # per 1K tokens
+    LLMProvider.GEMINI: {
+        "gemini-pro": {
+            "prompt": 0.0005,  # per 1K tokens
+            "completion": 0.0015,  # per 1K tokens
+        },
+        "gemini-pro-vision": {
+            "prompt": 0.00025,
+            "completion": 0.0005,
+        },
+        "gemini-ultra": {
+            "prompt": 0.0005,
+            "completion": 0.0015,
+        },
+        "embedding-001": {
+            "embedding": 0.00001,  # per 1K tokens
+        },
+        "text-embedding-004": {
+            "embedding": 0.00001,  # per 1K tokens
+        },
     },
 }
 
 
 class CostTracker:
-    """Track Azure OpenAI usage and costs across operations.
+    """Track multi-provider LLM usage and costs across operations.
     
     This class provides comprehensive tracking of token usage and costs for all
-    Azure OpenAI operations. It supports per-operation recording, per-phase
-    aggregation, budget threshold warnings, and detailed usage reporting.
+    LLM operations across multiple providers (Azure OpenAI, Gemini, etc.).
+    It supports per-operation recording, per-phase aggregation, per-provider
+    cost tracking, budget threshold warnings, and detailed usage reporting.
     
     The tracker maintains a session-level view of all operations and can generate
-    reports broken down by workflow phase and operation type.
+    reports broken down by workflow phase, operation type, and provider.
     
     Attributes:
         current_phase: Current workflow phase being tracked
@@ -74,18 +97,27 @@ class CostTracker:
             budget_limit=50.0,
         )
         
-        # Record a completion operation
+        # Record a completion operation with provider
         tracker.record_completion(
             prompt_tokens=150,
             completion_tokens=300,
             model="gpt-4",
+            provider=LLMProvider.AZURE_OPENAI,
         )
         
-        # Check if approaching budget
-        if tracker.check_budget_threshold():
-            print("Warning: Approaching budget limit!")
+        # Record a Gemini operation
+        tracker.record_completion(
+            prompt_tokens=100,
+            completion_tokens=200,
+            model="gemini-pro",
+            provider=LLMProvider.GEMINI,
+        )
         
-        # Get usage report
+        # Get provider-specific cost
+        azure_cost = tracker.get_provider_cost(LLMProvider.AZURE_OPENAI)
+        gemini_cost = tracker.get_provider_cost(LLMProvider.GEMINI)
+        
+        # Get usage report with provider breakdown
         report = tracker.get_report()
         print(f"Total cost: ${report.total_cost:.2f}")
         ```
@@ -145,13 +177,15 @@ class CostTracker:
         prompt_tokens: int,
         completion_tokens: int,
         model: str = "gpt-4",
+        provider: LLMProvider = LLMProvider.AZURE_OPENAI,
     ) -> float:
         """Record a completion operation and return estimated cost.
         
         Args:
             prompt_tokens: Number of tokens in the prompt
             completion_tokens: Number of tokens in the completion
-            model: Model name used (e.g., "gpt-4", "gpt-4-turbo")
+            model: Model name used (e.g., "gpt-4", "gemini-pro")
+            provider: LLM provider used for the operation
             
         Returns:
             Estimated cost in USD for this operation
@@ -169,6 +203,7 @@ class CostTracker:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             model=model,
+            provider=provider,
         )
         
         usage = TokenUsage(
@@ -180,13 +215,14 @@ class CostTracker:
             timestamp=datetime.now(),
             phase=self.current_phase,
             model=model,
+            provider=provider,
         )
         
         self._operations.append(usage)
         
         logger.debug(
             f"Recorded completion: {prompt_tokens} prompt + {completion_tokens} "
-            f"completion tokens, cost=${cost:.4f}, model={model}"
+            f"completion tokens, cost=${cost:.4f}, model={model}, provider={provider.value}"
         )
         
         # Check budget after recording
@@ -199,6 +235,7 @@ class CostTracker:
         prompt_tokens: int,
         completion_tokens: int,
         model: str = "gpt-4",
+        provider: LLMProvider = LLMProvider.AZURE_OPENAI,
     ) -> float:
         """Record a streaming completion operation.
         
@@ -209,6 +246,7 @@ class CostTracker:
             prompt_tokens: Number of tokens in the prompt
             completion_tokens: Number of tokens streamed
             model: Model name used
+            provider: LLM provider used for the operation
             
         Returns:
             Estimated cost in USD for this operation
@@ -226,6 +264,7 @@ class CostTracker:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             model=model,
+            provider=provider,
         )
         
         usage = TokenUsage(
@@ -237,13 +276,14 @@ class CostTracker:
             timestamp=datetime.now(),
             phase=self.current_phase,
             model=model,
+            provider=provider,
         )
         
         self._operations.append(usage)
         
         logger.debug(
             f"Recorded streaming: {prompt_tokens} prompt + {completion_tokens} "
-            f"completion tokens, cost=${cost:.4f}, model={model}"
+            f"completion tokens, cost=${cost:.4f}, model={model}, provider={provider.value}"
         )
         
         self.check_budget_threshold()
@@ -254,12 +294,14 @@ class CostTracker:
         self,
         tokens: int,
         model: str = "text-embedding-ada-002",
+        provider: LLMProvider = LLMProvider.AZURE_OPENAI,
     ) -> float:
         """Record an embedding operation.
         
         Args:
             tokens: Number of tokens embedded
             model: Embedding model name
+            provider: LLM provider used for the operation
             
         Returns:
             Estimated cost in USD for this operation
@@ -270,7 +312,7 @@ class CostTracker:
         if tokens < 0:
             raise ValueError("tokens must be non-negative")
         
-        cost = self.calculate_embedding_cost(tokens=tokens, model=model)
+        cost = self.calculate_embedding_cost(tokens=tokens, model=model, provider=provider)
         
         usage = TokenUsage(
             operation_type=LLMOperationType.EMBEDDING,
@@ -281,12 +323,13 @@ class CostTracker:
             timestamp=datetime.now(),
             phase=self.current_phase,
             model=model,
+            provider=provider,
         )
         
         self._operations.append(usage)
         
         logger.debug(
-            f"Recorded embedding: {tokens} tokens, cost=${cost:.4f}, model={model}"
+            f"Recorded embedding: {tokens} tokens, cost=${cost:.4f}, model={model}, provider={provider.value}"
         )
         
         self.check_budget_threshold()
@@ -298,15 +341,17 @@ class CostTracker:
         prompt_tokens: int,
         completion_tokens: int,
         model: str = "gpt-4",
+        provider: LLMProvider = LLMProvider.AZURE_OPENAI,
     ) -> float:
         """Calculate cost for a completion operation.
         
-        Uses current Azure OpenAI pricing for the specified model.
+        Uses current provider pricing for the specified model.
         
         Args:
             prompt_tokens: Number of tokens in the prompt
             completion_tokens: Number of tokens in the completion
-            model: Model name (e.g., "gpt-4", "gpt-4-turbo")
+            model: Model name (e.g., "gpt-4", "gemini-pro")
+            provider: LLM provider used for the operation
             
         Returns:
             Estimated cost in USD
@@ -319,8 +364,20 @@ class CostTracker:
         if completion_tokens < 0:
             raise ValueError("completion_tokens must be non-negative")
         
-        # Get pricing for model, default to gpt-4 if unknown
-        pricing = PRICING.get(model, PRICING["gpt-4"])
+        # Get provider pricing
+        provider_pricing = PRICING.get(provider, PRICING[LLMProvider.AZURE_OPENAI])
+        
+        # Get model pricing, default to first available model for provider
+        if model in provider_pricing:
+            pricing = provider_pricing[model]
+        else:
+            # Default to first model in provider pricing
+            default_model = next(iter(provider_pricing.keys()))
+            pricing = provider_pricing[default_model]
+            logger.warning(
+                f"Unknown model '{model}' for provider {provider.value}, "
+                f"using default model '{default_model}' pricing"
+            )
         
         prompt_cost = (prompt_tokens / 1000) * pricing["prompt"]
         completion_cost = (completion_tokens / 1000) * pricing["completion"]
@@ -331,12 +388,14 @@ class CostTracker:
         self,
         tokens: int,
         model: str = "text-embedding-ada-002",
+        provider: LLMProvider = LLMProvider.AZURE_OPENAI,
     ) -> float:
         """Calculate cost for an embedding operation.
         
         Args:
             tokens: Number of tokens embedded
             model: Embedding model name
+            provider: LLM provider used for the operation
             
         Returns:
             Estimated cost in USD
@@ -347,19 +406,66 @@ class CostTracker:
         if tokens < 0:
             raise ValueError("tokens must be non-negative")
         
-        # Get pricing for model, default to text-embedding-ada-002 if unknown
-        pricing = PRICING.get(model, PRICING["text-embedding-ada-002"])
+        # Get provider pricing
+        provider_pricing = PRICING.get(provider, PRICING[LLMProvider.AZURE_OPENAI])
+        
+        # Get model pricing, default to first available embedding model for provider
+        if model in provider_pricing:
+            pricing = provider_pricing[model]
+        else:
+            # Find first embedding model in provider pricing
+            embedding_models = [
+                m for m, p in provider_pricing.items() 
+                if "embedding" in p
+            ]
+            if embedding_models:
+                default_model = embedding_models[0]
+                pricing = provider_pricing[default_model]
+                logger.warning(
+                    f"Unknown embedding model '{model}' for provider {provider.value}, "
+                    f"using default model '{default_model}' pricing"
+                )
+            else:
+                # Fallback to Azure OpenAI pricing
+                pricing = PRICING[LLMProvider.AZURE_OPENAI]["text-embedding-ada-002"]
+                logger.warning(
+                    f"No embedding models found for provider {provider.value}, "
+                    "using Azure OpenAI text-embedding-ada-002 pricing"
+                )
         
         return (tokens / 1000) * pricing["embedding"]
+
+    def get_provider_cost(self, provider: LLMProvider) -> float:
+        """Get total cost for a specific provider.
+        
+        Args:
+            provider: LLM provider to query
+            
+        Returns:
+            Total cost for the provider, or 0.0 if no operations with that provider
+        """
+        provider_operations = [
+            op for op in self._operations 
+            if hasattr(op, 'provider') and op.provider == provider
+        ]
+        
+        total_cost = sum(op.estimated_cost for op in provider_operations)
+        
+        logger.debug(
+            f"Provider {provider.value} cost: ${total_cost:.4f} "
+            f"({len(provider_operations)} operations)"
+        )
+        
+        return total_cost
 
     def get_report(self) -> CostReport:
         """Generate a comprehensive usage report.
         
         Creates a CostReport with aggregated statistics across all operations,
-        broken down by workflow phase and operation type.
+        broken down by workflow phase, operation type, and provider.
         
         Returns:
-            CostReport with complete usage statistics
+            CostReport with complete usage statistics including provider breakdown
         """
         report = CostReport.create_empty(start_time=self._start_time)
         

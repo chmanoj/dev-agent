@@ -1,10 +1,23 @@
 # Cost Management Guide
 
-This guide helps you understand, track, and optimize Azure OpenAI costs when using dev-agent.
+This guide helps you understand, track, and optimize AI provider costs when using dev-agent. dev-agent supports both Azure OpenAI and Google Gemini, each with different pricing models.
+
+## Provider Pricing Comparison
+
+Both providers charge based on token usage. Tokens are pieces of text that the model processes - roughly 4 characters or 0.75 words per token.
+
+### Cost Comparison Overview
+
+| Provider | Input (1K tokens) | Output (1K tokens) | Embeddings (1K tokens) | Savings vs Azure |
+|----------|-------------------|-------------------|------------------------|------------------|
+| **Azure OpenAI** | $0.01-$0.03 | $0.03-$0.06 | $0.0001 | Baseline |
+| **Google Gemini** | $0.00025 | $0.0005 | $0.0001 | 95-98% |
+
+**Key Takeaway**: Gemini offers significant cost savings (95-98%) for most operations.
 
 ## Understanding Azure OpenAI Pricing
 
-Azure OpenAI charges based on token usage. Tokens are pieces of text that the model processes - roughly 4 characters or 0.75 words per token.
+Azure OpenAI charges based on token usage with higher rates but enterprise features.
 
 ### Current Pricing (as of 2024)
 
@@ -24,6 +37,29 @@ Azure OpenAI charges based on token usage. Tokens are pieces of text that the mo
 - **All tokens**: $0.0001 per 1,000 tokens
 
 **Note**: Prices vary by region and may change. Check [Azure OpenAI Pricing](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/) for current rates.
+
+## Understanding Google Gemini Pricing
+
+Google Gemini offers significantly lower costs with competitive performance.
+
+### Current Pricing (as of 2024)
+
+**Gemini Pro Models**:
+- **Input tokens**: $0.00025 per 1,000 tokens (97.5% cheaper than Azure GPT-4)
+- **Output tokens**: $0.0005 per 1,000 tokens (99.2% cheaper than Azure GPT-4)
+
+**Gemini Ultra Models**:
+- **Input tokens**: $0.00125 per 1,000 tokens
+- **Output tokens**: $0.0025 per 1,000 tokens
+
+**Embeddings (embedding-001, text-embedding-004)**:
+- **All tokens**: $0.0001 per 1,000 tokens (same as Azure)
+
+**Rate Limits**:
+- **Free tier**: 60 requests/minute, 32K tokens/minute
+- **Paid tier**: 1000+ requests/minute, 128K+ tokens/minute
+
+**Note**: Check [Gemini Pricing](https://ai.google.dev/pricing) for current rates and quotas.
 
 ## Token Usage in dev-agent
 
@@ -47,14 +83,17 @@ Azure OpenAI charges based on token usage. Tokens are pieces of text that the mo
 
 ### Typical Token Usage by Phase
 
-| Phase | Operation | Typical Tokens | Estimated Cost |
-|-------|-----------|----------------|----------------|
-| **Indexing** | Embed 1,000 code chunks | ~500,000 | $0.05 |
-| **Specification** | Generate spec with context | ~3,000 prompt + 2,000 completion | $0.21 |
-| **Design** | Generate design with context | ~4,000 prompt + 3,000 completion | $0.30 |
-| **Implementation** | Generate code with context | ~2,000 prompt + 1,500 completion | $0.15 |
+| Phase | Operation | Typical Tokens | Azure OpenAI Cost | Gemini Cost | Savings |
+|-------|-----------|----------------|-------------------|-------------|---------|
+| **Indexing** | Embed 1,000 code chunks | ~500,000 | $0.05 | $0.05 | 0% |
+| **Specification** | Generate spec with context | ~3,000 prompt + 2,000 completion | $0.21 | $0.0018 | 99.1% |
+| **Design** | Generate design with context | ~4,000 prompt + 3,000 completion | $0.30 | $0.0025 | 99.2% |
+| **Implementation** | Generate code with context | ~2,000 prompt + 1,500 completion | $0.15 | $0.0013 | 99.1% |
 
-**Total for typical feature**: ~$0.70 - $1.50
+**Total for typical feature**:
+- **Azure OpenAI**: ~$0.70 - $1.50
+- **Gemini**: ~$0.06 - $0.10
+- **Savings**: ~90-95% total cost reduction
 
 **Note**: Costs vary significantly based on:
 - Codebase size
@@ -66,7 +105,7 @@ Azure OpenAI charges based on token usage. Tokens are pieces of text that the mo
 
 ### Automatic Cost Tracking
 
-dev-agent automatically tracks token usage and costs for all operations:
+dev-agent automatically tracks token usage and costs for all providers:
 
 ```bash
 # Run any workflow phase
@@ -92,17 +131,21 @@ uv run dev-agent cost-report
 # Cost Report - Session 2024-01-15
 # ================================
 # 
+# Provider: Google Gemini (gemini-pro)
+# 
 # By Operation Type:
 #   Embeddings:    487,234 tokens  ($0.05)
-#   Completions:   12,450 tokens   ($0.62)
-#   Total:         499,684 tokens  ($0.67)
+#   Completions:   12,450 tokens   ($0.01)
+#   Total:         499,684 tokens  ($0.06)
 # 
 # By Phase:
 #   Indexing:      487,234 tokens  ($0.05)
-#   Specification: 5,230 tokens    ($0.21)
-#   Design:        7,220 tokens    ($0.30)
+#   Specification: 5,230 tokens    ($0.004)
+#   Design:        7,220 tokens    ($0.006)
 #   
-# Total Estimated Cost: $0.67
+# Total Estimated Cost: $0.06
+# 
+# Savings vs Azure OpenAI: $0.61 (91% reduction)
 ```
 
 ### Programmatic Cost Tracking
@@ -173,23 +216,30 @@ config = {
 - Less context = potentially less accurate results
 - Find the right balance for your use case
 
-### 3. Use Appropriate Models
+### 3. Choose the Right Provider and Model
 
-Choose the right model for each task:
+Select the optimal provider and model for each task:
 
-| Task | Recommended Model | Cost Savings |
-|------|-------------------|--------------|
-| Simple code generation | GPT-4 Turbo | 67% vs GPT-4 |
-| Complex architecture | GPT-4 | Best quality |
-| Code embeddings | text-embedding-ada-002 | Only option |
+| Task | Azure OpenAI | Gemini | Best Choice | Cost Savings |
+|------|--------------|--------|-------------|--------------|
+| **Simple code generation** | GPT-4 Turbo | Gemini Pro | Gemini Pro | 95-98% |
+| **Complex architecture** | GPT-4 | Gemini Ultra | Depends on needs | 90-95% |
+| **Code embeddings** | text-embedding-ada-002 | embedding-001 | Either | Same cost |
+| **Multimodal tasks** | GPT-4 Vision | Gemini Pro Vision | Gemini Pro Vision | 95-98% |
 
 **Configuration**:
 ```bash
-# Use GPT-4 Turbo for cost savings
-export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4-turbo"
+# Use Gemini for maximum cost savings
+export PREFERRED_LLM_PROVIDER=gemini
+export GEMINI_MODEL_NAME=gemini-pro
 
-# Or configure per-operation
-# (future enhancement)
+# Use Azure OpenAI for enterprise requirements
+export PREFERRED_LLM_PROVIDER=azure
+export AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4-turbo
+
+# Switch providers per command
+dev-agent generate --provider gemini --prompt "Simple function"
+dev-agent generate --provider azure --prompt "Complex architecture"
 ```
 
 ### 4. Batch Operations
@@ -209,14 +259,19 @@ embeddings = await embedding_client.embed_batch(
 
 ### 5. Set Budget Limits
 
-Configure budget warnings to avoid surprises:
+Configure budget warnings for both providers:
 
 ```bash
-# Set budget warning threshold
+# Azure OpenAI budget limits
 export AZURE_OPENAI_BUDGET_WARNING="10.00"  # Warn at $10
+export AZURE_OPENAI_BUDGET_LIMIT="50.00"    # Stop at $50
 
-# Set hard budget limit
-export AZURE_OPENAI_BUDGET_LIMIT="50.00"  # Stop at $50
+# Gemini budget limits (much lower due to cost savings)
+export GEMINI_BUDGET_WARNING="1.00"         # Warn at $1
+export GEMINI_BUDGET_LIMIT="5.00"           # Stop at $5
+
+# Combined budget across providers
+export DEV_AGENT_TOTAL_BUDGET="20.00"       # Total monthly budget
 ```
 
 When approaching limits:
@@ -365,36 +420,33 @@ Use this checklist to optimize costs:
 
 ### Small Project (1,000 LOC)
 
-```
-Indexing:        $0.02
-Specification:   $0.15
-Design:          $0.20
-Implementation:  $0.30
---------------------------
-Total:           $0.67
-```
+| Phase | Azure OpenAI | Gemini | Savings |
+|-------|--------------|--------|---------|
+| Indexing | $0.02 | $0.02 | 0% |
+| Specification | $0.15 | $0.001 | 99.3% |
+| Design | $0.20 | $0.002 | 99.0% |
+| Implementation | $0.30 | $0.003 | 99.0% |
+| **Total** | **$0.67** | **$0.026** | **96.1%** |
 
 ### Medium Project (10,000 LOC)
 
-```
-Indexing:        $0.15
-Specification:   $0.25
-Design:          $0.35
-Implementation:  $0.50
---------------------------
-Total:           $1.25
-```
+| Phase | Azure OpenAI | Gemini | Savings |
+|-------|--------------|--------|---------|
+| Indexing | $0.15 | $0.15 | 0% |
+| Specification | $0.25 | $0.002 | 99.2% |
+| Design | $0.35 | $0.003 | 99.1% |
+| Implementation | $0.50 | $0.005 | 99.0% |
+| **Total** | **$1.25** | **$0.16** | **87.2%** |
 
 ### Large Project (100,000 LOC)
 
-```
-Indexing:        $1.50
-Specification:   $0.40
-Design:          $0.60
-Implementation:  $0.80
---------------------------
-Total:           $3.30
-```
+| Phase | Azure OpenAI | Gemini | Savings |
+|-------|--------------|--------|---------|
+| Indexing | $1.50 | $1.50 | 0% |
+| Specification | $0.40 | $0.004 | 99.0% |
+| Design | $0.60 | $0.006 | 99.0% |
+| Implementation | $0.80 | $0.008 | 99.0% |
+| **Total** | **$3.30** | **$1.52** | **53.9%** |
 
 **Note**: Implementation costs scale with number of features, not just codebase size.
 
@@ -446,16 +498,18 @@ uv run dev-agent cache-stats
 - Verify model name hasn't changed
 - Clear and rebuild cache if corrupted
 
-## Azure Cost Management Integration
+## Provider Cost Management Integration
 
-### View Costs in Azure Portal
+### Azure Cost Management
+
+#### View Costs in Azure Portal
 
 1. Navigate to your Azure OpenAI resource
 2. Click "Cost Management" in the left menu
 3. View detailed billing information
 4. Set up budget alerts in Azure
 
-### Export Cost Data
+#### Export Azure Cost Data
 
 ```bash
 # Export Azure cost data
@@ -466,13 +520,56 @@ az consumption usage list \
   --output table
 ```
 
-### Set Up Azure Budget Alerts
+#### Set Up Azure Budget Alerts
 
 1. Go to "Cost Management + Billing" in Azure Portal
 2. Click "Budgets"
 3. Create a new budget for your OpenAI resource
 4. Set alert thresholds (e.g., 50%, 75%, 90%)
 5. Configure email notifications
+
+### Google Cloud Cost Management
+
+#### View Gemini Costs in Google Cloud Console
+
+1. Navigate to [Google Cloud Console](https://console.cloud.google.com/)
+2. Go to "Billing" → "Cost breakdown"
+3. Filter by "Generative AI" service
+4. View detailed usage and costs
+
+#### Set Up Google Cloud Budget Alerts
+
+1. Go to "Billing" → "Budgets & alerts"
+2. Create a new budget
+3. Set scope to "Generative AI" services
+4. Configure alert thresholds
+5. Set up email notifications
+
+#### Export Gemini Cost Data
+
+```bash
+# Export Google Cloud billing data
+gcloud billing accounts list
+gcloud billing projects describe PROJECT_ID
+```
+
+### Multi-Provider Cost Tracking
+
+Track costs across both providers in dev-agent:
+
+```python
+from dev_agent.llm.cost_tracker import MultiProviderCostTracker
+
+# Track costs across providers
+tracker = MultiProviderCostTracker()
+
+# Get combined report
+report = tracker.get_combined_report()
+print(f"Azure OpenAI: ${report['azure']:.2f}")
+print(f"Gemini: ${report['gemini']:.2f}")
+print(f"Total: ${report['total']:.2f}")
+print(f"Savings vs Azure-only: ${report['savings']:.2f}")
+```
 
 ## Best Practices
 
@@ -489,14 +586,25 @@ az consumption usage list \
 
 ## Additional Resources
 
+### Azure OpenAI Resources
 - [Azure OpenAI Pricing](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/)
 - [Azure Cost Management](https://learn.microsoft.com/en-us/azure/cost-management-billing/)
-- [Token Counting Guide](https://platform.openai.com/tokenizer)
 - [Azure OpenAI Best Practices](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/how-to/best-practices)
+
+### Google Gemini Resources
+- [Gemini API Pricing](https://ai.google.dev/pricing)
+- [Google Cloud Billing](https://cloud.google.com/billing/docs)
+- [Gemini API Best Practices](https://ai.google.dev/docs/best_practices)
+
+### General Resources
+- [Token Counting Guide](https://platform.openai.com/tokenizer)
+- [Provider Selection Guide](provider-selection.md)
+- [Gemini Setup Guide](../configuration/gemini-setup.md)
 
 ## Next Steps
 
+- [Provider Selection Guide](provider-selection.md) - Choose the right provider for your needs
+- [Gemini Setup Guide](../configuration/gemini-setup.md) - Configure Gemini for cost savings
 - [Azure OpenAI Setup](../configuration/azure-openai.md) - Configure Azure OpenAI
-- [Usage Examples](../examples/azure-setup.md) - See practical examples
-- [Troubleshooting Guide](../configuration/troubleshooting.md) - Solve common issues
+- [Gemini Usage Examples](../examples/gemini-usage.md) - See practical Gemini examples
 - [API Documentation](../api/llm.md) - Explore the LLM integration API

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.generation_interface import ITaskGenerator
+from ..llm import create_llm_client, get_preferred_provider
 from ..llm.prompt_templates import TASK_GENERATION_TEMPLATE
 from ..models.documents import (
     ComponentSpec,
@@ -16,7 +17,7 @@ from ..models.documents import (
     Task,
     TaskList,
 )
-from ..models.enums import PhaseType, TaskStatus
+from ..models.enums import LLMProvider, PhaseType, TaskStatus
 
 if TYPE_CHECKING:
     from ..llm.base import ILLMClient
@@ -48,24 +49,41 @@ class TaskGenerator(ITaskGenerator):
         llm_client: ILLMClient | None = None,
         cost_tracker: CostTracker | None = None,
         token_counter: TokenCounter | None = None,
+        provider: LLMProvider | str | None = None,
     ):
         """Initialize the task generator.
 
         Args:
             cli_interface: Optional CLI interface for user interaction
-            llm_client: Optional LLM client for AI-powered task generation
+            llm_client: Optional LLM client for AI-powered task generation (for backward compatibility)
             cost_tracker: Optional cost tracker for monitoring API usage
             token_counter: Optional token counter for validation
+            provider: LLM provider to use (optional, defaults to preferred provider)
         """
         self.cli_interface = cli_interface
-        self.llm_client = llm_client
         self.cost_tracker = cost_tracker
         self.token_counter = token_counter
         self.version = "1.0"
 
+        # Initialize LLM client using factory pattern
+        if llm_client is not None:
+            # Use provided client for backward compatibility
+            self.llm_client = llm_client
+            logger.info("TaskGenerator initialized with provided LLM client")
+        else:
+            # Create client using factory pattern
+            try:
+                self.llm_client = create_llm_client(provider=provider)
+                current_provider = get_preferred_provider()
+                logger.info(f"TaskGenerator initialized with {current_provider.value} LLM client")
+            except (ValueError, ImportError) as e:
+                logger.warning(f"Failed to create LLM client: {e}")
+                self.llm_client = None
+                logger.warning("TaskGenerator initialized without LLM client")
+
         logger.info(
             f"TaskGenerator initialized with "
-            f"llm_client={'present' if llm_client else 'absent'}, "
+            f"llm_client={'present' if self.llm_client else 'absent'}, "
             f"cost_tracker={'present' if cost_tracker else 'absent'}"
         )
 

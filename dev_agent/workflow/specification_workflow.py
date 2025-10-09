@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,7 +11,9 @@ from rich.panel import Panel
 from ..generation.specification_generator import SpecificationGenerator
 from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.cli_interface import ICLIInterface
+from ..llm import create_llm_client, get_preferred_provider
 from ..models.documents import SpecificationDocument
+from ..models.enums import LLMProvider
 from ..state.state_manager import StateManager
 
 if TYPE_CHECKING:
@@ -18,6 +21,8 @@ if TYPE_CHECKING:
     from ..llm.base import ILLMClient
     from ..llm.cost_tracker import CostTracker
     from ..llm.token_counter import TokenCounter
+
+logger = logging.getLogger(__name__)
 
 
 class SpecificationWorkflow:
@@ -36,6 +41,7 @@ class SpecificationWorkflow:
         cost_tracker: CostTracker | None = None,
         token_counter: TokenCounter | None = None,
         vector_db: VectorDatabase | None = None,
+        provider: LLMProvider | str | None = None,
     ):
         """Initialize the specification workflow.
 
@@ -43,26 +49,43 @@ class SpecificationWorkflow:
             cli_interface: CLI interface for user interaction
             codebase_analyzer: Optional codebase analyzer for existing projects
             state_manager: Optional state manager for persistence
-            llm_client: LLM client for AI-powered generation (required for AI features)
+            llm_client: LLM client for AI-powered generation (optional for backward compatibility)
             cost_tracker: Cost tracker for monitoring API usage
             token_counter: Token counter for validation
             vector_db: Vector database for context retrieval
+            provider: LLM provider to use (optional, defaults to preferred provider)
         """
         self.cli_interface = cli_interface
         self.codebase_analyzer = codebase_analyzer
         self.state_manager = state_manager
-        self.llm_client = llm_client
         self.cost_tracker = cost_tracker
         self.token_counter = token_counter
         self.vector_db = vector_db
 
+        # Initialize LLM client using factory pattern
+        if llm_client is not None:
+            # Use provided client for backward compatibility
+            self.llm_client = llm_client
+            logger.info("SpecificationWorkflow initialized with provided LLM client")
+        else:
+            # Create client using factory pattern
+            try:
+                self.llm_client = create_llm_client(provider=provider)
+                current_provider = get_preferred_provider()
+                logger.info(f"SpecificationWorkflow initialized with {current_provider.value} LLM client")
+            except (ValueError, ImportError) as e:
+                logger.warning(f"Failed to create LLM client: {e}")
+                self.llm_client = None
+                logger.warning("SpecificationWorkflow initialized without LLM client")
+
         # Initialize generator with all components
         self.generator = SpecificationGenerator(
             cli_interface=cli_interface,
-            llm_client=llm_client,
+            llm_client=self.llm_client,
             cost_tracker=cost_tracker,
             token_counter=token_counter,
             vector_db=vector_db,
+            provider=provider,
         )
 
     async def execute_specification_phase(

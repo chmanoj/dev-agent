@@ -36,9 +36,14 @@ app = typer.Typer(
   3. [cyan]Design[/cyan] - Create technical design documents
   4. [cyan]Implementation[/cyan] - Generate actionable tasks
 
+[bold]AI Providers:[/bold]
+  • [green]Azure OpenAI[/green] - GPT-4, GPT-4 Turbo, text-embedding-ada-002
+  • [green]Google Gemini[/green] - Gemini Pro, Gemini Ultra, embedding-001
+
 [bold]Quick Start:[/bold]
-  [green]dev-agent setup[/green]        Configure Azure OpenAI
+  [green]dev-agent setup[/green]        Configure AI providers
   [green]dev-agent init[/green]         Initialize project
+  [green]dev-agent init --provider gemini[/green]  Use Gemini provider
   [green]dev-agent[/green]              Start interactive mode
 
 [bold]Get Help:[/bold]
@@ -116,6 +121,9 @@ def create_workflow_manager(cli_interface: "ICLIInterface") -> "WorkflowManager"
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+    ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
     ] = False,
@@ -137,6 +145,20 @@ def main(
     When invoked without a command, starts interactive mode in the current directory.
     Use 'dev-agent help' for a list of all commands and 'dev-agent examples' for
     common workflow examples.
+    
+    Provider Selection:
+    Use --provider to specify which AI provider to use (azure_openai or gemini).
+    If not specified, the system will use the configured default provider.
+    
+    Examples:
+        # Start with default provider
+        dev-agent
+        
+        # Start with Gemini provider
+        dev-agent --provider gemini
+        
+        # Start with Azure OpenAI provider
+        dev-agent --provider azure_openai
     """
     if version:
         from ..config import ConfigManager
@@ -167,7 +189,7 @@ def main(
     if ctx.invoked_subcommand is None:
         # Start interactive mode in current directory
         try:
-            interactive(project_path=None, verbose=verbose, debug=debug)
+            interactive(project_path=None, provider=provider, verbose=verbose, debug=debug)
         except Exception:
             # If interactive mode fails, show help
             from dev_agent.cli.help_system import help_system
@@ -378,6 +400,9 @@ def init(
     project_path: Annotated[
         str | None, typer.Argument(help="Project directory path")
     ] = None,
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+    ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
     ] = False,
@@ -398,12 +423,19 @@ def init(
     specification creation. For existing codebases, the tool will automatically
     index your code to understand patterns and conventions.
     
+    Provider Selection:
+    Use --provider to specify which AI provider to use (azure_openai or gemini).
+    If not specified, the system will use the configured default provider.
+    
     Examples:
         # Initialize in current directory
         dev-agent init
         
-        # Initialize specific directory
-        dev-agent init /path/to/project
+        # Initialize with Gemini provider
+        dev-agent init --provider gemini
+        
+        # Initialize specific directory with Azure OpenAI
+        dev-agent init /path/to/project --provider azure_openai
         
         # Initialize with verbose output
         dev-agent init --verbose
@@ -434,6 +466,41 @@ def init(
                 f"[red]Error: Project path does not exist: {project_path}[/red]"
             )
             raise typer.Exit(1)
+
+        # Validate provider selection if specified
+        if provider:
+            from ..models.enums import LLMProvider
+            
+            provider_mapping = {
+                "azure": LLMProvider.AZURE_OPENAI,
+                "azure_openai": LLMProvider.AZURE_OPENAI,
+                "gemini": LLMProvider.GEMINI,
+            }
+            
+            if provider.lower() not in provider_mapping:
+                console.print(
+                    f"[red]Error: Unsupported provider '{provider}'. "
+                    f"Supported providers: {', '.join(provider_mapping.keys())}[/red]"
+                )
+                raise typer.Exit(1)
+            
+            selected_provider = provider_mapping[provider.lower()]
+            
+            # Validate provider configuration
+            is_valid, error_msg = config_manager.validate_provider_config(selected_provider)
+            if not is_valid:
+                console.print(
+                    f"[red]Error: Provider '{provider}' is not properly configured: {error_msg}[/red]"
+                )
+                console.print(
+                    f"[yellow]Please configure {provider} first or use a different provider.[/yellow]"
+                )
+                raise typer.Exit(1)
+            
+            # Set the provider preference for this session
+            os.environ["PREFERRED_LLM_PROVIDER"] = selected_provider.value
+            console.print(f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]")
+            console.print()
 
         # Initialize journey manager to detect project type
         journey_manager = JourneyManager()
@@ -614,6 +681,9 @@ def resume(
     project_path: Annotated[
         str | None, typer.Argument(help="Project directory path")
     ] = None,
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+    ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
     ] = False,
@@ -633,12 +703,19 @@ def resume(
     - Start interactive mode to continue workflow
     - Restore all previous context and documents
     
+    Provider Selection:
+    Use --provider to specify which AI provider to use (azure_openai or gemini).
+    If not specified, the system will use the configured default provider.
+    
     Examples:
         # Resume project in current directory
         dev-agent resume
         
-        # Resume specific project
-        dev-agent resume /path/to/project
+        # Resume with Gemini provider
+        dev-agent resume --provider gemini
+        
+        # Resume specific project with Azure OpenAI
+        dev-agent resume /path/to/project --provider azure_openai
         
         # Resume with verbose output
         dev-agent resume --verbose
@@ -659,6 +736,41 @@ def resume(
                 f"[red]Error: Project path does not exist: {project_path}[/red]"
             )
             raise typer.Exit(1)
+
+        # Validate provider selection if specified
+        if provider:
+            from ..models.enums import LLMProvider
+            
+            provider_mapping = {
+                "azure": LLMProvider.AZURE_OPENAI,
+                "azure_openai": LLMProvider.AZURE_OPENAI,
+                "gemini": LLMProvider.GEMINI,
+            }
+            
+            if provider.lower() not in provider_mapping:
+                console.print(
+                    f"[red]Error: Unsupported provider '{provider}'. "
+                    f"Supported providers: {', '.join(provider_mapping.keys())}[/red]"
+                )
+                raise typer.Exit(1)
+            
+            selected_provider = provider_mapping[provider.lower()]
+            
+            # Validate provider configuration
+            is_valid, error_msg = config_manager.validate_provider_config(selected_provider)
+            if not is_valid:
+                console.print(
+                    f"[red]Error: Provider '{provider}' is not properly configured: {error_msg}[/red]"
+                )
+                console.print(
+                    f"[yellow]Please configure {provider} first or use a different provider.[/yellow]"
+                )
+                raise typer.Exit(1)
+            
+            # Set the provider preference for this session
+            os.environ["PREFERRED_LLM_PROVIDER"] = selected_provider.value
+            console.print(f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]")
+            console.print()
 
         dev_agent_dir = os.path.join(project_path, ".dev_agent")
         if not os.path.exists(dev_agent_dir):
@@ -718,6 +830,9 @@ def interactive(
     project_path: Annotated[
         str | None, typer.Argument(help="Project directory path")
     ] = None,
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)")
+    ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
     ] = False,
@@ -725,7 +840,25 @@ def interactive(
         bool, typer.Option("--debug", help="Enable debug logging")
     ] = False,
 ) -> None:
-    """Start interactive mode (default command)."""
+    """Start interactive mode (default command).
+    
+    Launch the interactive chat interface for dev-agent. This provides a
+    conversational way to work with your project through the four-phase workflow.
+    
+    Provider Selection:
+    Use --provider to specify which AI provider to use (azure_openai or gemini).
+    If not specified, the system will use the configured default provider.
+    
+    Examples:
+        # Start interactive mode in current directory
+        dev-agent interactive
+        
+        # Start with Gemini provider
+        dev-agent interactive --provider gemini
+        
+        # Start in specific directory with Azure OpenAI
+        dev-agent interactive /path/to/project --provider azure_openai
+    """
     if project_path is None:
         project_path = os.getcwd()
 
@@ -733,6 +866,41 @@ def interactive(
 
     try:
         setup_cli_logging(verbose, debug, project_path)
+
+        # Validate provider selection if specified
+        if provider:
+            from ..models.enums import LLMProvider
+            
+            provider_mapping = {
+                "azure": LLMProvider.AZURE_OPENAI,
+                "azure_openai": LLMProvider.AZURE_OPENAI,
+                "gemini": LLMProvider.GEMINI,
+            }
+            
+            if provider.lower() not in provider_mapping:
+                console.print(
+                    f"[red]Error: Unsupported provider '{provider}'. "
+                    f"Supported providers: {', '.join(provider_mapping.keys())}[/red]"
+                )
+                raise typer.Exit(1)
+            
+            selected_provider = provider_mapping[provider.lower()]
+            
+            # Validate provider configuration
+            is_valid, error_msg = config_manager.validate_provider_config(selected_provider)
+            if not is_valid:
+                console.print(
+                    f"[red]Error: Provider '{provider}' is not properly configured: {error_msg}[/red]"
+                )
+                console.print(
+                    f"[yellow]Please configure {provider} first or use a different provider.[/yellow]"
+                )
+                raise typer.Exit(1)
+            
+            # Set the provider preference for this session
+            os.environ["PREFERRED_LLM_PROVIDER"] = selected_provider.value
+            console.print(f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]")
+            console.print()
 
         session_manager = SessionManager(project_path)
         cli = EnhancedCLI()
@@ -947,6 +1115,9 @@ def setup(
 
 @app.command()
 def validate(
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="LLM provider to validate (azure_openai, gemini, or all)")
+    ] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable verbose output")
     ] = False,
@@ -954,10 +1125,25 @@ def validate(
     """Validate dev-agent environment and configuration.
 
     This command performs quick validation checks including:
-    - Azure OpenAI configuration (credentials, endpoints, deployments)
-    - API connectivity (test connection to Azure OpenAI)
+    - LLM provider configuration (credentials, endpoints, deployments)
+    - API connectivity (test connection to configured providers)
     - Required dependencies (Python packages)
     - File system permissions (read/write access)
+
+    Provider Selection:
+    Use --provider to validate a specific provider (azure_openai, gemini) or 
+    'all' to validate all configured providers. If not specified, validates
+    the active provider.
+
+    Examples:
+        # Validate active provider
+        dev-agent validate
+        
+        # Validate specific provider
+        dev-agent validate --provider gemini
+        
+        # Validate all configured providers
+        dev-agent validate --provider all
 
     Use this command to troubleshoot configuration issues before running workflows.
     """
@@ -996,41 +1182,76 @@ def validate(
         results_table.add_column("Status", justify="center", width=15)
         results_table.add_column("Details", width=50)
 
-        # 1. Check Azure OpenAI Configuration
-        console.print("[cyan]Checking Azure OpenAI configuration...[/cyan]")
+        # 1. Check LLM Provider Configuration
+        from ..models.enums import LLMProvider
+        
         config = config_manager.get_config()
-
-        if (
-            config.azure_openai
-            and config.azure_openai.api_key
-            and config.azure_openai.endpoint
-            and config.azure_openai.deployment_name
-            and config.azure_openai.embedding_deployment
-        ):
-            results_table.add_row(
-                "Azure OpenAI Config",
-                "[green]✓ Pass[/green]",
-                f"Endpoint: {config.azure_openai.endpoint[:40]}...",
-            )
+        
+        # Determine which providers to validate
+        providers_to_validate = []
+        if provider:
+            if provider.lower() == "all":
+                providers_to_validate = [LLMProvider.AZURE_OPENAI, LLMProvider.GEMINI]
+            else:
+                provider_mapping = {
+                    "azure": LLMProvider.AZURE_OPENAI,
+                    "azure_openai": LLMProvider.AZURE_OPENAI,
+                    "gemini": LLMProvider.GEMINI,
+                }
+                if provider.lower() in provider_mapping:
+                    providers_to_validate = [provider_mapping[provider.lower()]]
+                else:
+                    console.print(f"[red]Error: Unsupported provider '{provider}'[/red]")
+                    raise typer.Exit(1)
         else:
-            all_passed = False
-            missing = []
-            if not config.azure_openai or not config.azure_openai.endpoint:
-                missing.append("endpoint")
-            if not config.azure_openai or not config.azure_openai.api_key:
-                missing.append("API key")
-            if not config.azure_openai or not config.azure_openai.deployment_name:
-                missing.append("deployment name")
-            if not config.azure_openai or not config.azure_openai.embedding_deployment:
-                missing.append("embedding deployment")
-
-            results_table.add_row(
-                "Azure OpenAI Config",
-                "[red]✗ Fail[/red]",
-                f"Missing: {', '.join(missing)}",
-            )
-            issues.append("Azure OpenAI is not properly configured")
-            suggestions.append("Run: dev-agent setup")
+            # Validate active provider
+            try:
+                active_provider = config_manager.get_llm_provider()
+                providers_to_validate = [active_provider]
+            except Exception:
+                # If no active provider, validate all available
+                providers_to_validate = [LLMProvider.AZURE_OPENAI, LLMProvider.GEMINI]
+        
+        console.print(f"[cyan]Checking LLM provider configuration...[/cyan]")
+        
+        for llm_provider in providers_to_validate:
+            provider_name = llm_provider.value.replace("_", " ").title()
+            
+            is_valid, error_msg = config_manager.validate_provider_config(llm_provider)
+            
+            if is_valid:
+                if llm_provider == LLMProvider.AZURE_OPENAI and config.azure_openai:
+                    endpoint_display = config.azure_openai.endpoint[:40] + "..." if len(config.azure_openai.endpoint) > 40 else config.azure_openai.endpoint
+                    results_table.add_row(
+                        f"{provider_name} Config",
+                        "[green]✓ Pass[/green]",
+                        f"Endpoint: {endpoint_display}",
+                    )
+                elif llm_provider == LLMProvider.GEMINI and config.gemini:
+                    model_display = config.gemini.model_name
+                    results_table.add_row(
+                        f"{provider_name} Config",
+                        "[green]✓ Pass[/green]",
+                        f"Model: {model_display}",
+                    )
+                else:
+                    results_table.add_row(
+                        f"{provider_name} Config",
+                        "[green]✓ Pass[/green]",
+                        "Configuration valid",
+                    )
+            else:
+                all_passed = False
+                results_table.add_row(
+                    f"{provider_name} Config",
+                    "[red]✗ Fail[/red]",
+                    error_msg[:50] + "..." if len(error_msg) > 50 else error_msg,
+                )
+                issues.append(f"{provider_name} is not properly configured")
+                if llm_provider == LLMProvider.AZURE_OPENAI:
+                    suggestions.append("Run: dev-agent azure configure")
+                elif llm_provider == LLMProvider.GEMINI:
+                    suggestions.append("Set GEMINI_API_KEY environment variable")
 
         # 2. Test API Connectivity
         console.print("[cyan]Testing Azure OpenAI connectivity...[/cyan]")
@@ -1859,12 +2080,23 @@ def status(
             console.print(f"[red]Error: Could not load project state: {e}[/red]")
             raise typer.Exit(1)
 
-        # Display header
+        # Display header with provider information
         console.print()
+        
+        # Get active provider information
+        try:
+            active_provider = config_manager.get_llm_provider()
+            provider_display = active_provider.value.replace("_", " ").title()
+        except Exception as e:
+            provider_display = "Not Configured"
+            if logger:
+                logger.warning(f"Could not determine active provider: {e}")
+        
         console.print(
             Panel.fit(
                 f"[bold cyan]Project Status[/bold cyan]\n"
-                f"[dim]{project_path}[/dim]",
+                f"[dim]{project_path}[/dim]\n"
+                f"[dim]Active Provider: {provider_display}[/dim]",
                 border_style="cyan",
             )
         )

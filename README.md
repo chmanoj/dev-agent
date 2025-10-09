@@ -5,12 +5,14 @@ AI-powered development workflow assistant that implements a four-phase developme
 ## Features
 
 ### Core Capabilities
+- **Multi-Provider AI Support**: Choose between Azure OpenAI (enterprise-grade GPT-4) and Google Gemini (cost-effective alternative) for all AI operations
 - **Azure OpenAI Integration**: Enterprise-grade AI powered by GPT-4 and text-embedding-ada-002 using your Azure OpenAI deployments
+- **Google Gemini Integration**: Cost-effective AI powered by Gemini Pro models with 95-98% cost savings compared to Azure OpenAI
 - **Flexible Authentication**: Support for both API key and Azure AD authentication with custom headers for auditing
 - **Interactive CLI**: Chat-based command-line interface with user approval workflows built with Typer and Rich
-- **High-Performance Indexing**: Analyzes large codebases using Tree-sitter and Azure OpenAI embeddings
-- **AI-Powered Generation**: Intelligent specification, design, and task generation using GPT-4
-- **Semantic Code Search**: Advanced code similarity search with Azure OpenAI embeddings
+- **High-Performance Indexing**: Analyzes large codebases using Tree-sitter and AI embeddings (Azure OpenAI or Gemini)
+- **AI-Powered Generation**: Intelligent specification, design, and task generation using GPT-4 or Gemini Pro
+- **Semantic Code Search**: Advanced code similarity search with AI embeddings from your chosen provider
 - **Context-Aware Code Generation**: Generates Python code consistent with existing patterns
 - **Session Management**: Persistent state across CLI sessions
 - **Modern Python Stack**: Built with Pydantic v2, FastAPI, and modern tooling
@@ -288,9 +290,16 @@ uv run dev-agent init
 # Review generated documentation in .dev_agent/documents/
 ```
 
-### Azure OpenAI Configuration (Required)
+### AI Provider Configuration (Required)
 
-dev-agent requires Azure OpenAI for all AI-powered features including code analysis, specification generation, design creation, and code generation.
+dev-agent supports multiple AI providers. You must configure at least one provider for all AI-powered features including code analysis, specification generation, design creation, and code generation.
+
+#### Supported Providers
+
+- **Azure OpenAI** (default): Enterprise-grade with GPT-4 models
+- **Google Gemini**: Cost-effective alternative with 95-98% cost savings
+
+#### Azure OpenAI Configuration
 
 **Interactive configuration:**
 ```bash
@@ -336,9 +345,43 @@ export AZURE_OPENAI_CUSTOM_HEADERS='{"department": "engineering"}'
 - GPT-4 (or GPT-4 Turbo) for code generation and specifications
 - text-embedding-ada-002 for code embeddings and similarity search
 
+#### Google Gemini Configuration (Alternative)
+
+**Environment variables:**
+```bash
+export GEMINI_API_KEY="your-gemini-api-key"
+export PREFERRED_LLM_PROVIDER="gemini"
+export GEMINI_MODEL_NAME="gemini-pro"
+export GEMINI_EMBEDDING_MODEL="embedding-001"
+```
+
+**Interactive configuration:**
+```bash
+# Set up Gemini
+export GEMINI_API_KEY="your-key"
+export PREFERRED_LLM_PROVIDER="gemini"
+
+# Test configuration
+uv run dev-agent status
+```
+
+**Multi-Provider Setup:**
+You can configure both providers and switch between them:
+```bash
+# Configure both providers
+export AZURE_OPENAI_API_KEY="your-azure-key"
+export GEMINI_API_KEY="your-gemini-key"
+
+# Choose active provider
+export PREFERRED_LLM_PROVIDER="gemini"  # or "azure"
+```
+
 **Documentation:**
-- [Azure OpenAI Configuration Guide](docs/configuration/azure-openai.md) - Complete setup instructions
+- [Provider Selection Guide](docs/usage/provider-selection.md) - Choose the right provider for your needs
+- [Gemini Setup Guide](docs/configuration/gemini-setup.md) - Complete Gemini configuration
+- [Azure OpenAI Configuration Guide](docs/configuration/azure-openai.md) - Complete Azure OpenAI setup
 - [Azure AD Migration Guide](docs/configuration/azure-ad-migration-guide.md) - Migrate from API key to Azure AD authentication
+- [Cost Management Guide](docs/usage/cost-management.md) - Compare costs and optimize spending
 
 ### CLI Commands Reference
 
@@ -461,7 +504,7 @@ make pre-commit-run
 
 ## Technology Stack
 
-- **AI Provider**: Azure OpenAI (GPT-4 + text-embedding-ada-002) - required for all AI operations
+- **AI Providers**: Azure OpenAI (GPT-4 + text-embedding-ada-002) and Google Gemini (Gemini Pro + embedding-001) - choose based on your needs
 - **Build System**: `uv` for dependency management, `hatchling` for building
 - **CLI Framework**: Typer with Rich for enhanced terminal output
 - **Data Models**: Pydantic v2 for data validation and settings
