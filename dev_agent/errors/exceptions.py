@@ -512,3 +512,167 @@ class StateError(DevAgentError):
             f"State error: {self.message}. "
             f"You may need to reinitialize the project."
         )
+
+
+class DatetimeSerializationError(DevAgentError):
+    """Errors related to datetime serialization during state persistence."""
+
+    def __init__(
+        self,
+        message: str,
+        field_name: str | None = None,
+        field_path: str | None = None,
+        datetime_value: str | None = None,
+        context: ErrorContext | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.STATE,
+            severity=ErrorSeverity.HIGH,
+            context=context,
+            recoverable=True,
+        )
+        self.field_name = field_name
+        self.field_path = field_path
+        self.datetime_value = datetime_value
+
+    def _generate_user_message(self) -> str:
+        field_info = f" in field '{self.field_name}'" if self.field_name else ""
+        path_info = f" at path '{self.field_path}'" if self.field_path else ""
+        return (
+            f"Failed to serialize datetime{field_info}{path_info}: {self.message}. "
+            f"The project state could not be saved properly."
+        )
+
+
+class DatetimeDeserializationError(DevAgentError):
+    """Errors related to datetime deserialization during state loading."""
+
+    def __init__(
+        self,
+        message: str,
+        field_name: str | None = None,
+        field_path: str | None = None,
+        datetime_string: str | None = None,
+        context: ErrorContext | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.STATE,
+            severity=ErrorSeverity.HIGH,
+            context=context,
+            recoverable=True,
+        )
+        self.field_name = field_name
+        self.field_path = field_path
+        self.datetime_string = datetime_string
+
+    def _generate_user_message(self) -> str:
+        field_info = f" in field '{self.field_name}'" if self.field_name else ""
+        path_info = f" at path '{self.field_path}'" if self.field_path else ""
+        return (
+            f"Failed to deserialize datetime{field_info}{path_info}: {self.message}. "
+            f"The project state file may be corrupted or from an incompatible version."
+        )
+
+
+class StateLoadingError(DevAgentError):
+    """Errors related to loading project state from disk."""
+
+    def __init__(
+        self,
+        message: str,
+        error_type: str,  # "missing_file", "corrupted_data", "deserialization_error", "permission_error"
+        file_path: str | None = None,
+        context: ErrorContext | None = None,
+        original_error: Exception | None = None,
+    ):
+        # Set attributes before calling super() so _generate_user_message() can access them
+        self.error_type = error_type
+        self.file_path = file_path
+        self.original_error = original_error
+        
+        super().__init__(
+            message=message,
+            category=ErrorCategory.STATE,
+            severity=ErrorSeverity.HIGH,
+            context=context,
+            recoverable=error_type != "permission_error",
+        )
+
+    def _generate_user_message(self) -> str:
+        if self.error_type == "missing_file":
+            return (
+                f"Project state file not found: {self.message}. "
+                f"Use 'dev-agent init' to initialize a new project."
+            )
+        elif self.error_type == "corrupted_data":
+            return (
+                f"Project state file is corrupted: {self.message}. "
+                f"Consider backing up the file and reinitializing the project."
+            )
+        elif self.error_type == "deserialization_error":
+            return (
+                f"Failed to load project state: {self.message}. "
+                f"The state file may be from an incompatible version."
+            )
+        elif self.error_type == "permission_error":
+            return (
+                f"Permission denied accessing state file: {self.message}. "
+                f"Check file permissions and try again."
+            )
+        else:
+            return (
+                f"Error loading project state: {self.message}. "
+                f"Please check the project directory and try again."
+            )
+
+
+class StateSavingError(DevAgentError):
+    """Errors related to saving project state to disk."""
+
+    def __init__(
+        self,
+        message: str,
+        error_type: str,  # "serialization_error", "permission_error", "disk_full", "io_error"
+        file_path: str | None = None,
+        context: ErrorContext | None = None,
+        original_error: Exception | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.STATE,
+            severity=ErrorSeverity.HIGH,
+            context=context,
+            recoverable=error_type not in ["permission_error", "disk_full"],
+        )
+        self.error_type = error_type
+        self.file_path = file_path
+        self.original_error = original_error
+
+    def _generate_user_message(self) -> str:
+        if self.error_type == "serialization_error":
+            return (
+                f"Failed to serialize project state: {self.message}. "
+                f"There may be an issue with the data structure."
+            )
+        elif self.error_type == "permission_error":
+            return (
+                f"Permission denied saving state file: {self.message}. "
+                f"Check file permissions and try again."
+            )
+        elif self.error_type == "disk_full":
+            return (
+                f"Insufficient disk space to save state: {self.message}. "
+                f"Free up disk space and try again."
+            )
+        elif self.error_type == "io_error":
+            return (
+                f"I/O error saving project state: {self.message}. "
+                f"Check disk health and file system integrity."
+            )
+        else:
+            return (
+                f"Error saving project state: {self.message}. "
+                f"Please check the project directory and try again."
+            )

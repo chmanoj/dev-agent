@@ -846,7 +846,8 @@ class SpecificationGenerator(ISpecificationGenerator):
         """Parse AI-generated specification content into structured document.
         
         This method extracts structured information from the AI-generated
-        markdown content and creates a SpecificationDocument.
+        markdown content and creates a SpecificationDocument with enhanced
+        parsing and validation.
         
         Args:
             ai_content: AI-generated specification content
@@ -855,56 +856,71 @@ class SpecificationGenerator(ISpecificationGenerator):
         Returns:
             Structured SpecificationDocument
         """
-        # Extract sections from AI-generated content
-        sections = self._extract_sections(ai_content)
-        
-        # Extract introduction (Overview section)
-        introduction = sections.get("overview", sections.get("introduction", ""))
-        if not introduction:
-            # Fallback to first paragraph
-            paragraphs = [p.strip() for p in ai_content.split("\n\n") if p.strip()]
-            introduction = paragraphs[0] if paragraphs else "AI-generated specification"
-        
-        # Extract key features
-        key_features = self._extract_list_items(
-            sections.get("functional requirements", sections.get("key features", ""))
-        )
-        if not key_features and analysis:
-            key_features = analysis.main_features[:5]
-        elif not key_features:
-            # For new projects without analysis, extract from content
-            key_features = ["Feature implementation"]
-        
-        # Extract functional requirements
-        functional_requirements = self._extract_requirements_from_ai_content(
-            ai_content,
-            sections,
-        )
-        
-        # If no requirements extracted and we have analysis, fall back to analysis-based generation
-        if not functional_requirements and analysis:
-            logger.warning("No requirements extracted from AI content, using analysis-based generation")
-            functional_requirements = self._generate_requirements_from_evidence(analysis)
-        elif not functional_requirements:
-            # For new projects, create a basic requirement
-            logger.warning("No requirements extracted from AI content for new project")
-            functional_requirements = [
-                Requirement(
-                    id="FR-1",
-                    user_story="As a user, I want the system to implement the requested feature",
-                    acceptance_criteria=["WHEN the feature is implemented THEN it SHALL work as specified"],
-                    priority=Priority.HIGH,
-                )
-            ]
-        
-        return SpecificationDocument(
-            introduction=introduction,
-            key_features=key_features,
-            functional_requirements=functional_requirements,
-            source=SpecificationSource.EXISTING_CODE,
-            version=self.version,
-            approved=False,
-        )
+        try:
+            # Extract sections from AI-generated content
+            sections = self._extract_sections(ai_content)
+            
+            # Extract introduction (Overview section)
+            introduction = sections.get("overview", sections.get("introduction", ""))
+            if not introduction:
+                # Fallback to first paragraph
+                paragraphs = [p.strip() for p in ai_content.split("\n\n") if p.strip()]
+                introduction = paragraphs[0] if paragraphs else "AI-generated specification"
+            
+            # Extract key features
+            key_features = self._extract_list_items(
+                sections.get("functional requirements", sections.get("key features", ""))
+            )
+            if not key_features and analysis:
+                key_features = analysis.main_features[:5]
+            elif not key_features:
+                # For new projects without analysis, extract from content
+                key_features = ["Feature implementation"]
+            
+            # Extract functional requirements with enhanced parsing
+            functional_requirements = self._extract_requirements_from_ai_content_enhanced(
+                ai_content,
+                sections,
+            )
+            
+            # If no requirements extracted and we have analysis, fall back to analysis-based generation
+            if not functional_requirements and analysis:
+                logger.warning("No requirements extracted from AI content, using analysis-based generation")
+                functional_requirements = self._generate_requirements_from_evidence(analysis)
+            elif not functional_requirements:
+                # For new projects, create a basic requirement
+                logger.warning("No requirements extracted from AI content for new project")
+                functional_requirements = [
+                    Requirement(
+                        id="FR-1",
+                        user_story="As a user, I want the system to implement the requested feature",
+                        acceptance_criteria=["WHEN the feature is implemented THEN it SHALL work as specified"],
+                        priority=Priority.HIGH,
+                    )
+                ]
+            
+            spec_doc = SpecificationDocument(
+                introduction=introduction,
+                key_features=key_features,
+                functional_requirements=functional_requirements,
+                source=SpecificationSource.EXISTING_CODE,
+                version=self.version,
+                approved=False,
+            )
+            
+            # Validate the parsed specification
+            is_valid, validation_issues = self._validate_specification(spec_doc)
+            if not is_valid:
+                logger.warning(f"Specification validation issues: {validation_issues}")
+                # Log detailed parsing failure information
+                self._log_parsing_details(ai_content, sections, functional_requirements, validation_issues)
+            
+            return spec_doc
+            
+        except Exception as e:
+            logger.error(f"Failed to parse AI specification: {e}")
+            self._log_parsing_failure(ai_content, str(e))
+            raise
 
     def _extract_sections(self, content: str) -> dict[str, str]:
         """Extract sections from markdown content.
@@ -956,12 +972,15 @@ class SpecificationGenerator(ISpecificationGenerator):
                     items.append(item)
         return items
 
-    def _extract_requirements_from_ai_content(
+    def _extract_requirements_from_ai_content_enhanced(
         self,
         content: str,
         sections: dict[str, str],
     ) -> list[Requirement]:
-        """Extract requirements from AI-generated content.
+        """Extract requirements from AI-generated content with enhanced parsing.
+        
+        This method uses improved regex patterns to handle format variations
+        and provides better error handling and logging.
         
         Args:
             content: Full AI-generated content
@@ -973,25 +992,34 @@ class SpecificationGenerator(ISpecificationGenerator):
         requirements = []
         req_id_counter = 1
         
-        # Look for requirements in various sections
+        # Look for requirements in various sections with enhanced patterns
         req_sections = [
             "requirements",
-            "functional requirements",
+            "functional requirements", 
             "acceptance criteria",
             "technical requirements",
+            "system requirements",
+            "business requirements",
         ]
         
         for section_name in req_sections:
             if section_name in sections:
                 section_content = sections[section_name]
+                logger.debug(f"Processing section '{section_name}' with {len(section_content)} characters")
                 
-                # Extract requirement blocks using improved parsing
-                req_blocks = self._split_requirement_blocks_improved(section_content)
+                # Extract requirement blocks using enhanced parsing
+                req_blocks = self._split_requirement_blocks_enhanced(section_content)
+                logger.debug(f"Found {len(req_blocks)} requirement blocks in section '{section_name}'")
                 
-                for block in req_blocks:
-                    # Try to extract user story and acceptance criteria
-                    user_story = self._extract_user_story(block)
-                    acceptance_criteria = self._extract_acceptance_criteria(block)
+                for i, block in enumerate(req_blocks):
+                    logger.debug(f"Processing requirement block {i+1}: {block[:100]}...")
+                    
+                    # Try to extract user story and acceptance criteria with enhanced patterns
+                    user_story = self._extract_user_story_enhanced(block)
+                    acceptance_criteria = self._extract_acceptance_criteria_enhanced(block)
+                    
+                    logger.debug(f"Extracted user story: {user_story[:50] if user_story else 'None'}...")
+                    logger.debug(f"Extracted {len(acceptance_criteria)} acceptance criteria")
                     
                     # Only add if we have meaningful content
                     if user_story and acceptance_criteria:
@@ -1003,8 +1031,9 @@ class SpecificationGenerator(ISpecificationGenerator):
                         )
                         requirements.append(requirement)
                         req_id_counter += 1
+                        logger.debug(f"Added requirement FR-{req_id_counter-1}")
                     elif user_story:
-                        # At least we have a user story
+                        # At least we have a user story - create minimal acceptance criteria
                         requirement = Requirement(
                             id=f"FR-{req_id_counter}",
                             user_story=user_story,
@@ -1013,8 +1042,36 @@ class SpecificationGenerator(ISpecificationGenerator):
                         )
                         requirements.append(requirement)
                         req_id_counter += 1
+                        logger.debug(f"Added requirement FR-{req_id_counter-1} with minimal acceptance criteria")
+                    else:
+                        logger.warning(f"Skipped requirement block {i+1} - no valid user story or acceptance criteria found")
         
+        # If no requirements found in sections, try parsing the entire content
+        if not requirements:
+            logger.warning("No requirements found in sections, attempting full content parsing")
+            requirements = self._extract_requirements_from_full_content(content)
+        
+        logger.info(f"Total requirements extracted: {len(requirements)}")
         return requirements
+
+    def _extract_requirements_from_ai_content(
+        self,
+        content: str,
+        sections: dict[str, str],
+    ) -> list[Requirement]:
+        """Extract requirements from AI-generated content.
+        
+        Legacy method - kept for backward compatibility.
+        Use _extract_requirements_from_ai_content_enhanced for new implementations.
+        
+        Args:
+            content: Full AI-generated content
+            sections: Extracted sections
+            
+        Returns:
+            List of Requirement objects
+        """
+        return self._extract_requirements_from_ai_content_enhanced(content, sections)
 
     def _split_requirement_blocks(self, content: str) -> list[str]:
         """Split content into requirement blocks.
@@ -1042,6 +1099,104 @@ class SpecificationGenerator(ISpecificationGenerator):
         if current_block:
             blocks.append("\n".join(current_block))
         
+        return blocks
+
+    def _split_requirement_blocks_enhanced(self, content: str) -> list[str]:
+        """Split content into requirement blocks with enhanced parsing patterns.
+        
+        This method uses multiple regex patterns to handle format variations
+        and provides better error handling.
+        
+        Args:
+            content: Section content
+            
+        Returns:
+            List of requirement blocks
+        """
+        blocks = []
+        
+        # Pattern 1: Look for "#### Requirement" or "### Requirement" headers
+        requirement_header_pattern = re.compile(
+            r'^(#{3,4})\s*requirement\s*\d*[:\s]*.*$',
+            re.IGNORECASE | re.MULTILINE
+        )
+        
+        # Split by requirement headers
+        parts = requirement_header_pattern.split(content)
+        if len(parts) > 1:
+            # Reconstruct blocks with headers
+            for i in range(1, len(parts), 2):
+                if i + 1 < len(parts):
+                    header_level = parts[i]
+                    block_content = parts[i + 1]
+                    # Find the actual header line
+                    lines = content.split('\n')
+                    for line in lines:
+                        if requirement_header_pattern.match(line):
+                            full_block = line + '\n' + block_content
+                            blocks.append(full_block.strip())
+                            break
+        
+        # Pattern 2: Look for numbered requirements (1., 2., etc.)
+        if not blocks:
+            numbered_pattern = re.compile(r'^(\d+\.)\s+', re.MULTILINE)
+            parts = numbered_pattern.split(content)
+            if len(parts) > 1:
+                for i in range(1, len(parts), 2):
+                    if i + 1 < len(parts):
+                        number = parts[i]
+                        block_content = parts[i + 1]
+                        blocks.append(f"{number} {block_content}".strip())
+        
+        # Pattern 3: Look for "Requirement N:" patterns
+        if not blocks:
+            req_colon_pattern = re.compile(
+                r'^requirement\s*\d*\s*:.*$',
+                re.IGNORECASE | re.MULTILINE
+            )
+            parts = req_colon_pattern.split(content)
+            if len(parts) > 1:
+                lines = content.split('\n')
+                current_block = []
+                for line in lines:
+                    if req_colon_pattern.match(line):
+                        if current_block:
+                            blocks.append('\n'.join(current_block))
+                        current_block = [line]
+                    elif current_block:
+                        current_block.append(line)
+                if current_block:
+                    blocks.append('\n'.join(current_block))
+        
+        # Pattern 4: Look for user story patterns as block separators
+        if not blocks:
+            user_story_pattern = re.compile(
+                r'^.*as\s+a\s+.*,\s*i\s+want.*$',
+                re.IGNORECASE | re.MULTILINE
+            )
+            lines = content.split('\n')
+            current_block = []
+            for line in lines:
+                if user_story_pattern.match(line.strip()):
+                    if current_block:
+                        blocks.append('\n'.join(current_block))
+                    current_block = [line]
+                elif current_block:
+                    current_block.append(line)
+                elif line.strip():  # Start new block with non-empty line
+                    current_block = [line]
+            if current_block:
+                blocks.append('\n'.join(current_block))
+        
+        # Fallback: Use original method
+        if not blocks:
+            logger.warning("Enhanced parsing failed, falling back to original method")
+            return self._split_requirement_blocks_improved(content)
+        
+        # Filter out empty blocks
+        blocks = [block.strip() for block in blocks if block.strip()]
+        
+        logger.debug(f"Enhanced parsing found {len(blocks)} requirement blocks")
         return blocks
 
     def _split_requirement_blocks_improved(self, content: str) -> list[str]:
@@ -1081,8 +1236,8 @@ class SpecificationGenerator(ISpecificationGenerator):
         
         return blocks
 
-    def _extract_user_story(self, block: str) -> str:
-        """Extract user story from requirement block.
+    def _extract_user_story_enhanced(self, block: str) -> str:
+        """Extract user story from requirement block with enhanced patterns.
         
         Args:
             block: Requirement block text
@@ -1090,45 +1245,71 @@ class SpecificationGenerator(ISpecificationGenerator):
         Returns:
             User story or empty string
         """
-        # Look for "User Story:" label first
-        in_user_story = False
-        user_story_lines = []
+        # Pattern 1: Look for "User Story:" label with various formats
+        user_story_patterns = [
+            re.compile(r'\*\*user\s+story:\*\*\s*(.*?)(?=\*\*|$)', re.IGNORECASE | re.DOTALL),
+            re.compile(r'user\s+story:\s*(.*?)(?=\n\s*\*\*|\n\s*acceptance|\n\s*####|$)', re.IGNORECASE | re.DOTALL),
+            re.compile(r'\*\*story:\*\*\s*(.*?)(?=\*\*|$)', re.IGNORECASE | re.DOTALL),
+            re.compile(r'story:\s*(.*?)(?=\n\s*\*\*|\n\s*acceptance|\n\s*####|$)', re.IGNORECASE | re.DOTALL),
+        ]
         
-        for line in block.split("\n"):
-            line_stripped = line.strip()
-            
-            # Check for user story label
-            if "**user story:**" in line_stripped.lower() or "user story:" in line_stripped.lower():
-                in_user_story = True
-                # Extract content after the label
-                parts = line_stripped.split(":", 1)
-                if len(parts) > 1:
-                    content = parts[1].strip().lstrip("*").strip()
-                    if content:
-                        user_story_lines.append(content)
-                continue
-            
-            # If we're in user story section, collect lines until we hit another section
-            if in_user_story:
-                if line_stripped.startswith("**") or line_stripped.lower().startswith("acceptance criteria"):
-                    break
-                if line_stripped:
-                    user_story_lines.append(line_stripped)
+        for pattern in user_story_patterns:
+            match = pattern.search(block)
+            if match:
+                user_story = match.group(1).strip()
+                # Clean up the extracted text
+                user_story = re.sub(r'\s+', ' ', user_story)  # Normalize whitespace
+                user_story = user_story.strip('*').strip()  # Remove markdown formatting
+                if user_story and len(user_story) > 10:  # Ensure it's substantial
+                    logger.debug(f"Found user story with pattern: {user_story[:50]}...")
+                    return user_story
         
-        if user_story_lines:
-            return " ".join(user_story_lines)
+        # Pattern 2: Look for "As a" pattern with enhanced matching
+        as_a_patterns = [
+            re.compile(r'(as\s+a\s+.*?(?:so\s+that|in\s+order\s+to).*?)(?=\n|$)', re.IGNORECASE | re.DOTALL),
+            re.compile(r'(as\s+a\s+.*?)(?=\n\s*\*\*|\n\s*acceptance|\n\s*when|\n\s*if|$)', re.IGNORECASE | re.DOTALL),
+        ]
         
-        # Fallback: Look for "As a" pattern anywhere in block
+        for pattern in as_a_patterns:
+            match = pattern.search(block)
+            if match:
+                user_story = match.group(1).strip()
+                # Clean up formatting
+                user_story = re.sub(r'^\s*[-*•]\s*', '', user_story)  # Remove bullet points
+                user_story = re.sub(r'^\s*\d+\.\s*', '', user_story)  # Remove numbering
+                user_story = re.sub(r'\s+', ' ', user_story)  # Normalize whitespace
+                user_story = user_story.strip('*').strip()
+                if user_story and len(user_story) > 10:
+                    logger.debug(f"Found 'As a' pattern: {user_story[:50]}...")
+                    return user_story
+        
+        # Pattern 3: Fallback to any line containing "as a" (legacy method)
         for line in block.split("\n"):
             if "as a" in line.lower():
                 cleaned = line.strip().lstrip("-*0123456789. ").lstrip("*").strip()
-                if cleaned:
+                if cleaned and len(cleaned) > 10:
+                    logger.debug(f"Found fallback user story: {cleaned[:50]}...")
                     return cleaned
         
+        logger.debug("No user story found in block")
         return ""
 
-    def _extract_acceptance_criteria(self, block: str) -> list[str]:
-        """Extract acceptance criteria from requirement block.
+    def _extract_user_story(self, block: str) -> str:
+        """Extract user story from requirement block.
+        
+        Legacy method - kept for backward compatibility.
+        Use _extract_user_story_enhanced for new implementations.
+        
+        Args:
+            block: Requirement block text
+            
+        Returns:
+            User story or empty string
+        """
+        return self._extract_user_story_enhanced(block)
+
+    def _extract_acceptance_criteria_enhanced(self, block: str) -> list[str]:
+        """Extract acceptance criteria from requirement block with enhanced patterns.
         
         Args:
             block: Requirement block text
@@ -1137,43 +1318,309 @@ class SpecificationGenerator(ISpecificationGenerator):
             List of acceptance criteria
         """
         criteria = []
-        in_criteria_section = False
         
-        for line in block.split("\n"):
-            line_stripped = line.strip()
-            
-            # Check for acceptance criteria label
-            if "**acceptance criteria:**" in line_stripped.lower() or "acceptance criteria:" in line_stripped.lower():
-                in_criteria_section = True
-                continue
-            
-            # If we're in criteria section, extract numbered/bulleted items
-            if in_criteria_section:
-                # Stop if we hit another section
-                if line_stripped.startswith("**") or line_stripped.startswith("####"):
-                    break
+        # Pattern 1: Look for "Acceptance Criteria:" section with various formats
+        criteria_section_patterns = [
+            re.compile(r'\*\*acceptance\s+criteria:\*\*\s*(.*?)(?=\*\*|####|$)', re.IGNORECASE | re.DOTALL),
+            re.compile(r'acceptance\s+criteria:\s*(.*?)(?=\n\s*\*\*|\n\s*####|$)', re.IGNORECASE | re.DOTALL),
+            re.compile(r'\*\*criteria:\*\*\s*(.*?)(?=\*\*|$)', re.IGNORECASE | re.DOTALL),
+            re.compile(r'criteria:\s*(.*?)(?=\n\s*\*\*|\n\s*####|$)', re.IGNORECASE | re.DOTALL),
+        ]
+        
+        for pattern in criteria_section_patterns:
+            match = pattern.search(block)
+            if match:
+                criteria_text = match.group(1).strip()
+                logger.debug(f"Found criteria section: {criteria_text[:100]}...")
                 
-                # Look for WHEN/THEN, IF/THEN, or SHALL patterns
-                if ("when" in line_stripped.lower() and "then" in line_stripped.lower()) or \
-                   ("if" in line_stripped.lower() and "then" in line_stripped.lower()) or \
-                   "shall" in line_stripped.lower():
-                    # Clean up the criterion
-                    criterion = line_stripped.lstrip("-*0123456789. ").strip()
-                    if criterion:
-                        criteria.append(criterion)
+                # Extract individual criteria from the section
+                section_criteria = self._extract_criteria_from_text(criteria_text)
+                if section_criteria:
+                    criteria.extend(section_criteria)
+                    break
         
-        # Fallback: Look for WHEN/THEN or SHALL patterns anywhere in block
+        # Pattern 2: Look for EARS patterns anywhere in the block if no section found
         if not criteria:
-            for line in block.split("\n"):
-                line_stripped = line.strip()
-                if ("when" in line_stripped.lower() and "then" in line_stripped.lower()) or \
-                   ("if" in line_stripped.lower() and "then" in line_stripped.lower()) or \
-                   "shall" in line_stripped.lower():
-                    criterion = line_stripped.lstrip("-*0123456789. ").strip()
-                    if criterion:
-                        criteria.append(criterion)
+            logger.debug("No criteria section found, searching for EARS patterns in full block")
+            criteria = self._extract_criteria_from_text(block)
         
-        return criteria
+        # Validate and clean criteria
+        validated_criteria = []
+        for criterion in criteria:
+            if self._is_valid_acceptance_criterion(criterion):
+                validated_criteria.append(criterion)
+            else:
+                logger.debug(f"Rejected invalid criterion: {criterion[:50]}...")
+        
+        logger.debug(f"Extracted {len(validated_criteria)} valid acceptance criteria")
+        return validated_criteria
+
+    def _extract_criteria_from_text(self, text: str) -> list[str]:
+        """Extract individual criteria from text using EARS patterns.
+        
+        Args:
+            text: Text to search for criteria
+            
+        Returns:
+            List of criteria strings
+        """
+        criteria = []
+        
+        # EARS patterns for acceptance criteria
+        ears_patterns = [
+            # WHEN ... THEN ... SHALL pattern
+            re.compile(r'(when\s+.*?\s+then\s+.*?\s+shall\s+.*?)(?=\n|when\s+|if\s+|where\s+|$)', re.IGNORECASE | re.DOTALL),
+            # IF ... THEN ... SHALL pattern  
+            re.compile(r'(if\s+.*?\s+then\s+.*?\s+shall\s+.*?)(?=\n|when\s+|if\s+|where\s+|$)', re.IGNORECASE | re.DOTALL),
+            # WHERE ... SHALL pattern
+            re.compile(r'(where\s+.*?\s+shall\s+.*?)(?=\n|when\s+|if\s+|where\s+|$)', re.IGNORECASE | re.DOTALL),
+            # Simple WHEN ... THEN pattern
+            re.compile(r'(when\s+.*?\s+then\s+.*?)(?=\n|when\s+|if\s+|where\s+|$)', re.IGNORECASE | re.DOTALL),
+            # Simple IF ... THEN pattern
+            re.compile(r'(if\s+.*?\s+then\s+.*?)(?=\n|when\s+|if\s+|where\s+|$)', re.IGNORECASE | re.DOTALL),
+            # Standalone SHALL pattern
+            re.compile(r'([^.]*?\s+shall\s+[^.]*?)(?=\n|when\s+|if\s+|where\s+|$)', re.IGNORECASE | re.DOTALL),
+        ]
+        
+        for pattern in ears_patterns:
+            matches = pattern.findall(text)
+            for match in matches:
+                criterion = match.strip()
+                # Clean up the criterion
+                criterion = re.sub(r'^\s*[-*•]\s*', '', criterion)  # Remove bullet points
+                criterion = re.sub(r'^\s*\d+\.\s*', '', criterion)  # Remove numbering
+                criterion = re.sub(r'\s+', ' ', criterion)  # Normalize whitespace
+                criterion = criterion.strip()
+                
+                if criterion and len(criterion) > 10:  # Ensure substantial content
+                    criteria.append(criterion)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_criteria = []
+        for criterion in criteria:
+            criterion_lower = criterion.lower()
+            if criterion_lower not in seen:
+                seen.add(criterion_lower)
+                unique_criteria.append(criterion)
+        
+        return unique_criteria
+
+    def _is_valid_acceptance_criterion(self, criterion: str) -> bool:
+        """Validate if a string is a valid acceptance criterion.
+        
+        Args:
+            criterion: Criterion string to validate
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        if not criterion or len(criterion.strip()) < 10:
+            return False
+        
+        criterion_lower = criterion.lower()
+        
+        # Must contain at least one EARS keyword
+        ears_keywords = ['when', 'then', 'if', 'where', 'shall']
+        has_ears_keyword = any(keyword in criterion_lower for keyword in ears_keywords)
+        
+        # Should not be just a fragment
+        has_substance = len(criterion.split()) >= 5
+        
+        return has_ears_keyword and has_substance
+
+    def _extract_acceptance_criteria(self, block: str) -> list[str]:
+        """Extract acceptance criteria from requirement block.
+        
+        Legacy method - kept for backward compatibility.
+        Use _extract_acceptance_criteria_enhanced for new implementations.
+        
+        Args:
+            block: Requirement block text
+            
+        Returns:
+            List of acceptance criteria
+        """
+        return self._extract_acceptance_criteria_enhanced(block)
+
+    def _extract_requirements_from_full_content(self, content: str) -> list[Requirement]:
+        """Extract requirements from full content when section-based parsing fails.
+        
+        Args:
+            content: Full AI-generated content
+            
+        Returns:
+            List of Requirement objects
+        """
+        requirements = []
+        req_id_counter = 1
+        
+        # Try to find user stories in the full content
+        user_story_pattern = re.compile(
+            r'(as\s+a\s+.*?(?:so\s+that|in\s+order\s+to).*?)(?=\n|$)',
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        user_stories = user_story_pattern.findall(content)
+        
+        for user_story in user_stories:
+            user_story = user_story.strip()
+            if len(user_story) > 10:
+                # Try to find acceptance criteria near this user story
+                # Look for criteria in the next few lines after the user story
+                story_index = content.lower().find(user_story.lower())
+                if story_index != -1:
+                    # Get text after the user story (next 500 characters)
+                    following_text = content[story_index + len(user_story):story_index + len(user_story) + 500]
+                    criteria = self._extract_criteria_from_text(following_text)
+                    
+                    if not criteria:
+                        # Create minimal acceptance criteria
+                        criteria = ["WHEN using this feature THEN it SHALL work as expected"]
+                    
+                    requirement = Requirement(
+                        id=f"FR-{req_id_counter}",
+                        user_story=user_story,
+                        acceptance_criteria=criteria,
+                        priority=Priority.MEDIUM,
+                    )
+                    requirements.append(requirement)
+                    req_id_counter += 1
+        
+        return requirements
+
+    def _validate_specification(self, spec: SpecificationDocument) -> tuple[bool, list[str]]:
+        """Validate specification completeness and quality.
+        
+        This method checks that each requirement has a user story and at least
+        2 acceptance criteria, as specified in the requirements.
+        
+        Args:
+            spec: Specification document to validate
+            
+        Returns:
+            Tuple of (is_valid, list_of_issues)
+        """
+        issues = []
+        
+        # Check minimum number of requirements (should have at least 3)
+        req_count = len(spec.functional_requirements)
+        if req_count < 3:
+            issues.append(f"Specification has only {req_count} requirement(s), should have at least 3")
+        
+        # Check each requirement
+        for i, req in enumerate(spec.functional_requirements, 1):
+            req_issues = []
+            
+            # Check user story presence and quality
+            if not req.user_story:
+                req_issues.append("missing user story")
+            elif len(req.user_story.strip()) < 20:
+                req_issues.append("user story too short (less than 20 characters)")
+            elif "as a" not in req.user_story.lower():
+                req_issues.append("user story doesn't follow 'As a...' format")
+            
+            # Check acceptance criteria presence and quality
+            if not req.acceptance_criteria:
+                req_issues.append("missing acceptance criteria")
+            elif len(req.acceptance_criteria) < 2:
+                req_issues.append(f"only {len(req.acceptance_criteria)} acceptance criterion, should have at least 2")
+            else:
+                # Check quality of acceptance criteria
+                valid_criteria = 0
+                for criterion in req.acceptance_criteria:
+                    if self._is_valid_acceptance_criterion(criterion):
+                        valid_criteria += 1
+                
+                if valid_criteria < 2:
+                    req_issues.append(f"only {valid_criteria} valid acceptance criteria (using EARS format)")
+            
+            # Add requirement-specific issues
+            if req_issues:
+                issues.append(f"Requirement {i} ({req.id}): {', '.join(req_issues)}")
+        
+        # Check introduction quality
+        if not spec.introduction or len(spec.introduction.strip()) < 50:
+            issues.append("Introduction is missing or too short (less than 50 characters)")
+        
+        # Check key features
+        if not spec.key_features:
+            issues.append("No key features identified")
+        elif len(spec.key_features) < 2:
+            issues.append(f"Only {len(spec.key_features)} key feature(s), should have at least 2")
+        
+        is_valid = len(issues) == 0
+        
+        if not is_valid:
+            logger.warning(f"Specification validation failed with {len(issues)} issues")
+        else:
+            logger.info("Specification validation passed")
+        
+        return is_valid, issues
+
+    def _log_parsing_details(
+        self,
+        ai_content: str,
+        sections: dict[str, str],
+        requirements: list[Requirement],
+        validation_issues: list[str],
+    ) -> None:
+        """Log detailed parsing information for debugging.
+        
+        Args:
+            ai_content: Original AI content
+            sections: Extracted sections
+            requirements: Parsed requirements
+            validation_issues: Validation issues found
+        """
+        logger.info("=== SPECIFICATION PARSING DETAILS ===")
+        logger.info(f"AI content length: {len(ai_content)} characters")
+        logger.info(f"Sections found: {list(sections.keys())}")
+        logger.info(f"Requirements extracted: {len(requirements)}")
+        
+        for i, req in enumerate(requirements, 1):
+            logger.info(f"Requirement {i}:")
+            logger.info(f"  ID: {req.id}")
+            logger.info(f"  User Story: {req.user_story[:100]}...")
+            logger.info(f"  Acceptance Criteria: {len(req.acceptance_criteria)} items")
+            for j, criterion in enumerate(req.acceptance_criteria, 1):
+                logger.info(f"    {j}. {criterion[:80]}...")
+        
+        if validation_issues:
+            logger.warning("Validation issues:")
+            for issue in validation_issues:
+                logger.warning(f"  - {issue}")
+        
+        logger.info("=== END PARSING DETAILS ===")
+
+    def _log_parsing_failure(self, ai_content: str, error_message: str) -> None:
+        """Log detailed information about parsing failures.
+        
+        Args:
+            ai_content: Original AI content that failed to parse
+            error_message: Error message from the exception
+        """
+        logger.error("=== SPECIFICATION PARSING FAILURE ===")
+        logger.error(f"Error: {error_message}")
+        logger.error(f"AI content length: {len(ai_content)} characters")
+        logger.error("AI content preview:")
+        
+        # Log first 500 characters of content
+        preview = ai_content[:500]
+        for i, line in enumerate(preview.split('\n')[:10], 1):
+            logger.error(f"  {i:2d}: {line}")
+        
+        if len(ai_content) > 500:
+            logger.error(f"  ... (truncated, {len(ai_content) - 500} more characters)")
+        
+        # Try to identify what sections were found
+        try:
+            sections = self._extract_sections(ai_content)
+            logger.error(f"Sections that were extracted: {list(sections.keys())}")
+        except Exception as e:
+            logger.error(f"Failed to extract sections: {e}")
+        
+        logger.error("=== END PARSING FAILURE ===")
 
     # Private helper methods for rule-based generation
 

@@ -257,8 +257,10 @@ class SpecificationWorkflow:
         else:
             self.cli_interface.display_message("✅ Specification generated successfully!")
 
-        # Display requirements count
+        # Validate the generated specification
+        is_valid, validation_issues = self.generator._validate_specification(spec)
         req_count = len(spec.functional_requirements)
+        
         if req_count > 0:
             self.cli_interface.display_message(
                 f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
@@ -266,6 +268,32 @@ class SpecificationWorkflow:
         else:
             self.cli_interface.display_message(
                 "⚠️ Warning: No requirements were generated. The specification may be incomplete."
+            )
+        
+        # Display validation warnings if specification has issues
+        if not is_valid and req_count < 3:
+            self.cli_interface.display_message(
+                Panel(
+                    f"[yellow]Warning: Only {req_count} requirement(s) generated.[/yellow]\n\n"
+                    "A complete specification typically has 3-5 requirements.\n"
+                    "You may want to regenerate or provide more detailed feedback.",
+                    title="⚠️ Incomplete Specification",
+                    border_style="yellow",
+                )
+            )
+        elif not is_valid:
+            # Show other validation issues
+            issues_text = "\n".join(f"• {issue}" for issue in validation_issues[:3])
+            if len(validation_issues) > 3:
+                issues_text += f"\n• ... and {len(validation_issues) - 3} more issues"
+            
+            self.cli_interface.display_message(
+                Panel(
+                    f"[yellow]Specification validation found some issues:[/yellow]\n\n{issues_text}\n\n"
+                    "You can still proceed, but consider regenerating for better quality.",
+                    title="⚠️ Specification Quality Issues",
+                    border_style="yellow",
+                )
             )
 
         return spec
@@ -304,8 +332,10 @@ class SpecificationWorkflow:
         else:
             self.cli_interface.display_message("✅ Specification generated successfully!")
 
-        # Display requirements count
+        # Validate the generated specification
+        is_valid, validation_issues = self.generator._validate_specification(spec)
         req_count = len(spec.functional_requirements)
+        
         if req_count > 0:
             self.cli_interface.display_message(
                 f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
@@ -313,6 +343,32 @@ class SpecificationWorkflow:
         else:
             self.cli_interface.display_message(
                 "⚠️ Warning: No requirements were generated. The specification may be incomplete."
+            )
+        
+        # Display validation warnings if specification has issues
+        if not is_valid and req_count < 3:
+            self.cli_interface.display_message(
+                Panel(
+                    f"[yellow]Warning: Only {req_count} requirement(s) generated.[/yellow]\n\n"
+                    "A complete specification typically has 3-5 requirements.\n"
+                    "You may want to regenerate or provide more detailed feedback.",
+                    title="⚠️ Incomplete Specification",
+                    border_style="yellow",
+                )
+            )
+        elif not is_valid:
+            # Show other validation issues
+            issues_text = "\n".join(f"• {issue}" for issue in validation_issues[:3])
+            if len(validation_issues) > 3:
+                issues_text += f"\n• ... and {len(validation_issues) - 3} more issues"
+            
+            self.cli_interface.display_message(
+                Panel(
+                    f"[yellow]Specification validation found some issues:[/yellow]\n\n{issues_text}\n\n"
+                    "You can still proceed, but consider regenerating for better quality.",
+                    title="⚠️ Specification Quality Issues",
+                    border_style="yellow",
+                )
             )
 
         return spec

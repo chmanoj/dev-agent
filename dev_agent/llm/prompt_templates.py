@@ -126,19 +126,43 @@ Your task is to generate detailed, actionable specifications for the SPECIFIC FE
 
 CRITICAL: Focus ONLY on the feature described in the Feature Request section. Do NOT generate specifications for existing features or generic functionality like "data management" or "user authentication" unless explicitly requested.
 
+COMPLETENESS REQUIREMENTS (MANDATORY):
+- You MUST generate at least 3-5 detailed requirements with complete user stories and acceptance criteria
+- Each requirement MUST have a user story in the format: "As a [role], I want [feature], so that [benefit]"
+- Each requirement MUST have at least 2-3 acceptance criteria using EARS format (WHEN/THEN, IF/THEN, SHALL)
+- Follow the format specified in dev_agent/REQUIREMENTS_FORMAT_GUIDE.md exactly
+- Include error handling, edge cases, and performance requirements where applicable
+
+VALIDATION CHECKLIST (Self-Check Before Responding):
+□ Does the specification have at least 3-5 requirements?
+□ Does each requirement have a complete user story?
+□ Does each requirement have at least 2-3 acceptance criteria?
+□ Are acceptance criteria written in EARS format (WHEN/THEN, IF/THEN, SHALL)?
+□ Are all acceptance criteria specific and testable?
+□ Have I included error handling scenarios?
+□ Does the specification focus ONLY on the requested feature?
+
 Key principles:
 1. Generate specifications ONLY for the requested feature
 2. Follow existing architectural patterns shown in the code examples
 3. Use the same naming conventions and code style
 4. Maintain consistency with current dependencies
-5. Include clear acceptance criteria
+5. Include clear acceptance criteria in EARS format
 6. Specify error handling requirements
-7. Consider edge cases and user experience""",
+7. Consider edge cases and user experience
+8. Ensure completeness with minimum 3-5 requirements""",
     
     user_prompt_template="""## FEATURE REQUEST (PRIMARY FOCUS)
 {feature_description}
 
 IMPORTANT: Generate a specification ONLY for the feature described above. Do NOT include specifications for existing features or unrelated functionality.
+
+## Requirements Format Reference
+Follow the format specified in dev_agent/REQUIREMENTS_FORMAT_GUIDE.md exactly:
+- User stories: "As a [role], I want [feature], so that [benefit]"
+- Acceptance criteria using EARS format: WHEN/THEN, IF/THEN, WHERE, SHALL
+- Minimum 3-5 requirements with complete user stories and acceptance criteria
+- Each requirement must have at least 2-3 testable acceptance criteria
 
 ## Codebase Context (for reference only)
 {codebase_summary}
@@ -158,6 +182,7 @@ Generate a detailed specification SPECIFICALLY for the requested feature above. 
 - Include functional and technical requirements
 - Provide clear acceptance criteria in EARS format (WHEN/THEN, IF/THEN, SHALL)
 - Specify error handling requirements
+- MUST contain at least 3-5 detailed requirements
 
 ## Output Format
 Provide a structured specification with:
@@ -173,7 +198,7 @@ Provide a structured specification with:
 
 ### Requirements
 
-For each requirement, use this EXACT format:
+For each requirement, use this EXACT format from dev_agent/REQUIREMENTS_FORMAT_GUIDE.md:
 
 #### Requirement 1: [Brief Title]
 
@@ -196,9 +221,20 @@ For each requirement, use this EXACT format:
 
 [Continue with additional requirements ONLY for the requested feature...]
 
+MANDATORY COMPLETENESS CHECK:
+Before submitting your response, verify:
+□ I have included at least 3-5 requirements
+□ Each requirement has a complete user story in the correct format
+□ Each requirement has at least 2-3 acceptance criteria
+□ All acceptance criteria use EARS format (WHEN/THEN, IF/THEN, SHALL)
+□ All acceptance criteria are specific and testable
+□ I have included error handling scenarios
+□ The specification focuses ONLY on the requested feature
+
 CRITICAL: You MUST include at least 3-5 detailed requirements with complete user stories and acceptance criteria. Each requirement must have:
 - A clear user story in the format "As a [role], I want [feature], so that [benefit]"
-- At least 2-3 acceptance criteria using WHEN/THEN, IF/THEN, or SHALL format
+- At least 2-3 acceptance criteria using WHEN/THEN, IF/THEN, WHERE, or SHALL format
+- Specific, testable criteria that can be validated
 
 REMEMBER: Focus exclusively on the feature described in the Feature Request section.""",
     
@@ -411,6 +447,22 @@ Your task is to generate detailed, actionable specifications for the SPECIFIC FE
 
 CRITICAL: Focus ONLY on the feature described in the Feature Request. Do NOT add generic features like "data management", "user authentication", or "file management" unless explicitly mentioned in the request.
 
+COMPLETENESS REQUIREMENTS (MANDATORY):
+- You MUST generate at least 3-5 detailed requirements with complete user stories and acceptance criteria
+- Each requirement MUST have a user story in the format: "As a [role], I want [feature], so that [benefit]"
+- Each requirement MUST have at least 2-3 acceptance criteria using EARS format (WHEN/THEN, IF/THEN, SHALL)
+- Follow the format specified in dev_agent/REQUIREMENTS_FORMAT_GUIDE.md exactly
+- Include error handling, edge cases, and performance requirements where applicable
+
+VALIDATION CHECKLIST (Self-Check Before Responding):
+□ Does the specification have at least 3-5 requirements?
+□ Does each requirement have a complete user story?
+□ Does each requirement have at least 2-3 acceptance criteria?
+□ Are acceptance criteria written in EARS format (WHEN/THEN, IF/THEN, SHALL)?
+□ Are all acceptance criteria specific and testable?
+□ Have I included error handling scenarios?
+□ Does the specification focus ONLY on the requested feature?
+
 Key principles:
 1. Generate specifications ONLY for the requested feature
 2. Create clear, testable requirements
@@ -418,12 +470,20 @@ Key principles:
 4. Include user stories for each requirement
 5. Consider edge cases and error scenarios
 6. Specify clear acceptance criteria
-7. Focus on functional and technical requirements""",
+7. Focus on functional and technical requirements
+8. Ensure completeness with minimum 3-5 requirements""",
     
     user_prompt_template="""## FEATURE REQUEST (PRIMARY FOCUS)
 {feature_description}
 
 IMPORTANT: Generate a specification ONLY for the feature described above. Do NOT add generic features or functionality not mentioned in the request.
+
+## Requirements Format Reference
+Follow the format specified in dev_agent/REQUIREMENTS_FORMAT_GUIDE.md exactly:
+- User stories: "As a [role], I want [feature], so that [benefit]"
+- Acceptance criteria using EARS format: WHEN/THEN, IF/THEN, WHERE, SHALL
+- Minimum 3-5 requirements with complete user stories and acceptance criteria
+- Each requirement must have at least 2-3 testable acceptance criteria
 
 ## Project Type
 {project_type}
@@ -437,6 +497,7 @@ The specification must:
 3. Focus on the specific functionality the user wants
 4. Include clear, testable requirements
 5. Use EARS format for acceptance criteria
+6. MUST contain at least 3-5 detailed requirements
 
 ## Output Format
 Provide a structured specification with:
@@ -452,7 +513,7 @@ Provide a structured specification with:
 
 ### Requirements
 
-For each requirement, use this EXACT format:
+For each requirement, use this EXACT format from dev_agent/REQUIREMENTS_FORMAT_GUIDE.md:
 
 #### Requirement 1: [Brief Title]
 
@@ -475,9 +536,20 @@ For each requirement, use this EXACT format:
 
 [Continue with additional requirements ONLY for the requested feature...]
 
+MANDATORY COMPLETENESS CHECK:
+Before submitting your response, verify:
+□ I have included at least 3-5 requirements
+□ Each requirement has a complete user story in the correct format
+□ Each requirement has at least 2-3 acceptance criteria
+□ All acceptance criteria use EARS format (WHEN/THEN, IF/THEN, SHALL)
+□ All acceptance criteria are specific and testable
+□ I have included error handling scenarios
+□ The specification focuses ONLY on the requested feature
+
 CRITICAL: You MUST include at least 3-5 detailed requirements with complete user stories and acceptance criteria. Each requirement must have:
 - A clear user story in the format "As a [role], I want [feature], so that [benefit]"
-- At least 2-3 acceptance criteria using WHEN/THEN, IF/THEN, or SHALL format
+- At least 2-3 acceptance criteria using WHEN/THEN, IF/THEN, WHERE, or SHALL format
+- Specific, testable criteria that can be validated
 
 REMEMBER: Focus exclusively on what the user requested. Do not add generic features.""",
     
