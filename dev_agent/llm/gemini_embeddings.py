@@ -128,9 +128,10 @@ class GeminiEmbeddingClient(IEmbeddingClient):
         """Get the dimension size of embedding vectors.
 
         Returns:
-            768 for all Gemini embedding models
+            Configurable embedding dimension (default 768, can be set via GEMINI_EMBEDDING_DIMENSION)
         """
-        return self.EMBEDDING_DIMENSION
+        # Always check environment variable for latest value
+        return int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
 
     async def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text.
@@ -178,9 +179,10 @@ class GeminiEmbeddingClient(IEmbeddingClient):
             embedding: list[float] = result["embedding"]
 
             # Validate embedding dimension
-            if len(embedding) != self.EMBEDDING_DIMENSION:
+            expected_dim = self.dimension
+            if len(embedding) != expected_dim:
                 raise LLMAPIError(
-                    f"Unexpected embedding dimension: {len(embedding)}, expected {self.EMBEDDING_DIMENSION}",
+                    f"Unexpected embedding dimension: {len(embedding)}, expected {expected_dim}",
                     "This may indicate a model configuration issue",
                 )
 
@@ -365,9 +367,10 @@ class GeminiEmbeddingClient(IEmbeddingClient):
                 batch, batch_embeddings, strict=False
             ):
                 # Validate embedding dimension
-                if len(embedding) != self.EMBEDDING_DIMENSION:
+                expected_dim = self.dimension
+                if len(embedding) != expected_dim:
                     raise LLMAPIError(
-                        f"Unexpected embedding dimension: {len(embedding)}, expected {self.EMBEDDING_DIMENSION}",
+                        f"Unexpected embedding dimension: {len(embedding)}, expected {expected_dim}",
                         "This may indicate a model configuration issue",
                     )
 

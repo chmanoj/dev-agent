@@ -760,7 +760,13 @@ class StateManager:
         Returns:
             Parsed datetime or None if all strategies fail
         """
-        if not date_str or not isinstance(date_str, str):
+        if date_str is None:
+            return None
+        
+        # Convert to string if it's a number (timestamp)
+        if isinstance(date_str, (int, float)):
+            date_str = str(date_str)
+        elif not isinstance(date_str, str):
             return None
             
         strategies = [
@@ -1516,10 +1522,13 @@ class StateManager:
             True if successful, False otherwise
         """
         try:
+            # Generate spec-specific folder structure
+            spec_folder = self._get_spec_folder_name(document)
+            
             filename_map = {
-                DocumentType.SPECIFICATION: "SPECIFICATION.md",
-                DocumentType.DESIGN: "DESIGN.md",
-                DocumentType.TASKS: "TASKS.md",
+                DocumentType.SPECIFICATION: f"{spec_folder}/requirements.md",
+                DocumentType.DESIGN: f"{spec_folder}/design.md", 
+                DocumentType.TASKS: f"{spec_folder}/tasks.md",
             }
 
             filename = filename_map.get(doc_type)
@@ -1534,6 +1543,9 @@ class StateManager:
                 return False
 
             file_path = self.documents_dir / filename
+
+            # Create directory if it doesn't exist
+            file_path.parent.mkdir(parents=True, exist_ok=True)
 
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(document)
@@ -1618,6 +1630,51 @@ class StateManager:
                 style="red"
             )
             return False
+
+    def _get_spec_folder_name(self, document: str) -> str:
+        """Generate a folder name for the specification based on document content.
+        
+        Args:
+            document: The document content
+            
+        Returns:
+            Folder name for the specification
+        """
+        import re
+        from datetime import datetime
+        
+        # Try to extract a meaningful name from the document
+        lines = document.split('\n')
+        
+        # Look for title or feature name in first few lines
+        for line in lines[:10]:
+            line = line.strip()
+            if line.startswith('# '):
+                # Use the main title
+                title = line[2:].strip()
+                break
+            elif 'login' in line.lower():
+                title = "login-page"
+                break
+            elif 'authentication' in line.lower():
+                title = "authentication"
+                break
+            elif 'user' in line.lower() and ('story' in line.lower() or 'feature' in line.lower()):
+                # Extract feature name from user story
+                title = re.sub(r'.*user.*?want to\s*', '', line.lower())
+                title = re.sub(r'\s*so that.*', '', title)
+                title = title.strip()
+                break
+        else:
+            # Default to timestamp-based name
+            title = f"spec-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        
+        # Clean up the title for use as folder name
+        folder_name = re.sub(r'[^\w\s-]', '', title.lower())
+        folder_name = re.sub(r'\s+', '-', folder_name.strip())
+        folder_name = folder_name[:50]  # Limit length
+        
+        return folder_name or "default-spec"
 
     def load_document(self, doc_type: DocumentType) -> str | None:
         """Load a document from file.

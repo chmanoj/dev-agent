@@ -61,8 +61,19 @@ PRICING = {
             "prompt": 0.0005,
             "completion": 0.0015,
         },
+        "gemini-2.5-flash": {
+            "prompt": 0.000075,  # per 1K tokens (very cheap)
+            "completion": 0.0003,  # per 1K tokens
+        },
+        "gemini-2.5-flash-lite": {
+            "prompt": 0.000075,  # per 1K tokens (same as flash)
+            "completion": 0.0003,  # per 1K tokens
+        },
         "embedding-001": {
             "embedding": 0.00001,  # per 1K tokens
+        },
+        "gemini-embedding-001": {
+            "embedding": 0.00001,  # per 1K tokens (alias)
         },
         "text-embedding-004": {
             "embedding": 0.00001,  # per 1K tokens

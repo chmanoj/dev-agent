@@ -13,7 +13,7 @@ from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.cli_interface import ICLIInterface
 from ..llm import create_llm_client, get_preferred_provider
 from ..models.documents import SpecificationDocument
-from ..models.enums import LLMProvider
+from ..models.enums import DocumentType, LLMProvider
 from ..state.state_manager import StateManager
 
 if TYPE_CHECKING:
@@ -570,7 +570,13 @@ class SpecificationWorkflow:
             formatted_spec = self.generator.format_specification_document(spec)
 
             # Save using state manager
-            self.state_manager.save_document(formatted_spec, "specification")
+            self.state_manager.save_document(formatted_spec, DocumentType.SPECIFICATION)
+
+            # Update project state with approved specification
+            project_state = self.state_manager.load_project_state()
+            if project_state:
+                project_state.specification = spec
+                self.state_manager.save_project_state(project_state)
 
             # Get the full path for display
             spec_path = self.state_manager.documents_dir / "SPECIFICATION.md"

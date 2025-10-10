@@ -1397,10 +1397,10 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
                 return self._handle_phase_command(args[0])
 
             elif command == "approve":
-                return "Approval functionality would be handled by workflow manager"
+                return self._handle_approve_command()
 
             elif command == "reject":
-                return "Rejection functionality would be handled by workflow manager"
+                return self._handle_reject_command()
 
             elif command == "skip":
                 return self._handle_skip_command()
@@ -1767,6 +1767,50 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
         except Exception as e:
             return f"Error proceeding to next phase: {e!s}"
+
+    def _handle_approve_command(self) -> str:
+        """Handle approve command for current phase documents.
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+            
+            if current_phase == PhaseType.SPECIFICATION:
+                return "✅ Specification approval is handled during the specification generation process.\nUse 'next' to proceed once approved."
+            elif current_phase == PhaseType.DESIGN:
+                return "✅ Design approval is handled during the design generation process.\nUse 'next' to proceed once approved."
+            else:
+                return f"❌ Approval not applicable for {current_phase.value.title()} phase"
+                
+        except Exception as e:
+            return f"Error handling approval: {e!s}"
+
+    def _handle_reject_command(self) -> str:
+        """Handle reject command for current phase documents.
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+            
+            if current_phase == PhaseType.SPECIFICATION:
+                return "❌ To regenerate specification, you'll need to restart the specification phase.\nUse 'skip' to move to next phase or restart the workflow."
+            elif current_phase == PhaseType.DESIGN:
+                return "❌ To regenerate design, you'll need to restart the design phase.\nUse 'skip' to move to next phase or restart the workflow."
+            else:
+                return f"❌ Rejection not applicable for {current_phase.value.title()} phase"
+                
+        except Exception as e:
+            return f"Error handling rejection: {e!s}"
 
     def _handle_skip_command(self) -> str:
         """Handle skip command to skip current phase.

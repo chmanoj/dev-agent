@@ -212,6 +212,7 @@ class SpecificationGenerator(ISpecificationGenerator):
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     model=self.token_counter.get_model_name(),
+                    provider=self.token_counter.get_provider_enum(),
                 )
                 logger.info(
                     f"Specification generation cost: ${cost:.4f} "
@@ -414,6 +415,7 @@ class SpecificationGenerator(ISpecificationGenerator):
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     model=self.token_counter.get_model_name(),
+                    provider=self.token_counter.get_provider_enum(),
                 )
                 logger.info(
                     f"Specification generation cost: ${cost:.4f} "
@@ -587,6 +589,7 @@ class SpecificationGenerator(ISpecificationGenerator):
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     model=self.token_counter.get_model_name(),
+                    provider=self.token_counter.get_provider_enum(),
                 )
                 logger.info(
                     f"Specification refinement cost: ${cost:.4f} "

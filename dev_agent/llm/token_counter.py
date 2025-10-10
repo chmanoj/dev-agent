@@ -346,3 +346,15 @@ class TokenCounter:
             Model name string
         """
         return self.model.value
+
+    def get_provider_enum(self) -> LLMProvider:
+        """Get the provider as enum.
+
+        Returns:
+            LLMProvider enum value
+        """
+        from ..models.enums import LLMProvider
+        if self.provider == "azure_openai":
+            return LLMProvider.AZURE_OPENAI
+        else:
+            return LLMProvider.GEMINI
