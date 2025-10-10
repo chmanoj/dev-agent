@@ -55,7 +55,7 @@
   - Log validation errors with details for debugging
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 8. Write unit tests for datetime handling
+- [x] 8. Write unit tests for datetime handling
   - Create `tests/test_state_manager_datetime.py` with tests for datetime serialization
   - Test datetime serialization to ISO format
   - Test datetime deserialization from ISO format
@@ -69,7 +69,7 @@
   - Test index_metadata datetime handling
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 9. Write unit tests for specification validation
+- [x] 9. Write unit tests for specification validation
   - Create `tests/test_specification_generator_validation.py`
   - Test validation passes for complete specification (3+ requirements)
   - Test validation fails for incomplete specification (< 3 requirements)
@@ -78,7 +78,7 @@
   - Test parsing handles format variations gracefully
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 10. Write integration tests for workflow phases
+- [x] 10. Write integration tests for workflow phases
   - Enhance `tests/test_specification_workflow_integration.py`
   - Test specification approval saves state correctly with datetime
   - Test resume project after specification approval loads datetime correctly
@@ -89,7 +89,7 @@
   - Test provider switching (Azure OpenAI ↔ Gemini) across phases
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 11. Add provider-specific tests
+- [x] 11. Add provider-specific tests
   - Create `tests/test_multi_provider_workflow.py`
   - Test specification generation with Azure OpenAI provider
   - Test specification generation with Gemini provider
