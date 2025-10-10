@@ -705,6 +705,8 @@ class StateManager:
             lambda s: datetime.fromisoformat(s),
             # ISO format with Z suffix
             lambda s: datetime.fromisoformat(s.replace('Z', '+00:00')),
+            # Unix timestamp (seconds since epoch)
+            lambda s: datetime.fromtimestamp(float(s)),
             # Common formats
             lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M:%S"),
             lambda s: datetime.strptime(s, "%Y-%m-%dT%H:%M:%S"),

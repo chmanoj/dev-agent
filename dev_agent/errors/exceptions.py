@@ -525,6 +525,11 @@ class DatetimeSerializationError(DevAgentError):
         datetime_value: str | None = None,
         context: ErrorContext | None = None,
     ):
+        # Set attributes before calling super() so _generate_user_message() can access them
+        self.field_name = field_name
+        self.field_path = field_path
+        self.datetime_value = datetime_value
+
         super().__init__(
             message=message,
             category=ErrorCategory.STATE,
@@ -532,9 +537,6 @@ class DatetimeSerializationError(DevAgentError):
             context=context,
             recoverable=True,
         )
-        self.field_name = field_name
-        self.field_path = field_path
-        self.datetime_value = datetime_value
 
     def _generate_user_message(self) -> str:
         field_info = f" in field '{self.field_name}'" if self.field_name else ""
@@ -556,6 +558,11 @@ class DatetimeDeserializationError(DevAgentError):
         datetime_string: str | None = None,
         context: ErrorContext | None = None,
     ):
+        # Set attributes before calling super() so _generate_user_message() can access them
+        self.field_name = field_name
+        self.field_path = field_path
+        self.datetime_string = datetime_string
+
         super().__init__(
             message=message,
             category=ErrorCategory.STATE,
@@ -563,9 +570,6 @@ class DatetimeDeserializationError(DevAgentError):
             context=context,
             recoverable=True,
         )
-        self.field_name = field_name
-        self.field_path = field_path
-        self.datetime_string = datetime_string
 
     def _generate_user_message(self) -> str:
         field_info = f" in field '{self.field_name}'" if self.field_name else ""
@@ -591,7 +595,7 @@ class StateLoadingError(DevAgentError):
         self.error_type = error_type
         self.file_path = file_path
         self.original_error = original_error
-        
+
         super().__init__(
             message=message,
             category=ErrorCategory.STATE,
