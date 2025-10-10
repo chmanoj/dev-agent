@@ -148,6 +148,14 @@ class StateManager:
                         )
                         # For non-datetime errors, continue with None value
                         result[field_name] = None
+                
+                # Ensure approval flags are included with backward compatibility
+                # Use getattr() with default False for backward compatibility with older ProjectState objects
+                if hasattr(obj, '__class__') and obj.__class__.__name__ == 'ProjectState':
+                    result['specification_approved'] = getattr(obj, 'specification_approved', False)
+                    result['design_approved'] = getattr(obj, 'design_approved', False)
+                    result['tasks_approved'] = getattr(obj, 'tasks_approved', False)
+                
                 return result
             elif isinstance(obj, list):
                 result = []
@@ -233,6 +241,48 @@ class StateManager:
             )
         )
 
+    def _validate_state(self, state: ProjectState) -> list[str]:
+        """Validate state consistency for approval tracking.
+        
+        Performs validation checks to ensure approval consistency:
+        - Design phase has approved specification
+        - Implementation phase has approved design  
+        - Approved content exists (no approval without content)
+        
+        Args:
+            state: ProjectState to validate
+            
+        Returns:
+            List of validation warning messages
+        """
+        warnings = []
+        
+        # Check phase consistency - design phase should have approved specification
+        if state.current_phase == PhaseType.DESIGN:
+            if not state.specification:
+                warnings.append("Design phase but no specification content")
+            if not getattr(state, 'specification_approved', False):
+                warnings.append("Design phase but specification not approved")
+        
+        # Check phase consistency - implementation phase should have approved design
+        if state.current_phase == PhaseType.IMPLEMENTATION:
+            if not state.design:
+                warnings.append("Implementation phase but no design content")
+            if not getattr(state, 'design_approved', False):
+                warnings.append("Implementation phase but design not approved")
+        
+        # Check approval consistency - no approval without content
+        if getattr(state, 'specification_approved', False) and not state.specification:
+            warnings.append("Specification approved but no content")
+        
+        if getattr(state, 'design_approved', False) and not state.design:
+            warnings.append("Design approved but no content")
+        
+        if getattr(state, 'tasks_approved', False) and not state.tasks:
+            warnings.append("Tasks approved but no content")
+        
+        return warnings
+
     def save_project_state(self, state: ProjectState) -> bool:
         """Save project state to JSON file with optimized performance.
         
@@ -252,6 +302,19 @@ class StateManager:
             try:
                 # Update the updated_at timestamp
                 state.updated_at = datetime.now()
+
+                # Validate state consistency before saving
+                validation_warnings = self._validate_state(state)
+                if validation_warnings:
+                    logger.warning(
+                        f"State validation warnings: {validation_warnings}",
+                        extra={
+                            "operation": "save_project_state",
+                            "phase": "validation",
+                            "warnings": validation_warnings,
+                            "current_phase": state.current_phase.value if state.current_phase else "unknown"
+                        }
+                    )
 
                 # Serialize the state with enhanced error handling
                 try:
@@ -1198,6 +1261,10 @@ class StateManager:
             session_data=session_data,
             created_at=created_at,
             updated_at=updated_at,
+            # Load approval flags with backward compatibility
+            specification_approved=state_dict.get("specification_approved", False),
+            design_approved=state_dict.get("design_approved", False),
+            tasks_approved=state_dict.get("tasks_approved", False),
         )
 
     def _reconstruct_specification(

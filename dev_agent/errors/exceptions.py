@@ -680,3 +680,60 @@ class StateSavingError(DevAgentError):
                 f"Error saving project state: {self.message}. "
                 f"Please check the project directory and try again."
             )
+
+
+class DocumentError(DevAgentError):
+    """Base exception for document-related errors."""
+
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
+        context: ErrorContext | None = None,
+        file_path: str | None = None,
+    ):
+        super().__init__(
+            message=message,
+            category=ErrorCategory.SYSTEM,
+            severity=severity,
+            context=context,
+            recoverable=True,
+        )
+        self.file_path = file_path
+
+    def _generate_user_message(self) -> str:
+        return (
+            f"Document error: {self.message}. "
+            f"Please check file permissions and disk space."
+        )
+
+
+class DocumentSaveError(DocumentError):
+    """Raised when document cannot be saved to filesystem."""
+
+    def __init__(
+        self,
+        message: str,
+        file_path: str | None = None,
+        phase: str | None = None,
+        context: ErrorContext | None = None,
+        original_error: Exception | None = None,
+    ):
+        # Set attributes before calling super() so _generate_user_message() can access them
+        self.phase = phase
+        self.original_error = original_error
+        
+        super().__init__(
+            message=message,
+            severity=ErrorSeverity.HIGH,
+            context=context,
+            file_path=file_path,
+        )
+
+    def _generate_user_message(self) -> str:
+        phase_info = f" for {self.phase} phase" if getattr(self, 'phase', None) else ""
+        file_info = f" to {getattr(self, 'file_path', None)}" if getattr(self, 'file_path', None) else ""
+        return (
+            f"Failed to save document{phase_info}{file_info}: {self.message}. "
+            f"Please check file permissions and disk space."
+        )

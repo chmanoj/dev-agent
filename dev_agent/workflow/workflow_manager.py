@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config.config_manager import ConfigManager
+from ..errors.exceptions import DocumentSaveError, ErrorContext
 from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.workflow_interface import IWorkflowManager
 from ..llm.cost_tracker import CostTracker
@@ -864,6 +865,122 @@ class WorkflowManager(IWorkflowManager):
 
         # Save updated state
         self.state_manager.save_project_state(self.current_project_state)
+
+    def _save_document_to_file(self, phase: PhaseType, content: str) -> None:
+        """Save generated document to filesystem.
+
+        Args:
+            phase: Phase that generated the document
+            content: Document content to save
+
+        Raises:
+            DocumentSaveError: If document cannot be saved
+        """
+        if not self.current_project_state:
+            raise DocumentSaveError(
+                "No active project state",
+                phase=phase.value,
+                context=ErrorContext(
+                    operation="save_document_to_file",
+                    phase=phase.value,
+                ),
+            )
+
+        # Ensure documents directory exists
+        project_path = Path(self.current_project_state.project_path)
+        docs_dir = project_path / ".dev_agent" / "documents"
+        
+        try:
+            docs_dir.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Ensured documents directory exists: {docs_dir}")
+        except Exception as e:
+            logger.error(f"Failed to create documents directory: {e}", exc_info=True)
+            raise DocumentSaveError(
+                f"Could not create documents directory: {e}",
+                file_path=str(docs_dir),
+                phase=phase.value,
+                context=ErrorContext(
+                    operation="create_documents_directory",
+                    file_path=str(docs_dir),
+                    phase=phase.value,
+                ),
+                original_error=e,
+            ) from e
+
+        # Map phase to filename
+        filename_map = {
+            PhaseType.SPECIFICATION: "specification.md",
+            PhaseType.DESIGN: "design.md",
+            PhaseType.IMPLEMENTATION: "tasks.md",
+        }
+
+        filename = filename_map.get(phase)
+        if not filename:
+            logger.warning(f"Unknown phase for document save: {phase}")
+            raise DocumentSaveError(
+                f"Unknown phase type: {phase.value}",
+                phase=phase.value,
+                context=ErrorContext(
+                    operation="map_phase_to_filename",
+                    phase=phase.value,
+                    additional_info={"available_phases": list(filename_map.keys())},
+                ),
+            )
+
+        filepath = docs_dir / filename
+
+        try:
+            # Create timestamped backup if file exists
+            if filepath.exists():
+                timestamp = int(datetime.now().timestamp())
+                backup_path = filepath.with_suffix(f".md.backup.{timestamp}")
+                filepath.rename(backup_path)
+                logger.info(f"Backed up existing document to {backup_path}")
+
+            # Write new content with UTF-8 encoding
+            filepath.write_text(content, encoding="utf-8")
+            logger.info(f"Saved {phase.value} document to {filepath}")
+
+        except PermissionError as e:
+            logger.error(f"Permission denied writing document: {e}", exc_info=True)
+            raise DocumentSaveError(
+                f"Permission denied writing to {filepath}",
+                file_path=str(filepath),
+                phase=phase.value,
+                context=ErrorContext(
+                    operation="write_document_file",
+                    file_path=str(filepath),
+                    phase=phase.value,
+                ),
+                original_error=e,
+            ) from e
+        except OSError as e:
+            # Covers disk full, I/O errors, etc.
+            logger.error(f"OS error writing document: {e}", exc_info=True)
+            raise DocumentSaveError(
+                f"Failed to write document to {filepath}: {e}",
+                file_path=str(filepath),
+                phase=phase.value,
+                context=ErrorContext(
+                    operation="write_document_file",
+                    file_path=str(filepath),
+                    phase=phase.value,
+                ),
+                original_error=e,
+            ) from e
+        except Exception as e:
+            logger.error(f"Unexpected error writing document: {e}", exc_info=True)
+            raise DocumentSaveError(
+                f"Unexpected error saving {phase.value} document: {e}",
+                file_path=str(filepath),
+                phase=phase.value,
+                context=ErrorContext(
+                    operation="write_document_file",
+                    file_path=str(filepath),
+                    phase=phase.value,
+                ),
+                original_error=e,
+            ) from e
 
     def get_cost_tracker(self) -> CostTracker:
         """Get the cost tracker instance.

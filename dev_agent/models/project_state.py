@@ -46,3 +46,8 @@ class ProjectState:
     session_data: SessionData
     created_at: datetime
     updated_at: datetime
+    
+    # Approval tracking fields
+    specification_approved: bool = False
+    design_approved: bool = False
+    tasks_approved: bool = False
