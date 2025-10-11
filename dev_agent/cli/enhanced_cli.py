@@ -2117,6 +2117,10 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
         Args:
             project_path: Path to the project directory
+            
+        Note: This method uses asyncio.run() to execute async workflow operations.
+        This is safe because enhanced_cli methods are called synchronously
+        from the main CLI loop.
         """
         if not Path(project_path).exists():
             raise ValueError(f"Project path does not exist: {project_path}")
@@ -2137,7 +2141,10 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
                 "[green]📁 Found existing dev-agent project. Resuming...[/green]"
             )
             if self.workflow_manager:
-                self.workflow_manager.resume_project(project_path)
+                # Execute async resume using asyncio.run()
+                # This creates a new event loop for the async operation
+                import asyncio
+                asyncio.run(self.workflow_manager.resume_project(project_path))
         else:
             self.display_message(
                 "[blue]🚀 Initializing new dev-agent project...[/blue]"
@@ -2148,7 +2155,10 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             index_dir.mkdir(parents=True, exist_ok=True)
 
             if self.workflow_manager:
-                self.workflow_manager.start_new_project(project_path)
+                # Execute async initialization using asyncio.run()
+                # This creates a new event loop for the async operation
+                import asyncio
+                asyncio.run(self.workflow_manager.start_new_project(project_path))
 
     def display_message(self, message: str) -> None:
         """Display a message to the user.
