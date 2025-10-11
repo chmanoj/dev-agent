@@ -662,7 +662,7 @@ def init(
             )
 
         # Initialize project through workflow manager
-        project_state = workflow_manager.start_new_project(project_path)
+        project_state = asyncio.run(workflow_manager.start_new_project(project_path))
 
         success_msg = f"Started new project: {project_state.project_path}"
         if logger:
@@ -858,7 +858,7 @@ def resume(
 
         # Resume project through workflow manager
         try:
-            project_state = workflow_manager.resume_project(project_path)
+            project_state = asyncio.run(workflow_manager.resume_project(project_path))
             resume_msg = f"Resumed project: {project_state.project_path}"
             phase_msg = f"Current phase: {project_state.current_phase.value}"
             if logger:
@@ -871,7 +871,7 @@ def resume(
             console.print(
                 "[yellow]Could not resume project, starting new project...[/yellow]"
             )
-            project_state = workflow_manager.start_new_project(project_path)
+            project_state = asyncio.run(workflow_manager.start_new_project(project_path))
 
         # Start interactive mode
         _start_interactive_mode(project_path, session_manager, cli)
@@ -1875,7 +1875,7 @@ def cost_report(
         workflow_manager = create_workflow_manager(cli)
 
         try:
-            workflow_manager.resume_project(project_path)
+            asyncio.run(workflow_manager.resume_project(project_path))
         except Exception:
             console.print(
                 "[yellow]Could not load project state, showing empty report[/yellow]"
@@ -2218,7 +2218,7 @@ def status(
         workflow_manager = create_workflow_manager(cli)
 
         try:
-            project_state = workflow_manager.resume_project(project_path)
+            project_state = asyncio.run(workflow_manager.resume_project(project_path))
         except Exception as e:
             console.print(f"[red]Error: Could not load project state: {e}[/red]")
             raise typer.Exit(1)

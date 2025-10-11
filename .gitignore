@@ -237,3 +237,4 @@ site/
 Thumbs.db
 
 .cleanup_backups/*
+gemini.export.txt

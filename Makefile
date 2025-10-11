@@ -137,3 +137,17 @@ docs-deploy: ## Deploy documentation to GitHub Pages
 
 docs-install: ## Install documentation dependencies
 	uv sync --group docs
+
+# Interactive testing commands
+test-interactive-smoke: ## Run smoke test for interactive CLI using test-app/
+	uv run python scripts/test_interactive_e2e.py --test-type smoke
+
+test-interactive-full: ## Run full end-to-end interactive test using test-app/
+	uv run python scripts/test_interactive_e2e.py --test-type full
+
+test-interactive-debug: ## Run interactive test with debug output using test-app/
+	uv run python scripts/test_interactive_e2e.py --test-type smoke --debug
+
+test-interactive-clean: ## Clean test-app/.dev_agent directory
+	rm -rf test-app/.dev_agent
+	@echo "✓ Cleaned test-app/.dev_agent directory"
