@@ -138,7 +138,7 @@ class SpecificationWorkflow:
 
         # Save the specification
         if self.state_manager:
-            self._save_specification(spec)
+            await self._save_specification(spec)
 
         self.cli_interface.display_message(
             "Specification phase completed successfully!"
@@ -559,7 +559,7 @@ class SpecificationWorkflow:
 
         return False
 
-    def _save_specification(self, spec: SpecificationDocument) -> None:
+    async def _save_specification(self, spec: SpecificationDocument) -> None:
         """Save the specification document.
 
         Args:
@@ -570,17 +570,23 @@ class SpecificationWorkflow:
             formatted_spec = self.generator.format_specification_document(spec)
 
             # Save using state manager
-            self.state_manager.save_document(formatted_spec, DocumentType.SPECIFICATION)
+            await self.state_manager.save_document(
+                formatted_spec, DocumentType.SPECIFICATION
+            )
 
             # Update project state with approved specification
             project_state = self.state_manager.load_project_state()
             if project_state:
                 project_state.specification = spec
-                self.state_manager.save_project_state(project_state)
+                await self.state_manager.save_project_state(project_state)
 
             # Get the full path for display
             spec_path = self.state_manager.documents_dir / "SPECIFICATION.md"
-            relative_path = spec_path.relative_to(Path.cwd()) if spec_path.is_relative_to(Path.cwd()) else spec_path
+            relative_path = (
+                spec_path.relative_to(Path.cwd())
+                if spec_path.is_relative_to(Path.cwd())
+                else spec_path
+            )
 
             self.cli_interface.display_message(
                 f"Specification saved to {relative_path}"

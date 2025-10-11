@@ -87,7 +87,7 @@ class PhaseManager(IPhaseManager):
         # Progress tracking
         self.current_phase_progress = 0.0
 
-    def execute_indexing_phase(self, project_path: str) -> IndexingResult:
+    async def execute_indexing_phase(self, project_path: str) -> IndexingResult:
         """Execute the indexing phase.
 
         Args:
@@ -138,7 +138,7 @@ class PhaseManager(IPhaseManager):
                 project_state = self.state_manager.load_project_state()
                 if project_state:
                     project_state.current_phase = PhaseType.SPECIFICATION
-                    self.state_manager.save_project_state(project_state)
+                    await self.state_manager.save_project_state(project_state)
 
                 self.cli_interface.display_message(
                     "✅ Indexing complete! Moving to specification phase..."
@@ -180,7 +180,7 @@ class PhaseManager(IPhaseManager):
                         # Automatically transition to specification phase
                         project_state.current_phase = PhaseType.SPECIFICATION
 
-                        self.state_manager.save_project_state(project_state)
+                        await self.state_manager.save_project_state(project_state)
 
                     self.cli_interface.display_message(
                         f"✅ Indexed {result.files_indexed} files "
@@ -273,7 +273,7 @@ class PhaseManager(IPhaseManager):
                 project_state = self.state_manager.load_project_state()
                 if project_state:
                     project_state.specification = specification
-                    self.state_manager.save_project_state(project_state)
+                    await self.state_manager.save_project_state(project_state)
 
                 self.cli_interface.display_message(
                     f"✅ Specification completed with {result.requirements_count} requirements"
@@ -300,7 +300,7 @@ class PhaseManager(IPhaseManager):
             self.cli_interface.display_message(f"❌ Specification phase failed: {e}")
             return result
 
-    def execute_design_phase(self, context: ProjectContext) -> DesignResult:
+    async def execute_design_phase(self, context: ProjectContext) -> DesignResult:
         """Execute the design phase.
 
         Args:
@@ -353,7 +353,7 @@ class PhaseManager(IPhaseManager):
 
                 # Update project state
                 project_state.design = design
-                self.state_manager.save_project_state(project_state)
+                await self.state_manager.save_project_state(project_state)
 
                 self.cli_interface.display_message(
                     f"✅ Design completed with {result.components_count} components, "
@@ -381,7 +381,7 @@ class PhaseManager(IPhaseManager):
             self.cli_interface.display_message(f"❌ Design phase failed: {e}")
             return result
 
-    def execute_implementation_phase(
+    async def execute_implementation_phase(
         self, context: ProjectContext
     ) -> ImplementationResult:
         """Execute the implementation phase.
@@ -445,8 +445,8 @@ class PhaseManager(IPhaseManager):
             # Save task list
             task_list.approved = True
             project_state.tasks = task_list
-            self.state_manager.save_project_state(project_state)
-            self.state_manager.save_document(task_content, "tasks")
+            await self.state_manager.save_project_state(project_state)
+            await self.state_manager.save_document(task_content, "tasks")
 
             # Step 2: Initialize implementation tracking
             implementation_progress = {}
@@ -454,7 +454,7 @@ class PhaseManager(IPhaseManager):
                 implementation_progress[task.id] = "not_started"
 
             project_state.implementation_progress = implementation_progress
-            self.state_manager.save_project_state(project_state)
+            await self.state_manager.save_project_state(project_state)
 
             result.status = PhaseStatus.COMPLETED
             result.message = "Implementation phase setup completed"
@@ -656,15 +656,15 @@ class PhaseManager(IPhaseManager):
             try:
                 # Execute phase based on type
                 if phase == PhaseType.INDEXING:
-                    result = self.execute_indexing_phase(
+                    result = await self.execute_indexing_phase(
                         context.project_state.project_path
                     )
                 elif phase == PhaseType.SPECIFICATION:
                     result = await self.execute_specification_phase(context)
                 elif phase == PhaseType.DESIGN:
-                    result = self.execute_design_phase(context)
+                    result = await self.execute_design_phase(context)
                 elif phase == PhaseType.IMPLEMENTATION:
-                    result = self.execute_implementation_phase(context)
+                    result = await self.execute_implementation_phase(context)
                 else:
                     raise ValueError(f"Unknown phase: {phase}")
 

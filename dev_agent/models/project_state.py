@@ -47,6 +47,8 @@ class ProjectState:
     created_at: datetime
     updated_at: datetime
     
+    spec_folder: str | None = None
+
     # Approval tracking fields
     specification_approved: bool = False
     design_approved: bool = False

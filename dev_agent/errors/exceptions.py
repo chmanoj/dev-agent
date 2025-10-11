@@ -643,6 +643,9 @@ class StateSavingError(DevAgentError):
         context: ErrorContext | None = None,
         original_error: Exception | None = None,
     ):
+        self.error_type = error_type
+        self.file_path = file_path
+        self.original_error = original_error
         super().__init__(
             message=message,
             category=ErrorCategory.STATE,
@@ -650,9 +653,6 @@ class StateSavingError(DevAgentError):
             context=context,
             recoverable=error_type not in ["permission_error", "disk_full"],
         )
-        self.error_type = error_type
-        self.file_path = file_path
-        self.original_error = original_error
 
     def _generate_user_message(self) -> str:
         if self.error_type == "serialization_error":
