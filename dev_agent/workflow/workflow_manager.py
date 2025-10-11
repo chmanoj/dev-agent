@@ -174,7 +174,7 @@ class WorkflowManager(IWorkflowManager):
             logger.warning(f"Failed to initialize vector database: {e}")
             self.vector_db = None
 
-    def start_new_project(self, project_path: str) -> ProjectState:
+    async def start_new_project(self, project_path: str) -> ProjectState:
         """Start a new project workflow.
 
         Args:
@@ -201,7 +201,7 @@ class WorkflowManager(IWorkflowManager):
             )
 
             # Save initial state first
-            if not self.state_manager.save_project_state(project_state):
+            if not await self.state_manager.save_project_state(project_state):
                 raise Exception("Failed to save initial project state")
 
             self.current_project_state = project_state
@@ -243,7 +243,7 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(f"Error: {error_msg}")
             raise WorkflowException(error_msg) from e
 
-    def resume_project(self, project_path: str) -> ProjectState:
+    async def resume_project(self, project_path: str) -> ProjectState:
         """Resume an existing project workflow.
 
         Args:
@@ -270,7 +270,7 @@ class WorkflowManager(IWorkflowManager):
 
             # Update session data
             project_state.session_data.last_activity = datetime.now()
-            self.state_manager.save_project_state(project_state)
+            await self.state_manager.save_project_state(project_state)
 
             self.current_project_state = project_state
 
@@ -369,7 +369,7 @@ class WorkflowManager(IWorkflowManager):
             if result.status == PhaseStatus.COMPLETED:
                 # Update project state
                 self.current_project_state.current_phase = phase
-                self.state_manager.save_project_state(self.current_project_state)
+                await self.state_manager.save_project_state(self.current_project_state)
 
                 # Create after snapshot and action
                 if self.undo_redo_manager and before_snapshot_id:
@@ -429,7 +429,7 @@ class WorkflowManager(IWorkflowManager):
             self.error_handler.handle_phase_transition_error(current_phase, phase, e)
             return False
 
-    def require_user_approval(self, content: str, phase: PhaseType) -> bool:
+    async def require_user_approval(self, content: str, phase: PhaseType) -> bool:
         """Require user approval for phase completion.
 
         Args:
@@ -457,7 +457,7 @@ class WorkflowManager(IWorkflowManager):
                 self.current_project_state.session_data.user_approvals[phase.value] = (
                     approved
                 )
-                self.state_manager.save_project_state(self.current_project_state)
+                await self.state_manager.save_project_state(self.current_project_state)
 
                 # Create approval point snapshot
                 if self.undo_redo_manager:
@@ -634,7 +634,7 @@ class WorkflowManager(IWorkflowManager):
             self._display_budget_warning()
 
         # Save token usage to project state
-        self._save_token_usage_to_state()
+        await self._save_token_usage_to_state()
 
         return result
 
@@ -838,7 +838,7 @@ class WorkflowManager(IWorkflowManager):
 
         self.cli_interface.display_message("=" * 50)
 
-    def _save_token_usage_to_state(self) -> None:
+    async def _save_token_usage_to_state(self) -> None:
         """Save token usage statistics to project state."""
         if not self.current_project_state or not self.state_manager:
             return
@@ -864,7 +864,7 @@ class WorkflowManager(IWorkflowManager):
         self.current_project_state.session_data.token_usage = token_usage_data
 
         # Save updated state
-        self.state_manager.save_project_state(self.current_project_state)
+        await self.state_manager.save_project_state(self.current_project_state)
 
     def _save_document_to_file(self, phase: PhaseType, content: str) -> None:
         """Save generated document to filesystem.
@@ -1048,7 +1048,7 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(f"Error creating snapshot: {e}")
             return None
 
-    def restore_from_snapshot(self, snapshot_id: str) -> bool:
+    async def restore_from_snapshot(self, snapshot_id: str) -> bool:
         """Restore project state from a specific snapshot.
 
         Args:
@@ -1076,7 +1076,7 @@ class WorkflowManager(IWorkflowManager):
             self.current_project_state = restored_state
 
             # Save restored state
-            if not self.state_manager.save_project_state(restored_state):
+            if not await self.state_manager.save_project_state(restored_state):
                 self.cli_interface.display_message(
                     "Error: Could not save restored state"
                 )
@@ -1107,7 +1107,7 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(f"Error restoring snapshot: {e}")
             return False
 
-    def undo_last_action(self) -> bool:
+    async def undo_last_action(self) -> bool:
         """Undo the last action.
 
         Returns:
@@ -1136,7 +1136,7 @@ class WorkflowManager(IWorkflowManager):
             self.current_project_state = restored_state
 
             # Save restored state
-            if not self.state_manager.save_project_state(restored_state):
+            if not await self.state_manager.save_project_state(restored_state):
                 self.cli_interface.display_message("Error: Could not save undone state")
                 return False
 
@@ -1150,7 +1150,7 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(f"Error undoing action: {e}")
             return False
 
-    def redo_last_action(self) -> bool:
+    async def redo_last_action(self) -> bool:
         """Redo the last undone action.
 
         Returns:
@@ -1179,7 +1179,7 @@ class WorkflowManager(IWorkflowManager):
             self.current_project_state = restored_state
 
             # Save restored state
-            if not self.state_manager.save_project_state(restored_state):
+            if not await self.state_manager.save_project_state(restored_state):
                 self.cli_interface.display_message("Error: Could not save redone state")
                 return False
 

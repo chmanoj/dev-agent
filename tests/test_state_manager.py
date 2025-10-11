@@ -3,9 +3,11 @@
 import tempfile
 import unittest
 from datetime import datetime
+import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+from dev_agent.errors.exceptions import StateLoadingError
 from dev_agent.models.documents import (
     ArchitectureDescription,
     CodeAnalysisRef,
@@ -87,10 +89,11 @@ class TestStateManager(unittest.TestCase):
         self.assertTrue(self.state_manager.dev_agent_dir.exists())
         self.assertTrue(self.state_manager.documents_dir.exists())
 
-    def test_save_and_load_project_state(self):
+    @pytest.mark.asyncio
+    async def test_save_and_load_project_state(self):
         """Test saving and loading project state."""
         # Save the state
-        success = self.state_manager.save_project_state(self.sample_project_state)
+        success = await self.state_manager.save_project_state(self.sample_project_state)
         self.assertTrue(success)
         self.assertTrue(self.state_manager.state_file.exists())
 
@@ -138,8 +141,11 @@ class TestStateManager(unittest.TestCase):
         loaded_state = self.state_manager.load_project_state()
         self.assertIsNone(loaded_state)
 
-    def test_save_and_load_specification_document(self):
+    @pytest.mark.asyncio
+    @patch("dev_agent.state.state_manager.StateManager._get_spec_folder_name", new_callable=unittest.mock.AsyncMock)
+    async def test_save_and_load_specification_document(self, mock_get_spec_folder_name):
         """Test saving and loading specification documents."""
+        mock_get_spec_folder_name.return_value = "specification-test"
         # Create a sample specification
         requirement = Requirement(
             id="REQ-1",
@@ -165,7 +171,7 @@ class TestStateManager(unittest.TestCase):
         state_with_spec = self.sample_project_state
         state_with_spec.specification = spec
 
-        success = self.state_manager.save_project_state(state_with_spec)
+        success = await self.state_manager.save_project_state(state_with_spec)
         self.assertTrue(success)
 
         # Load and verify
@@ -181,7 +187,8 @@ class TestStateManager(unittest.TestCase):
         self.assertIsNotNone(req.source_analysis)
         self.assertEqual(req.source_analysis.confidence_score, 0.9)
 
-    def test_save_and_load_design_document(self):
+    @pytest.mark.asyncio
+    async def test_save_and_load_design_document(self):
         """Test saving and loading design documents."""
         # Create a sample design document
         architecture = ArchitectureDescription(
@@ -238,7 +245,7 @@ class TestStateManager(unittest.TestCase):
         state_with_design = self.sample_project_state
         state_with_design.design = design
 
-        success = self.state_manager.save_project_state(state_with_design)
+        success = await self.state_manager.save_project_state(state_with_design)
         self.assertTrue(success)
 
         # Load and verify
@@ -251,7 +258,8 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(len(loaded_state.design.components), 1)
         self.assertEqual(loaded_state.design.components[0].name, "StateManager")
 
-    def test_save_and_load_task_list(self):
+    @pytest.mark.asyncio
+    async def test_save_and_load_task_list(self):
         """Test saving and loading task lists."""
         # Create a sample task list
         task = Task(
@@ -279,7 +287,7 @@ class TestStateManager(unittest.TestCase):
         state_with_tasks = self.sample_project_state
         state_with_tasks.tasks = task_list
 
-        success = self.state_manager.save_project_state(state_with_tasks)
+        success = await self.state_manager.save_project_state(state_with_tasks)
         self.assertTrue(success)
 
         # Load and verify
@@ -292,13 +300,14 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(loaded_task.status, TaskStatus.IN_PROGRESS)
         self.assertEqual(loaded_task.generated_files, ["state_manager.py"])
 
-    def test_update_phase_status(self):
+    @pytest.mark.asyncio
+    async def test_update_phase_status(self):
         """Test updating phase status."""
         # First save initial state
-        self.state_manager.save_project_state(self.sample_project_state)
+        await self.state_manager.save_project_state(self.sample_project_state)
 
         # Update phase
-        success = self.state_manager.update_phase_status(
+        success = await self.state_manager.update_phase_status(
             PhaseType.DESIGN, "moving to design"
         )
         self.assertTrue(success)
@@ -307,11 +316,14 @@ class TestStateManager(unittest.TestCase):
         loaded_state = self.state_manager.load_project_state()
         self.assertEqual(loaded_state.current_phase, PhaseType.DESIGN)
 
-    def test_save_and_load_documents(self):
+    @pytest.mark.asyncio
+    @patch("dev_agent.state.state_manager.StateManager._get_spec_folder_name", new_callable=unittest.mock.AsyncMock)
+    async def test_save_and_load_documents(self, mock_get_spec_folder_name):
         """Test saving and loading markdown documents."""
+        mock_get_spec_folder_name.return_value = "specification-test"
         # Test specification document
         spec_content = "# Specification\n\nThis is a test specification."
-        success = self.state_manager.save_document(
+        success = await self.state_manager.save_document(
             spec_content, DocumentType.SPECIFICATION
         )
         self.assertTrue(success)
@@ -321,7 +333,7 @@ class TestStateManager(unittest.TestCase):
 
         # Test design document
         design_content = "# Design\n\nThis is a test design."
-        success = self.state_manager.save_document(design_content, DocumentType.DESIGN)
+        success = await self.state_manager.save_document(design_content, DocumentType.DESIGN)
         self.assertTrue(success)
 
         loaded_design = self.state_manager.load_document(DocumentType.DESIGN)
@@ -329,7 +341,7 @@ class TestStateManager(unittest.TestCase):
 
         # Test tasks document
         tasks_content = "# Tasks\n\n- [ ] Task 1\n- [ ] Task 2"
-        success = self.state_manager.save_document(tasks_content, DocumentType.TASKS)
+        success = await self.state_manager.save_document(tasks_content, DocumentType.TASKS)
         self.assertTrue(success)
 
         loaded_tasks = self.state_manager.load_document(DocumentType.TASKS)
@@ -340,13 +352,14 @@ class TestStateManager(unittest.TestCase):
         loaded_doc = self.state_manager.load_document(DocumentType.SPECIFICATION)
         self.assertIsNone(loaded_doc)
 
-    def test_track_task_progress(self):
+    @pytest.mark.asyncio
+    async def test_track_task_progress(self):
         """Test tracking task progress."""
         # First save initial state
-        self.state_manager.save_project_state(self.sample_project_state)
+        await self.state_manager.save_project_state(self.sample_project_state)
 
         # Track progress for a new task
-        success = self.state_manager.track_task_progress("task3", TaskStatus.COMPLETED)
+        success = await self.state_manager.track_task_progress("task3", TaskStatus.COMPLETED)
         self.assertTrue(success)
 
         # Verify update
@@ -379,14 +392,15 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(initial_state.session_data.session_id, session_id)
         self.assertEqual(len(initial_state.implementation_progress), 0)
 
-    def test_get_project_info(self):
+    @pytest.mark.asyncio
+    async def test_get_project_info(self):
         """Test getting project information."""
         # Test with no existing state
         info = self.state_manager.get_project_info()
         self.assertIsNone(info)
 
         # Save state and test again
-        self.state_manager.save_project_state(self.sample_project_state)
+        await self.state_manager.save_project_state(self.sample_project_state)
         info = self.state_manager.get_project_info()
 
         self.assertIsNotNone(info)
@@ -404,21 +418,26 @@ class TestStateManager(unittest.TestCase):
         with open(self.state_manager.state_file, "w") as f:
             f.write("invalid json content")
 
-        # Should return None and not crash
-        loaded_state = self.state_manager.load_project_state()
-        self.assertIsNone(loaded_state)
+        # Should raise StateLoadingError
+        with self.assertRaises(StateLoadingError):
+            self.state_manager.load_project_state()
 
-    def test_error_handling_permission_denied(self):
+    @pytest.mark.asyncio
+    async def test_error_handling_permission_denied(self):
         """Test error handling when file operations fail."""
         # Make the directory read-only to simulate permission issues
-        with patch("builtins.open", side_effect=PermissionError("Permission denied")):
-            success = self.state_manager.save_project_state(self.sample_project_state)
-            self.assertFalse(success)
+        with patch(
+            "tempfile.mkstemp", side_effect=PermissionError("Permission denied")
+        ) as mock_mkstemp:
+            with self.assertRaises(Exception) as context:
+                await self.state_manager.save_project_state(self.sample_project_state)
+            self.assertIn("Permission denied", str(context.exception))
 
-    def test_datetime_serialization(self):
+    @pytest.mark.asyncio
+    async def test_datetime_serialization(self):
         """Test that datetime objects are properly serialized and deserialized."""
         # Save state with datetime fields
-        self.state_manager.save_project_state(self.sample_project_state)
+        await self.state_manager.save_project_state(self.sample_project_state)
 
         # Load and verify datetime fields are preserved
         loaded_state = self.state_manager.load_project_state()

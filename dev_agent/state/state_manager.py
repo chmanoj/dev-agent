@@ -1,5 +1,6 @@
 """State management for project state persistence and recovery."""
 
+import asyncio
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from ..errors.exceptions import (
     StateLoadingError,
     StateSavingError,
 )
+from ..llm import ILLMClient, create_llm_client
 from ..models.documents import DesignDocument, SpecificationDocument, TaskList
 from ..models.enums import DocumentType, PhaseType, TaskStatus
 from ..models.project_state import IndexMetadata, ProjectState, SessionData
@@ -36,18 +38,25 @@ _perf_monitor = PerformanceMonitor()
 class StateManager:
     """Manages project state persistence and document storage."""
 
-    def __init__(self, project_path: str, enable_recovery: bool = False):
+    def __init__(
+        self,
+        project_path: str,
+        enable_recovery: bool = False,
+        llm_client: ILLMClient | None = None,
+    ):
         """Initialize StateManager for a specific project.
 
         Args:
             project_path: Path to the project directory
             enable_recovery: Whether to enable automatic state recovery (default: False for testing compatibility)
+            llm_client: Optional LLM client for spec folder naming
         """
         self.project_path = Path(project_path)
         self.dev_agent_dir = self.project_path / ".dev_agent"
         self.state_file = self.dev_agent_dir / "state.json"
         self.documents_dir = self.dev_agent_dir / "documents"
         self.enable_recovery = enable_recovery
+        self.llm_client = llm_client
 
         # Ensure directories exist
         self._ensure_directories()
@@ -283,7 +292,7 @@ class StateManager:
         
         return warnings
 
-    def save_project_state(self, state: ProjectState) -> bool:
+    async def save_project_state(self, state: ProjectState) -> bool:
         """Save project state to JSON file with optimized performance.
         
         Uses atomic write with temporary file to ensure data integrity
@@ -381,176 +390,179 @@ class StateManager:
                         original_error=e
                     ) from e
 
-                # Write to temporary file first (atomic operation)
-                try:
-                    temp_fd, temp_path = tempfile.mkstemp(
-                        dir=self.dev_agent_dir,
-                        prefix=".state_",
-                        suffix=".json.tmp"
-                    )
-                except OSError as e:
-                    logger.error(
-                        f"Failed to create temporary file for state save: {e}",
-                        exc_info=True,
-                        extra={
-                            "operation": "save_project_state",
-                            "phase": "temp_file_creation",
-                            "directory": str(self.dev_agent_dir)
-                        }
-                    )
-                    if e.errno == 28:  # No space left on device
-                        self._display_error_panel(
-                            title="❌ State Save Failed - Disk Full",
-                            message=(
-                                f"Insufficient disk space to save project state.\n\n"
-                                f"Directory: {self.dev_agent_dir}\n\n"
-                                "Please free up disk space and try again."
-                            ),
-                            style="red"
-                        )
-                        raise StateSavingError(
-                            message="Insufficient disk space",
-                            error_type="disk_full",
-                            file_path=str(self.state_file),
-                            context=ErrorContext(
-                                operation="save_project_state",
-                                file_path=str(self.state_file),
-                                phase="temp_file_creation"
-                            ),
-                            original_error=e
-                        ) from e
-                    elif e.errno == 13:  # Permission denied
-                        self._display_error_panel(
-                            title="❌ State Save Failed - Permission Denied",
-                            message=(
-                                f"Permission denied creating temporary file.\n\n"
-                                f"Directory: {self.dev_agent_dir}\n\n"
-                                "Check directory permissions and try again."
-                            ),
-                            style="red"
-                        )
-                        raise StateSavingError(
-                            message="Permission denied creating temporary file",
-                            error_type="permission_error",
-                            file_path=str(self.state_file),
-                            context=ErrorContext(
-                                operation="save_project_state",
-                                file_path=str(self.state_file),
-                                phase="temp_file_creation"
-                            ),
-                            original_error=e
-                        ) from e
-                    else:
-                        self._display_error_panel(
-                            title="❌ State Save Failed - I/O Error",
-                            message=(
-                                f"I/O error creating temporary file: {e}\n\n"
-                                f"Directory: {self.dev_agent_dir}\n\n"
-                                "Check disk health and file system integrity."
-                            ),
-                            style="red"
-                        )
-                        raise StateSavingError(
-                            message=f"I/O error creating temporary file: {e}",
-                            error_type="io_error",
-                            file_path=str(self.state_file),
-                            context=ErrorContext(
-                                operation="save_project_state",
-                                file_path=str(self.state_file),
-                                phase="temp_file_creation"
-                            ),
-                            original_error=e
-                        ) from e
-                
-                try:
-                    # Write with minimal formatting for speed (no indent)
-                    # Use separators to minimize whitespace
-                    with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
-                        json.dump(
-                            state_dict,
-                            f,
-                            ensure_ascii=False,
-                            separators=(',', ':')  # Compact format for speed
-                        )
-                    
-                    # Atomic rename
-                    os.replace(temp_path, self.state_file)
-                    
-                    logger.info(
-                        f"Successfully saved project state to {self.state_file}",
-                        extra={
-                            "operation": "save_project_state",
-                            "file_path": str(self.state_file),
-                            "phase": state.current_phase.value if state.current_phase else "unknown"
-                        }
-                    )
-                    
-                except Exception as e:
-                    # Clean up temp file on error
+                def _sync_write():
+                    # Write to temporary file first (atomic operation)
                     try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        pass
-                    
-                    logger.error(
-                        f"Failed to write state file: {e}",
-                        exc_info=True,
-                        extra={
-                            "operation": "save_project_state",
-                            "phase": "file_write",
-                            "temp_path": temp_path,
-                            "target_path": str(self.state_file)
-                        }
-                    )
-                    
-                    if isinstance(e, OSError):
+                        temp_fd, temp_path = tempfile.mkstemp(
+                            dir=self.dev_agent_dir,
+                            prefix=".state_",
+                            suffix=".json.tmp"
+                        )
+                    except OSError as e:
+                        logger.error(
+                            f"Failed to create temporary file for state save: {e}",
+                            exc_info=True,
+                            extra={
+                                "operation": "save_project_state",
+                                "phase": "temp_file_creation",
+                                "directory": str(self.dev_agent_dir)
+                            }
+                        )
                         if e.errno == 28:  # No space left on device
-                            error_type = "disk_full"
-                            title = "❌ State Save Failed - Disk Full"
-                            message = (
-                                f"Insufficient disk space to write state file.\n\n"
-                                f"File: {self.state_file}\n\n"
-                                "Please free up disk space and try again."
+                            self._display_error_panel(
+                                title="❌ State Save Failed - Disk Full",
+                                message=(
+                                    f"Insufficient disk space to save project state.\n\n"
+                                    f"Directory: {self.dev_agent_dir}\n\n"
+                                    "Please free up disk space and try again."
+                                ),
+                                style="red"
                             )
+                            raise StateSavingError(
+                                message="Insufficient disk space",
+                                error_type="disk_full",
+                                file_path=str(self.state_file),
+                                context=ErrorContext(
+                                    operation="save_project_state",
+                                    file_path=str(self.state_file),
+                                    phase="temp_file_creation"
+                                ),
+                                original_error=e
+                            ) from e
                         elif e.errno == 13:  # Permission denied
-                            error_type = "permission_error"
-                            title = "❌ State Save Failed - Permission Denied"
-                            message = (
-                                f"Permission denied writing state file.\n\n"
-                                f"File: {self.state_file}\n\n"
-                                "Check file permissions and try again."
+                            self._display_error_panel(
+                                title="❌ State Save Failed - Permission Denied",
+                                message=(
+                                    f"Permission denied creating temporary file.\n\n"
+                                    f"Directory: {self.dev_agent_dir}\n\n"
+                                    "Check directory permissions and try again."
+                                ),
+                                style="red"
                             )
+                            raise StateSavingError(
+                                message="Permission denied creating temporary file",
+                                error_type="permission_error",
+                                file_path=str(self.state_file),
+                                context=ErrorContext(
+                                    operation="save_project_state",
+                                    file_path=str(self.state_file),
+                                    phase="temp_file_creation"
+                                ),
+                                original_error=e
+                            ) from e
+                        else:
+                            self._display_error_panel(
+                                title="❌ State Save Failed - I/O Error",
+                                message=(
+                                    f"I/O error creating temporary file: {e}\n\n"
+                                    f"Directory: {self.dev_agent_dir}\n\n"
+                                    "Check disk health and file system integrity."
+                                ),
+                                style="red"
+                            )
+                            raise StateSavingError(
+                                message=f"I/O error creating temporary file: {e}",
+                                error_type="io_error",
+                                file_path=str(self.state_file),
+                                context=ErrorContext(
+                                    operation="save_project_state",
+                                    file_path=str(self.state_file),
+                                    phase="temp_file_creation"
+                                ),
+                                original_error=e
+                            ) from e
+                    
+                    try:
+                        # Write with minimal formatting for speed (no indent)
+                        # Use separators to minimize whitespace
+                        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                            json.dump(
+                                state_dict,
+                                f,
+                                ensure_ascii=False,
+                                separators=(',', ':')  # Compact format for speed
+                            )
+
+                        # Atomic rename
+                        os.replace(temp_path, self.state_file)
+
+                        logger.info(
+                            f"Successfully saved project state to {self.state_file}",
+                            extra={
+                                "operation": "save_project_state",
+                                "file_path": str(self.state_file),
+                                "phase": state.current_phase.value if state.current_phase else "unknown"
+                            }
+                        )
+
+                    except Exception as e:
+                        # Clean up temp file on error
+                        try:
+                            os.unlink(temp_path)
+                        except OSError:
+                            pass
+
+                        logger.error(
+                            f"Failed to write state file: {e}",
+                            exc_info=True,
+                            extra={
+                                "operation": "save_project_state",
+                                "phase": "file_write",
+                                "temp_path": temp_path,
+                                "target_path": str(self.state_file)
+                            }
+                        )
+
+                        if isinstance(e, OSError):
+                            if e.errno == 28:  # No space left on device
+                                error_type = "disk_full"
+                                title = "❌ State Save Failed - Disk Full"
+                                message = (
+                                    f"Insufficient disk space to write state file.\n\n"
+                                    f"File: {self.state_file}\n\n"
+                                    "Please free up disk space and try again."
+                                )
+                            elif e.errno == 13:  # Permission denied
+                                error_type = "permission_error"
+                                title = "❌ State Save Failed - Permission Denied"
+                                message = (
+                                    f"Permission denied writing state file.\n\n"
+                                    f"File: {self.state_file}\n\n"
+                                    "Check file permissions and try again."
+                                )
+                            else:
+                                error_type = "io_error"
+                                title = "❌ State Save Failed - I/O Error"
+                                message = (
+                                    f"I/O error writing state file: {e}\n\n"
+                                    f"File: {self.state_file}\n\n"
+                                    "Check disk health and file system integrity."
+                                )
                         else:
                             error_type = "io_error"
-                            title = "❌ State Save Failed - I/O Error"
+                            title = "❌ State Save Failed - Write Error"
                             message = (
-                                f"I/O error writing state file: {e}\n\n"
+                                f"Failed to write state file: {e}\n\n"
                                 f"File: {self.state_file}\n\n"
-                                "Check disk health and file system integrity."
+                                "Please check the file system and try again."
                             )
-                    else:
-                        error_type = "io_error"
-                        title = "❌ State Save Failed - Write Error"
-                        message = (
-                            f"Failed to write state file: {e}\n\n"
-                            f"File: {self.state_file}\n\n"
-                            "Please check the file system and try again."
-                        )
-                    
-                    self._display_error_panel(title=title, message=message, style="red")
-                    
-                    raise StateSavingError(
-                        message=f"Failed to write state file: {e}",
-                        error_type=error_type,
-                        file_path=str(self.state_file),
-                        context=ErrorContext(
-                            operation="save_project_state",
-                            file_path=str(self.state_file),
-                            phase="file_write"
-                        ),
-                        original_error=e
-                    ) from e
 
+                        self._display_error_panel(title=title, message=message, style="red")
+
+                        raise StateSavingError(
+                            message=f"Failed to write state file: {e}",
+                            error_type=error_type,
+                            file_path=str(self.state_file),
+                            context=ErrorContext(
+                                operation="save_project_state",
+                                file_path=str(self.state_file),
+                                phase="file_write"
+                            ),
+                            original_error=e
+                        ) from e
+
+                await asyncio.to_thread(_sync_write)
+                logger.info("Finished writing to file.")
                 return True
                 
             except (StateSavingError, DatetimeSerializationError):
@@ -832,10 +844,12 @@ class StateManager:
             return None
 
         try:
+            logger.info(f"Attempting to load state from {self.state_file}")
             # Attempt to read and parse the JSON file
             try:
                 with open(self.state_file, encoding="utf-8") as f:
                     state_dict = json.load(f)
+                logger.info("Successfully loaded and parsed state file.")
             except FileNotFoundError as e:
                 logger.error(
                     f"State file not found: {self.state_file}",
@@ -1448,7 +1462,7 @@ class StateManager:
             approved=tasks_dict["approved"],
         )
 
-    def update_phase_status(self, phase: PhaseType, status: str) -> bool:
+    async def update_phase_status(self, phase: PhaseType, status: str) -> bool:
         """Update the current phase in the project state.
 
         Args:
@@ -1475,7 +1489,7 @@ class StateManager:
             state.current_phase = phase
             state.updated_at = datetime.now()
 
-            success = self.save_project_state(state)
+            success = await self.save_project_state(state)
             if success:
                 logger.info(
                     f"Updated phase from {old_phase} to {phase.value}",
@@ -1511,7 +1525,7 @@ class StateManager:
             )
             return False
 
-    def save_document(self, document: str, doc_type: DocumentType) -> bool:
+    async def save_document(self, document: str, doc_type: DocumentType) -> bool:
         """Save a document to the appropriate file.
 
         Args:
@@ -1522,16 +1536,24 @@ class StateManager:
             True if successful, False otherwise
         """
         try:
-            # Generate spec-specific folder structure
-            spec_folder = self._get_spec_folder_name(document)
-            
-            filename_map = {
-                DocumentType.SPECIFICATION: f"{spec_folder}/requirements.md",
-                DocumentType.DESIGN: f"{spec_folder}/design.md", 
-                DocumentType.TASKS: f"{spec_folder}/tasks.md",
-            }
+            if doc_type == DocumentType.SPECIFICATION:
+                state = self.load_project_state()
+                if not state:
+                    logger.error("Cannot save specification without a project state.")
+                    return False
 
-            filename = filename_map.get(doc_type)
+                spec_folder = await self._get_spec_folder_name(document)
+                state.spec_folder = spec_folder
+                await self.save_project_state(state)
+
+                filename = f"{spec_folder}/requirements.md"
+            else:
+                filename_map = {
+                    DocumentType.DESIGN: "design.md",
+                    DocumentType.TASKS: "tasks.md",
+                }
+                filename = filename_map.get(doc_type)
+
             if not filename:
                 logger.error(
                     f"Unknown document type: {doc_type}",
@@ -1543,8 +1565,6 @@ class StateManager:
                 return False
 
             file_path = self.documents_dir / filename
-
-            # Create directory if it doesn't exist
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
             with open(file_path, "w", encoding="utf-8") as f:
@@ -1631,50 +1651,60 @@ class StateManager:
             )
             return False
 
-    def _get_spec_folder_name(self, document: str) -> str:
-        """Generate a folder name for the specification based on document content.
-        
+    async def _get_spec_folder_name(self, document: str) -> str:
+        """Generate a folder name for the specification using an LLM.
+
         Args:
             document: The document content
-            
+
         Returns:
             Folder name for the specification
         """
         import re
         from datetime import datetime
-        
-        # Try to extract a meaningful name from the document
-        lines = document.split('\n')
-        
-        # Look for title or feature name in first few lines
-        for line in lines[:10]:
-            line = line.strip()
-            if line.startswith('# '):
-                # Use the main title
-                title = line[2:].strip()
-                break
-            elif 'login' in line.lower():
-                title = "login-page"
-                break
-            elif 'authentication' in line.lower():
-                title = "authentication"
-                break
-            elif 'user' in line.lower() and ('story' in line.lower() or 'feature' in line.lower()):
-                # Extract feature name from user story
-                title = re.sub(r'.*user.*?want to\s*', '', line.lower())
-                title = re.sub(r'\s*so that.*', '', title)
-                title = title.strip()
-                break
-        else:
-            # Default to timestamp-based name
-            title = f"spec-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        
-        # Clean up the title for use as folder name
-        folder_name = re.sub(r'[^\w\s-]', '', title.lower())
-        folder_name = re.sub(r'\s+', '-', folder_name.strip())
-        folder_name = folder_name[:50]  # Limit length
-        
-        return folder_name or "default-spec"
+
+        # Initialize LLM client if not already available
+        if self.llm_client is None:
+            try:
+                self.llm_client = create_llm_client()
+            except Exception as e:
+                logger.error(f"Failed to create LLM client: {e}", exc_info=True)
+                # Fallback to default naming if LLM client fails
+                return f"spec-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+        try:
+            # Prompt for generating a folder name
+            prompt = (
+                "Based on the following specification, generate a concise, "
+                "kebab-case folder name (e.g., 'user-authentication' or 'payment-gateway'). "
+                "The name should be a maximum of 50 characters.\n\n"
+                f"Specification:\n---\n{document[:2000]}\n---\n\n"
+                "Folder name:"
+            )
+
+            # Generate folder name using LLM
+            folder_name = await self.llm_client.generate_completion(
+                prompt,
+                system_prompt="You are an expert at creating concise, descriptive, and valid folder names.",
+                temperature=0.2,
+                max_tokens=20,
+            )
+
+            # Clean up the generated name
+            folder_name = folder_name.strip().lower()
+            folder_name = re.sub(r"[^a-z0-9-]+", "", folder_name)
+            folder_name = folder_name[:50]  # Enforce length limit
+
+            if folder_name:
+                return folder_name
+
+        except Exception as e:
+            logger.error(
+                f"LLM-based folder name generation failed: {e}", exc_info=True
+            )
+
+        # Fallback to default naming
+        return f"spec-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
     def load_document(self, doc_type: DocumentType) -> str | None:
         """Load a document from file.
@@ -1686,13 +1716,19 @@ class StateManager:
             Document content as string if successful, None otherwise
         """
         try:
-            filename_map = {
-                DocumentType.SPECIFICATION: "SPECIFICATION.md",
-                DocumentType.DESIGN: "DESIGN.md",
-                DocumentType.TASKS: "TASKS.md",
-            }
+            if doc_type == DocumentType.SPECIFICATION:
+                state = self.load_project_state()
+                if not state or not state.spec_folder:
+                    logger.warning("Cannot load specification without a spec_folder in the project state.")
+                    return None
+                filename = f"{state.spec_folder}/requirements.md"
+            else:
+                filename_map = {
+                    DocumentType.DESIGN: "design.md",
+                    DocumentType.TASKS: "tasks.md",
+                }
+                filename = filename_map.get(doc_type)
 
-            filename = filename_map.get(doc_type)
             if not filename:
                 logger.error(
                     f"Unknown document type: {doc_type}",
@@ -1790,7 +1826,7 @@ class StateManager:
             )
             return None
 
-    def track_task_progress(self, task_id: str, progress: TaskStatus) -> bool:
+    async def track_task_progress(self, task_id: str, progress: TaskStatus) -> bool:
         """Track progress of a specific implementation task.
 
         Args:
@@ -1817,7 +1853,7 @@ class StateManager:
             state.implementation_progress[task_id] = progress
             state.updated_at = datetime.now()
 
-            success = self.save_project_state(state)
+            success = await self.save_project_state(state)
             if success:
                 logger.info(
                     f"Updated task {task_id} progress from {old_status.value if old_status else 'none'} to {progress.value}",
