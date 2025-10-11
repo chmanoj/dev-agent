@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from .enums import Priority, SpecificationSource, TaskStatus
 
@@ -14,6 +15,23 @@ class CodeAnalysisRef:
     functions: list[str]
     confidence_score: float
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "file_paths": self.file_paths,
+            "functions": self.functions,
+            "confidence_score": self.confidence_score,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CodeAnalysisRef":
+        """Create from dictionary."""
+        return cls(
+            file_paths=data["file_paths"],
+            functions=data["functions"],
+            confidence_score=data["confidence_score"],
+        )
+
 
 @dataclass
 class Requirement:
@@ -24,6 +42,27 @@ class Requirement:
     acceptance_criteria: list[str]
     priority: Priority
     source_analysis: CodeAnalysisRef | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "user_story": self.user_story,
+            "acceptance_criteria": self.acceptance_criteria,
+            "priority": self.priority.value,
+            "source_analysis": self.source_analysis.to_dict() if self.source_analysis else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Requirement":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            user_story=data["user_story"],
+            acceptance_criteria=data["acceptance_criteria"],
+            priority=Priority(data["priority"]),
+            source_analysis=CodeAnalysisRef.from_dict(data["source_analysis"]) if data.get("source_analysis") else None,
+        )
 
 
 @dataclass
@@ -37,6 +76,31 @@ class SpecificationDocument:
     version: str
     approved: bool
     approval_timestamp: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "introduction": self.introduction,
+            "key_features": self.key_features,
+            "functional_requirements": [req.to_dict() for req in self.functional_requirements],
+            "source": self.source.value,
+            "version": self.version,
+            "approved": self.approved,
+            "approval_timestamp": self.approval_timestamp.isoformat() if self.approval_timestamp else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SpecificationDocument":
+        """Create from dictionary."""
+        return cls(
+            introduction=data["introduction"],
+            key_features=data["key_features"],
+            functional_requirements=[Requirement.from_dict(req) for req in data["functional_requirements"]],
+            source=SpecificationSource(data["source"]),
+            version=data["version"],
+            approved=data["approved"],
+            approval_timestamp=datetime.fromisoformat(data["approval_timestamp"]) if data.get("approval_timestamp") else None,
+        )
 
 
 @dataclass

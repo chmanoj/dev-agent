@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -27,6 +28,8 @@ from ..models.results import (
 from ..state.state_manager import StateManager
 from ..workflow.design_workflow import DesignWorkflow
 from ..workflow.specification_workflow import SpecificationWorkflow
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..indexing.vector_database import VectorDatabase
@@ -272,7 +275,12 @@ class PhaseManager(IPhaseManager):
                 # Update project state
                 project_state = self.state_manager.load_project_state()
                 if project_state:
+                    logger.info(f"Phase manager loaded state, specification type: {type(project_state.specification)}")
+                    logger.info(f"Phase manager loaded state, specification_approved: {project_state.specification_approved}")
                     project_state.specification = specification
+                    project_state.specification_approved = True
+                    logger.info(f"Phase manager set specification type: {type(project_state.specification)}")
+                    logger.info(f"Phase manager set specification_approved: {project_state.specification_approved}")
                     await self.state_manager.save_project_state(project_state)
 
                 self.cli_interface.display_message(

@@ -618,9 +618,9 @@ class WorkflowManager(IWorkflowManager):
         elif phase == PhaseType.SPECIFICATION:
             result = await self.phase_manager.execute_specification_phase(context)
         elif phase == PhaseType.DESIGN:
-            result = self.phase_manager.execute_design_phase(context)
+            result = await self.phase_manager.execute_design_phase(context)
         elif phase == PhaseType.IMPLEMENTATION:
-            result = self.phase_manager.execute_implementation_phase(context)
+            result = await self.phase_manager.execute_implementation_phase(context)
         else:
             raise Exception(f"Unknown phase: {phase}")
 
@@ -840,7 +840,12 @@ class WorkflowManager(IWorkflowManager):
 
     async def _save_token_usage_to_state(self) -> None:
         """Save token usage statistics to project state."""
-        if not self.current_project_state or not self.state_manager:
+        if not self.state_manager:
+            return
+
+        # Reload current state to avoid overwriting changes made by phase manager
+        current_state = self.state_manager.load_project_state()
+        if not current_state:
             return
 
         # Get current report
@@ -861,10 +866,13 @@ class WorkflowManager(IWorkflowManager):
             "last_updated": datetime.now().isoformat(),
         }
 
-        self.current_project_state.session_data.token_usage = token_usage_data
+        current_state.session_data.token_usage = token_usage_data
 
-        # Save updated state
-        await self.state_manager.save_project_state(self.current_project_state)
+        # Save updated state (preserving any changes made by phase manager)
+        await self.state_manager.save_project_state(current_state)
+        
+        # Update our cached state
+        self.current_project_state = current_state
 
     def _save_document_to_file(self, phase: PhaseType, content: str) -> None:
         """Save generated document to filesystem.

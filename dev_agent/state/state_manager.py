@@ -109,6 +109,12 @@ class StateManager:
             DatetimeSerializationError: If datetime serialization fails
         """
         try:
+            # Debug logging for specification objects
+            if field_path == "specification" or "specification" in field_path:
+                logger.debug(f"Serializing specification object at path '{field_path}': {type(obj)}")
+                if obj is not None:
+                    logger.debug(f"Specification object is not None: {hasattr(obj, 'to_dict')}")
+            
             # Check datetime FIRST before other type checks
             if isinstance(obj, datetime):
                 try:
@@ -136,6 +142,33 @@ class StateManager:
             elif hasattr(obj, "value"):  # Handle enums
                 return obj.value
             elif is_dataclass(obj):
+                # Debug logging for SpecificationDocument
+                if type(obj).__name__ == 'SpecificationDocument':
+                    logger.info(f"🔍 Found SpecificationDocument at path '{field_path}'")
+                    logger.info(f"🔍 Has to_dict: {hasattr(obj, 'to_dict')}")
+                    logger.info(f"🔍 to_dict callable: {callable(getattr(obj, 'to_dict', None))}")
+                
+                # Check if the object has a custom to_dict method
+                if hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
+                    try:
+                        logger.debug(f"Using to_dict() for {type(obj).__name__} at path '{field_path}'")
+                        result = obj.to_dict()
+                        logger.debug(f"to_dict() succeeded for {type(obj).__name__}, result type: {type(result)}")
+                        if type(obj).__name__ == 'SpecificationDocument':
+                            logger.info(f"✅ SpecificationDocument serialized successfully")
+                        return result
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to serialize using to_dict() at path '{field_path}': {e}",
+                            exc_info=True,
+                            extra={
+                                "field_path": field_path,
+                                "object_type": type(obj).__name__,
+                                "operation": "to_dict_serialization"
+                            }
+                        )
+                        # Fall back to manual serialization
+                
                 # Manually iterate through fields to maintain recursive handling
                 result = {}
                 for field_name, field_value in asdict(obj).items():

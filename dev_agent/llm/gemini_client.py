@@ -113,7 +113,13 @@ class GeminiClient(ILLMClient):
             List of safety settings or None if not configured
         """
         if not self.config.safety_settings:
-            return None
+            # Use permissive defaults for code generation
+            return [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
 
         safety_settings = []
         for category, threshold in self.config.safety_settings.items():
@@ -182,20 +188,30 @@ class GeminiClient(ILLMClient):
                 max_tokens=max_tokens,
             )
 
-            # Extract text from response
-            if not response.text:
-                logger.warning("Gemini returned empty response")
+            # Extract text from response, handling blocked responses
+            try:
+                response_text = response.text
+                if not response_text:
+                    logger.warning("Gemini returned empty response")
+                    return ""
+            except ValueError as e:
+                # Handle blocked responses (finish_reason = 2 or other safety blocks)
+                logger.warning(f"Gemini response was blocked or invalid: {e}")
+                if hasattr(response, 'candidates') and response.candidates:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'finish_reason'):
+                        logger.warning(f"Response finish_reason: {candidate.finish_reason}")
                 return ""
 
             # Log actual usage (Gemini doesn't provide detailed token counts in response)
-            completion_tokens = self.count_tokens(response.text)
+            completion_tokens = self.count_tokens(response_text)
             actual_cost = self.estimate_cost(prompt_tokens, completion_tokens)
             logger.info(
                 f"Completion generated: ~{prompt_tokens + completion_tokens} total tokens, "
                 f"actual cost: ${actual_cost:.4f}"
             )
 
-            return response.text
+            return response_text
 
         except (
             google_exceptions.PermissionDenied,

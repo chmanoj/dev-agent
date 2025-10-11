@@ -574,11 +574,10 @@ class SpecificationWorkflow:
                 formatted_spec, DocumentType.SPECIFICATION
             )
 
-            # Update project state with approved specification
-            project_state = self.state_manager.load_project_state()
-            if project_state:
-                project_state.specification = spec
-                await self.state_manager.save_project_state(project_state)
+            # Note: State will be updated by the phase manager
+            # Don't save state here to avoid race conditions
+            logger.info(f"Specification workflow completed, spec type: {type(spec)}")
+            logger.info(f"Specification approved: {spec.approved}")
 
             # Get the full path for display
             spec_path = self.state_manager.documents_dir / "SPECIFICATION.md"

@@ -559,7 +559,12 @@ class GeminiConfig(BaseModel):
                     "max_retries": 3,
                     "timeout": 60,
                     "batch_size": 16,
-                    "safety_settings": {},
+                    "safety_settings": {
+                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE", 
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                    },
                 },
                 {
                     "api_key": "your-gemini-api-key-here",
