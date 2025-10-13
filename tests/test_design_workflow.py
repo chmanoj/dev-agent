@@ -130,8 +130,8 @@ class TestDesignWorkflow:
         workflow.state_manager.save_project_state.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_design_document_persistence(self, tmp_path, sample_specification):
-        """Test that the design document is correctly saved to and loaded from state."""
+    async def test_design_persistence(self, tmp_path, sample_specification):
+        """Test that the design is correctly saved to and loaded from state."""
         # 1. Setup a real StateManager
         state_manager = StateManager(project_path=str(tmp_path))
         await state_manager.save_project_state(state_manager.create_initial_state(str(tmp_path), "test_session"))
@@ -171,7 +171,7 @@ class TestDesignWorkflow:
         new_state = new_state_manager.load_project_state()
 
         # 5. Assert that the loaded design document is correct
-        loaded_design_doc = new_state.design_document
+        loaded_design_doc = new_state.design
         assert loaded_design_doc is not None
         assert isinstance(loaded_design_doc, DesignDocument)
         assert loaded_design_doc.overview == design_doc.overview
@@ -223,10 +223,10 @@ class TestDesignWorkflow:
             "Warning: Design analysis failed: Analysis failed"
         )
 
-    def test_generate_design_document(self, workflow, sample_specification, mock_cli):
-        """Test design document generation."""
+    def test_generate_design(self, workflow, sample_specification, mock_cli):
+        """Test design generation."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         assert isinstance(design, DesignDocument)
         assert design.overview is not None
@@ -237,7 +237,7 @@ class TestDesignWorkflow:
     async def test_approval_workflow_immediate_approval(self, workflow, sample_specification):
         """Test approval workflow with immediate approval."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         def mock_approval(design):
             design.approved = True
@@ -257,7 +257,7 @@ class TestDesignWorkflow:
     ):
         """Test approval workflow with one refinement iteration."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         # Mock approval sequence: reject first, approve second
         def mock_approval_sequence(design):
@@ -305,7 +305,7 @@ class TestDesignWorkflow:
     ):
         """Test approval workflow reaching maximum iterations."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         # Mock approval to always return False
         mock_cli.get_user_input.return_value = "Keep refining"
@@ -327,7 +327,7 @@ class TestDesignWorkflow:
     ):
         """Test approval workflow with no feedback provided."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         # Mock approval sequence: reject first, then no feedback
         approval_calls = [False]
@@ -346,7 +346,7 @@ class TestDesignWorkflow:
     def test_display_design_summary(self, workflow, sample_specification, mock_cli):
         """Test design summary display."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         workflow._display_design_summary(design)
 
@@ -359,7 +359,7 @@ class TestDesignWorkflow:
     async def test_save_design_success(self, workflow, sample_specification):
         """Test successful design saving."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         await workflow._save_design(design)
         workflow.state_manager.save_document.assert_awaited_once()
@@ -372,7 +372,7 @@ class TestDesignWorkflow:
     async def test_save_design_failure(self, workflow, sample_specification, mock_cli):
         """Test design saving failure handling."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         workflow.state_manager.save_project_state.side_effect = Exception("Save failed")
 
@@ -430,7 +430,7 @@ class TestDesignWorkflow:
     def test_get_design_metrics(self, workflow, sample_specification):
         """Test design metrics extraction."""
         analysis = workflow._perform_design_analysis()
-        design = workflow._generate_design_document(sample_specification, analysis)
+        design = workflow._generate_design(sample_specification, analysis)
 
         metrics = workflow.get_design_metrics(design)
 

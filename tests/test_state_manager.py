@@ -66,7 +66,7 @@ class TestStateManager(unittest.TestCase):
             current_phase=PhaseType.SPECIFICATION,
             indexing_complete=True,
             specification=None,
-            design_document=None,
+            design=None,
             tasks=None,
             implementation_progress={
                 "task1": TaskStatus.COMPLETED,
@@ -188,7 +188,7 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(req.source_analysis.confidence_score, 0.9)
 
     @pytest.mark.asyncio
-    async def test_save_and_load_design_document(self):
+    async def test_save_and_load_design(self):
         """Test saving and loading design documents."""
         # Create a sample design document
         architecture = ArchitectureDescription(
@@ -387,7 +387,7 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(initial_state.current_phase, PhaseType.INDEXING)
         self.assertFalse(initial_state.indexing_complete)
         self.assertIsNone(initial_state.specification)
-        self.assertIsNone(initial_state.design_document)
+        self.assertIsNone(initial_state.design)
         self.assertIsNone(initial_state.tasks)
         self.assertEqual(initial_state.session_data.session_id, session_id)
         self.assertEqual(len(initial_state.implementation_progress), 0)
