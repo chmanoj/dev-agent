@@ -1314,6 +1314,7 @@ class StateManager:
             session_data=session_data,
             created_at=created_at,
             updated_at=updated_at,
+            spec_folder=state_dict.get("spec_folder"),
             # Load approval flags with backward compatibility
             specification_approved=state_dict.get("specification_approved", False),
             design_approved=state_dict.get("design_approved", False),
@@ -1569,25 +1570,30 @@ class StateManager:
             True if successful, False otherwise
         """
         try:
-            if doc_type == DocumentType.SPECIFICATION:
-                state = self.load_project_state()
-                if not state:
-                    logger.error("Cannot save specification without a project state.")
-                    return False
+            state = self.load_project_state()
+            if not state:
+                logger.error(f"Cannot save {doc_type.value} without a project state.")
+                return False
 
+            if doc_type == DocumentType.SPECIFICATION:
                 spec_folder = await self._get_spec_folder_name(document)
                 state.spec_folder = spec_folder
                 await self.save_project_state(state)
-
-                filename = f"{spec_folder}/requirements.md"
             else:
-                filename_map = {
-                    DocumentType.DESIGN: "design.md",
-                    DocumentType.TASKS: "tasks.md",
-                }
-                filename = filename_map.get(doc_type)
+                spec_folder = state.spec_folder
 
-            if not filename:
+            if not spec_folder:
+                logger.error(f"Cannot save {doc_type.value} without a spec_folder in the project state.")
+                return False
+
+            filename_map = {
+                DocumentType.SPECIFICATION: "requirements.md",
+                DocumentType.DESIGN: "design.md",
+                DocumentType.TASKS: "tasks.md",
+            }
+            base_filename = filename_map.get(doc_type)
+
+            if not base_filename:
                 logger.error(
                     f"Unknown document type: {doc_type}",
                     extra={
@@ -1597,6 +1603,7 @@ class StateManager:
                 )
                 return False
 
+            filename = f"{spec_folder}/{base_filename}"
             file_path = self.documents_dir / filename
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1749,20 +1756,19 @@ class StateManager:
             Document content as string if successful, None otherwise
         """
         try:
-            if doc_type == DocumentType.SPECIFICATION:
-                state = self.load_project_state()
-                if not state or not state.spec_folder:
-                    logger.warning("Cannot load specification without a spec_folder in the project state.")
-                    return None
-                filename = f"{state.spec_folder}/requirements.md"
-            else:
-                filename_map = {
-                    DocumentType.DESIGN: "design.md",
-                    DocumentType.TASKS: "tasks.md",
-                }
-                filename = filename_map.get(doc_type)
+            state = self.load_project_state()
+            if not state or not state.spec_folder:
+                logger.warning(f"Cannot load {doc_type.value} without a spec_folder in the project state.")
+                return None
 
-            if not filename:
+            filename_map = {
+                DocumentType.SPECIFICATION: "requirements.md",
+                DocumentType.DESIGN: "design.md",
+                DocumentType.TASKS: "tasks.md",
+            }
+            base_filename = filename_map.get(doc_type)
+
+            if not base_filename:
                 logger.error(
                     f"Unknown document type: {doc_type}",
                     extra={
@@ -1772,6 +1778,7 @@ class StateManager:
                 )
                 return None
 
+            filename = f"{state.spec_folder}/{base_filename}"
             file_path = self.documents_dir / filename
 
             if not file_path.exists():

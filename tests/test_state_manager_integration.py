@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Add the project root to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -13,25 +14,26 @@ from dev_agent.models.enums import DocumentType, PhaseType, TaskStatus
 from dev_agent.state.state_manager import StateManager
 
 
-class TestStateManagerIntegration(unittest.TestCase):
+class TestStateManagerIntegration(unittest.IsolatedAsyncioTestCase):
     """Integration test demonstrating complete StateManager workflow."""
 
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_path = Path(self.temp_dir) / "integration_test_project"
         self.project_path.mkdir()
         self.state_manager = StateManager(str(self.project_path))
 
-    def tearDown(self):
+    async def asyncTearDown(self):
         """Clean up test environment."""
         import shutil
 
         shutil.rmtree(self.temp_dir)
 
-    def test_complete_workflow(self):
+    @patch("dev_agent.state.state_manager.StateManager._get_spec_folder_name", new_callable=unittest.mock.AsyncMock)
+    async def test_complete_workflow(self, mock_get_spec_folder_name):
         """Test a complete workflow from project initialization to task completion."""
-
+        mock_get_spec_folder_name.return_value = "specification-test"
         # Step 1: Initialize new project
         session_id = "integration-test-session"
         initial_state = self.state_manager.create_initial_state(
@@ -44,11 +46,11 @@ class TestStateManagerIntegration(unittest.TestCase):
         self.assertIsNone(initial_state.specification)
 
         # Step 2: Save initial state
-        success = self.state_manager.save_project_state(initial_state)
+        success = await self.state_manager.save_project_state(initial_state)
         self.assertTrue(success)
 
         # Step 3: Simulate indexing completion
-        success = self.state_manager.update_phase_status(
+        success = await self.state_manager.update_phase_status(
             PhaseType.SPECIFICATION, "indexing completed"
         )
         self.assertTrue(success)
@@ -68,13 +70,15 @@ This is a test project for demonstrating state management.
 - REQ-2: System shall load state
 - REQ-3: System shall track progress
 """
-        success = self.state_manager.save_document(
+        import asyncio
+        await asyncio.sleep(1)
+        success = await self.state_manager.save_document(
             spec_content, DocumentType.SPECIFICATION
         )
         self.assertTrue(success)
 
         # Step 5: Move to design phase
-        success = self.state_manager.update_phase_status(
+        success = await self.state_manager.update_phase_status(
             PhaseType.DESIGN, "specification approved"
         )
         self.assertTrue(success)
@@ -90,11 +94,11 @@ This is a test project for demonstrating state management.
 ## Implementation Plan
 The system will use JSON for state persistence and file-based storage for documents.
 """
-        success = self.state_manager.save_document(design_content, DocumentType.DESIGN)
+        success = await self.state_manager.save_document(design_content, DocumentType.DESIGN)
         self.assertTrue(success)
 
         # Step 7: Move to implementation phase
-        success = self.state_manager.update_phase_status(
+        success = await self.state_manager.update_phase_status(
             PhaseType.IMPLEMENTATION, "design approved"
         )
         self.assertTrue(success)
@@ -107,19 +111,19 @@ The system will use JSON for state persistence and file-based storage for docume
 - [ ] 3. Create unit tests
 - [ ] 4. Add error handling
 """
-        success = self.state_manager.save_document(tasks_content, DocumentType.TASKS)
+        success = await self.state_manager.save_document(tasks_content, DocumentType.TASKS)
         self.assertTrue(success)
 
         # Step 9: Track task progress
-        success = self.state_manager.track_task_progress(
+        success = await self.state_manager.track_task_progress(
             "task-1", TaskStatus.IN_PROGRESS
         )
         self.assertTrue(success)
 
-        success = self.state_manager.track_task_progress("task-2", TaskStatus.COMPLETED)
+        success = await self.state_manager.track_task_progress("task-2", TaskStatus.COMPLETED)
         self.assertTrue(success)
 
-        success = self.state_manager.track_task_progress(
+        success = await self.state_manager.track_task_progress(
             "task-3", TaskStatus.NOT_STARTED
         )
         self.assertTrue(success)
@@ -165,9 +169,10 @@ The system will use JSON for state persistence and file-based storage for docume
         self.assertTrue(self.state_manager.documents_dir.exists())
         self.assertTrue(self.state_manager.state_file.exists())
 
-        spec_file = self.state_manager.documents_dir / "SPECIFICATION.md"
-        design_file = self.state_manager.documents_dir / "DESIGN.md"
-        tasks_file = self.state_manager.documents_dir / "TASKS.md"
+        state = self.state_manager.load_project_state()
+        spec_file = self.state_manager.documents_dir / f"{state.spec_folder}" / "requirements.md"
+        design_file = self.state_manager.documents_dir / f"{state.spec_folder}" / "design.md"
+        tasks_file = self.state_manager.documents_dir / f"{state.spec_folder}" / "tasks.md"
 
         self.assertTrue(spec_file.exists())
         self.assertTrue(design_file.exists())
