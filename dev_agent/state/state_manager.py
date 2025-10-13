@@ -1289,9 +1289,9 @@ class StateManager:
         if state_dict["specification"]:
             specification = self._reconstruct_specification(state_dict["specification"])
 
-        design_document = None
-        if "design_document" in state_dict and state_dict["design_document"]:
-            design_document = self._reconstruct_design(state_dict["design_document"])
+        design = None
+        if "design" in state_dict and state_dict["design"]:
+            design = self._reconstruct_design(state_dict["design"])
 
         tasks = None
         if state_dict["tasks"]:
@@ -1307,7 +1307,7 @@ class StateManager:
             current_phase=PhaseType(state_dict["current_phase"]),
             indexing_complete=state_dict["indexing_complete"],
             specification=specification,
-            design_document=design_document,
+            design=design,
             tasks=tasks,
             implementation_progress=implementation_progress,
             index_metadata=index_metadata,
@@ -1947,7 +1947,7 @@ class StateManager:
             current_phase=PhaseType.INDEXING,
             indexing_complete=False,
             specification=None,
-            design_document=None,
+            design=None,
             tasks=None,
             implementation_progress={},
             index_metadata=None,

@@ -50,7 +50,7 @@ class TestEndToEndWorkflow:
         """Create a realistic web API project."""
         # Create directory structure
         directories = [
-            "src/api",
+            "src/api/routes",
             "src/models",
             "src/services",
             "src/database",
@@ -1163,7 +1163,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
             ],
         }
 
-    def test_web_api_project_workflow(self):
+    @pytest.mark.asyncio
+    async def test_web_api_project_workflow(self):
         """Test complete workflow with a web API project."""
         print("\n=== Testing Web API Project Workflow ===")
 
@@ -1182,13 +1183,13 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
         workflow_manager = WorkflowManager(mock_cli)
 
         # Start project
-        project_state = workflow_manager.start_new_project(str(self.project_path))
+        project_state = await workflow_manager.start_new_project(str(self.project_path))
         assert project_state is not None
         assert project_state.current_phase == PhaseType.INDEXING
 
         # Test indexing phase
         print("Testing indexing phase...")
-        success = workflow_manager.transition_to_phase(PhaseType.INDEXING)
+        success = await workflow_manager.transition_to_phase(PhaseType.INDEXING)
         assert success, "Indexing phase should succeed"
 
         # Verify indexing results
@@ -1203,7 +1204,7 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         # Test specification phase
         print("Testing specification phase...")
-        success = workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
+        success = await workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
         assert success, "Specification phase should succeed"
 
         # Verify specification was generated
@@ -1217,7 +1218,7 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         # Test design phase
         print("Testing design phase...")
-        success = workflow_manager.transition_to_phase(PhaseType.DESIGN)
+        success = await workflow_manager.transition_to_phase(PhaseType.DESIGN)
         assert success, "Design phase should succeed"
 
         # Verify design was generated
@@ -1231,7 +1232,7 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         # Test implementation phase
         print("Testing implementation phase...")
-        success = workflow_manager.transition_to_phase(PhaseType.IMPLEMENTATION)
+        success = await workflow_manager.transition_to_phase(PhaseType.IMPLEMENTATION)
         assert success, "Implementation phase should succeed"
 
         # Verify tasks were generated
@@ -1251,7 +1252,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         print("✓ Web API project workflow test passed!")
 
-    def test_data_processing_project_workflow(self):
+    @pytest.mark.asyncio
+    async def test_data_processing_project_workflow(self):
         """Test complete workflow with a data processing project."""
         print("\n=== Testing Data Processing Project Workflow ===")
 
@@ -1270,8 +1272,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
         workflow_manager = WorkflowManager(mock_cli)
 
         # Run complete workflow
-        project_state = workflow_manager.start_new_project(str(self.project_path))
-        success = workflow_manager.execute_complete_workflow()
+        project_state = await workflow_manager.start_new_project(str(self.project_path))
+        success = await workflow_manager.execute_complete_workflow()
 
         assert success, "Complete workflow should succeed"
 
@@ -1294,7 +1296,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         print("✓ Data processing project workflow test passed!")
 
-    def test_cli_tool_project_workflow(self):
+    @pytest.mark.asyncio
+    async def test_cli_tool_project_workflow(self):
         """Test complete workflow with a CLI tool project."""
         print("\n=== Testing CLI Tool Project Workflow ===")
 
@@ -1315,8 +1318,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
         # Test workflow with timing
         start_time = time.time()
 
-        project_state = workflow_manager.start_new_project(str(self.project_path))
-        success = workflow_manager.execute_complete_workflow()
+        project_state = await workflow_manager.start_new_project(str(self.project_path))
+        success = await workflow_manager.execute_complete_workflow()
 
         end_time = time.time()
         workflow_time = end_time - start_time
@@ -1340,7 +1343,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         print(f"✓ CLI tool project workflow test passed in {workflow_time:.2f}s!")
 
-    def test_workflow_error_recovery(self):
+    @pytest.mark.asyncio
+    async def test_workflow_error_recovery(self):
         """Test workflow error handling and recovery."""
         print("\n=== Testing Workflow Error Recovery ===")
 
@@ -1360,10 +1364,10 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
         workflow_manager = WorkflowManager(mock_cli)
 
         # Start project
-        project_state = workflow_manager.start_new_project(str(self.project_path))
+        project_state = await workflow_manager.start_new_project(str(self.project_path))
 
         # Test that failed approval is handled gracefully
-        success = workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
+        success = await workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
         assert not success, "First transition should fail due to approval denial"
 
         # Verify state didn't change
@@ -1372,7 +1376,7 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
         assert current_state.current_phase == PhaseType.INDEXING
 
         # Retry should succeed
-        success = workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
+        success = await workflow_manager.transition_to_phase(PhaseType.SPECIFICATION)
         assert success, "Retry should succeed"
 
         # Verify error messages were displayed
@@ -1380,7 +1384,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         print("✓ Workflow error recovery test passed!")
 
-    def test_workflow_state_persistence(self):
+    @pytest.mark.asyncio
+    async def test_workflow_state_persistence(self):
         """Test workflow state persistence across sessions."""
         print("\n=== Testing Workflow State Persistence ===")
 
@@ -1396,9 +1401,9 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         # Session 1: Start project and complete indexing
         workflow_manager1 = WorkflowManager(mock_cli)
-        project_state1 = workflow_manager1.start_new_project(str(self.project_path))
+        project_state1 = await workflow_manager1.start_new_project(str(self.project_path))
 
-        success = workflow_manager1.transition_to_phase(PhaseType.SPECIFICATION)
+        success = await workflow_manager1.transition_to_phase(PhaseType.SPECIFICATION)
         assert success
 
         # Get session ID for verification
@@ -1406,7 +1411,7 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         # Session 2: Resume project
         workflow_manager2 = WorkflowManager(mock_cli)
-        project_state2 = workflow_manager2.resume_project(str(self.project_path))
+        project_state2 = await workflow_manager2.resume_project(str(self.project_path))
 
         # Verify state was restored
         assert project_state2.session_data.session_id == session_id
@@ -1415,12 +1420,12 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
         assert project_state2.specification is not None
 
         # Continue workflow in second session
-        success = workflow_manager2.transition_to_phase(PhaseType.DESIGN)
+        success = await workflow_manager2.transition_to_phase(PhaseType.DESIGN)
         assert success
 
         # Session 3: Resume again
         workflow_manager3 = WorkflowManager(mock_cli)
-        project_state3 = workflow_manager3.resume_project(str(self.project_path))
+        project_state3 = await workflow_manager3.resume_project(str(self.project_path))
 
         # Verify all progress was maintained
         assert project_state3.current_phase == PhaseType.DESIGN
@@ -1429,7 +1434,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         print("✓ Workflow state persistence test passed!")
 
-    def test_workflow_performance_benchmarks(self):
+    @pytest.mark.asyncio
+    async def test_workflow_performance_benchmarks(self):
         """Test workflow performance with different project sizes."""
         print("\n=== Testing Workflow Performance Benchmarks ===")
 
@@ -1453,8 +1459,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
             workflow_manager = WorkflowManager(mock_cli)
 
             start_time = time.time()
-            project_state = workflow_manager.start_new_project(str(self.project_path))
-            success = workflow_manager.execute_complete_workflow()
+            project_state = await workflow_manager.start_new_project(str(self.project_path))
+            success = await workflow_manager.execute_complete_workflow()
             end_time = time.time()
 
             workflow_time = end_time - start_time
@@ -1499,7 +1505,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
 
         print("✓ Workflow performance benchmarks test passed!")
 
-    def test_workflow_with_real_project_patterns(self):
+    @pytest.mark.asyncio
+    async def test_workflow_with_real_project_patterns(self):
         """Test workflow with realistic project patterns and structures."""
         print("\n=== Testing Workflow with Real Project Patterns ===")
 
@@ -1542,8 +1549,8 @@ def analyze(directory: str, pattern: Optional[str], size_min: Optional[int],
         workflow_manager = WorkflowManager(mock_cli)
 
         # Run workflow
-        project_state = workflow_manager.start_new_project(str(self.project_path))
-        success = workflow_manager.execute_complete_workflow()
+        project_state = await workflow_manager.start_new_project(str(self.project_path))
+        success = await workflow_manager.execute_complete_workflow()
 
         assert success, "Workflow should handle realistic project patterns"
 

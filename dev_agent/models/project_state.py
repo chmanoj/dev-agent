@@ -39,7 +39,7 @@ class ProjectState:
     current_phase: PhaseType
     indexing_complete: bool
     specification: SpecificationDocument | None
-    design_document: DesignDocument | None
+    design: DesignDocument | None
     tasks: TaskList | None
     implementation_progress: dict[str, TaskStatus]
     index_metadata: IndexMetadata | None

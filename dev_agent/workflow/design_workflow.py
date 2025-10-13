@@ -46,8 +46,8 @@ class DesignWorkflow:
         # Perform design analysis
         design_analysis = self._perform_design_analysis()
 
-        # Generate design document
-        design = self._generate_design_document(specification, design_analysis)
+        # Generate design
+        design = self._generate_design(specification, design_analysis)
 
         # Request approval and handle refinements
         design = await self._approval_workflow(design)
@@ -99,7 +99,7 @@ class DesignWorkflow:
                 recommendations=[],
             )
 
-    def _generate_design_document(
+    def _generate_design(
         self, specification: SpecificationDocument, analysis: DesignAnalysis
     ) -> DesignDocument:
         """Generate design document from specification and analysis.
@@ -217,7 +217,7 @@ class DesignWorkflow:
             # Save using state manager
             state = self.state_manager.load_project_state()
             if state:
-                state.design_document = design
+                state.design = design
                 await self.state_manager.save_project_state(state)
 
             await self.state_manager.save_document(formatted_design, DocumentType.DESIGN)
