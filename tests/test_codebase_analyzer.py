@@ -222,8 +222,9 @@ class TestCodebaseAnalyzer:
         result = analyzer.analyze_for_specification()
 
         assert isinstance(result, SpecificationAnalysis)
-        assert result.project_purpose == "Unable to analyze - no index available"
-        assert result.confidence_score == 0.0
+        assert result.project_purpose == "New software project"
+        assert result.confidence_score == 0.1
+        assert result.external_dependencies == []
 
     def test_analyze_for_specification_with_index(self, analyzer_with_index):
         """Test specification analysis with index."""
@@ -399,7 +400,12 @@ class TestCodebaseAnalyzer:
 
     def test_calculate_specification_confidence(self, analyzer_with_index):
         """Test specification confidence calculation."""
-        confidence = analyzer_with_index._calculate_specification_confidence()
+        features = ["feature1"]
+        areas = ["area1"]
+        evidence = [Mock(confidence=0.8)]
+        confidence = analyzer_with_index._calculate_specification_confidence(
+            features, areas, evidence
+        )
         assert isinstance(confidence, float)
         assert 0.0 <= confidence <= 1.0
         # With 4 files and 3 functions, should have reasonable confidence

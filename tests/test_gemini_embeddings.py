@@ -32,8 +32,8 @@ def gemini_config():
     """Create a test Gemini configuration."""
     return GeminiConfig(
         api_key=SecretStr("AIzaSyTest123456789012345678901234567890"),
-        model_name="gemini-pro",
-        embedding_model="embedding-001",
+        model_name="gemini-2.5-flash",
+        embedding_model="gemini-embedding-001",
         batch_size=16,
         timeout=60,
     )
@@ -73,7 +73,7 @@ class TestGeminiEmbeddingClient:
         )
 
         assert client.config == gemini_config
-        assert client.model == "embedding-001"
+        assert client.model == "gemini-embedding-001"
         assert client.dimension == 768
         assert client.cache.cache_dir == temp_cache_dir
 
@@ -102,7 +102,7 @@ class TestGeminiEmbeddingClient:
 
         # Verify API call
         mock_genai.embed_content.assert_called_once_with(
-            model="models/embedding-001",
+            model="models/gemini-embedding-001",
             content="test code",
             task_type="retrieval_document",
         )
@@ -112,7 +112,7 @@ class TestGeminiEmbeddingClient:
         """Test embedding retrieval from cache."""
         # Pre-populate cache
         cached_embedding = [0.2] * 768
-        gemini_client.cache.set("cached text", "embedding-001", cached_embedding)
+        gemini_client.cache.set("cached text", "gemini-embedding-001", cached_embedding)
 
         result = await gemini_client.embed_text("cached text")
 
@@ -160,7 +160,7 @@ class TestGeminiEmbeddingClient:
 
         # Verify API call
         mock_genai.embed_content.assert_called_once_with(
-            model="models/embedding-001",
+            model="models/gemini-embedding-001",
             content=texts,
             task_type="retrieval_document",
         )
@@ -190,8 +190,8 @@ class TestGeminiEmbeddingClient:
         # Pre-populate cache for some texts
         cached_emb1 = [0.1] * 768
         cached_emb2 = [0.2] * 768
-        gemini_client.cache.set("cached1", "embedding-001", cached_emb1)
-        gemini_client.cache.set("cached2", "embedding-001", cached_emb2)
+        gemini_client.cache.set("cached1", "gemini-embedding-001", cached_emb1)
+        gemini_client.cache.set("cached2", "gemini-embedding-001", cached_emb2)
 
         # Mock API response for uncached texts
         new_embeddings = [[0.3] * 768, [0.4] * 768]
@@ -209,7 +209,7 @@ class TestGeminiEmbeddingClient:
 
         # Verify API was called only for uncached texts
         mock_genai.embed_content.assert_called_once_with(
-            model="models/embedding-001",
+            model="models/gemini-embedding-001",
             content=["new1", "new2"],
             task_type="retrieval_document",
         )
