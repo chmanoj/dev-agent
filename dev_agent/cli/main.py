@@ -422,8 +422,10 @@ def _run_indexing_with_progress(
                 workflow_manager.current_project_state.index_metadata = (
                     indexing_engine.get_index_metadata()
                 )
-                workflow_manager.state_manager.save_project_state(
-                    workflow_manager.current_project_state
+                asyncio.run(
+                    workflow_manager.state_manager.save_project_state(
+                        workflow_manager.current_project_state
+                    )
                 )
 
         else:
