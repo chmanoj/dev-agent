@@ -5,6 +5,7 @@ from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.cli_interface import ICLIInterface
 from ..models.analysis import DesignAnalysis
 from ..models.documents import DesignDocument, SpecificationDocument
+from ..models.enums import DocumentType
 from ..state.state_manager import StateManager
 
 
@@ -29,7 +30,7 @@ class DesignWorkflow:
         self.state_manager = state_manager
         self.generator = DesignGenerator(codebase_analyzer, cli_interface)
 
-    def execute_design_phase(
+    async def execute_design_phase(
         self, specification: SpecificationDocument
     ) -> DesignDocument:
         """Execute the design generation phase.
@@ -49,11 +50,11 @@ class DesignWorkflow:
         design = self._generate_design_document(specification, design_analysis)
 
         # Request approval and handle refinements
-        design = self._approval_workflow(design)
+        design = await self._approval_workflow(design)
 
         # Save the design
         if self.state_manager:
-            self._save_design(design)
+            await self._save_design(design)
 
         self.cli_interface.display_message("Design phase completed successfully!")
         return design
@@ -122,7 +123,7 @@ class DesignWorkflow:
 
         return design
 
-    def _approval_workflow(self, design: DesignDocument) -> DesignDocument:
+    async def _approval_workflow(self, design: DesignDocument) -> DesignDocument:
         """Handle the approval workflow with potential refinements.
 
         Args:
@@ -158,7 +159,7 @@ class DesignWorkflow:
                     self.cli_interface.display_message(
                         "Refining design based on your feedback..."
                     )
-                    current_design = self.generator.refine_design(
+                    current_design = await self.generator.refine_design(
                         current_design, feedback
                     )
                     self.cli_interface.display_message(
@@ -203,7 +204,7 @@ class DesignWorkflow:
 
         self.cli_interface.display_message("=====================\n")
 
-    def _save_design(self, design: DesignDocument) -> None:
+    async def _save_design(self, design: DesignDocument) -> None:
         """Save the design document.
 
         Args:
@@ -214,7 +215,12 @@ class DesignWorkflow:
             formatted_design = self.generator.format_design_document(design)
 
             # Save using state manager
-            self.state_manager.save_document(formatted_design, "design")
+            state = self.state_manager.load_project_state()
+            if state:
+                state.design_document = design
+                await self.state_manager.save_project_state(state)
+
+            await self.state_manager.save_document(formatted_design, DocumentType.DESIGN)
 
             self.cli_interface.display_message("Design saved to DESIGN.md")
 
