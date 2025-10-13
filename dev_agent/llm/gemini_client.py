@@ -188,22 +188,57 @@ class GeminiClient(ILLMClient):
                 max_tokens=max_tokens,
             )
 
-            # Extract text from response, handling blocked responses
+            # Validate the response to ensure it's not blocked and is complete.
+            # See Google AI documentation for finish_reason and safety ratings:
+            # https://ai.google.dev/api/python/google/generativeai/client/GenerateContentResponse
+            if response.prompt_feedback.block_reason:
+                raise LLMAPIError(
+                    f"Gemini prompt was blocked: {response.prompt_feedback.block_reason.name}",
+                    "Modify the prompt to avoid triggering safety filters."
+                )
+
+            if not response.candidates:
+                raise LLMAPIError(
+                    "Gemini returned no candidates in the response.",
+                    "The model may have refused to answer or an internal error occurred."
+                )
+
+            candidate = response.candidates[0]
+            finish_reason = candidate.finish_reason.name
+
+            if finish_reason != "STOP":
+                safety_message = ""
+                if candidate.safety_ratings:
+                    safety_message = " ".join([
+                        f"{r.category.name}: {r.probability.name}"
+                        for r in candidate.safety_ratings
+                    ])
+
+                error_message = f"Gemini generation stopped for reason: {finish_reason}."
+                if safety_message:
+                    error_message += f" Safety ratings: {safety_message}"
+
+                raise LLMAPIError(
+                    error_message,
+                    "The model stopped generating text for reasons other than a natural stop. "
+                    "This could be due to safety settings, token limits, or other issues."
+                )
+
             try:
                 response_text = response.text
                 if not response_text:
-                    logger.warning("Gemini returned empty response")
-                    return ""
+                    raise LLMAPIError(
+                        "Gemini returned a successful but empty response.",
+                        "The model may not have had anything to say for the given prompt."
+                    )
             except ValueError as e:
-                # Handle blocked responses (finish_reason = 2 or other safety blocks)
-                logger.warning(f"Gemini response was blocked or invalid: {e}")
-                if hasattr(response, 'candidates') and response.candidates:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, 'finish_reason'):
-                        logger.warning(f"Response finish_reason: {candidate.finish_reason}")
-                return ""
+                # This is a fallback; the checks above should prevent this.
+                raise LLMAPIError(
+                    f"Gemini response could not be parsed: {e}",
+                    "The response was likely blocked or malformed, despite passing initial checks."
+                ) from e
 
-            # Log actual usage (Gemini doesn't provide detailed token counts in response)
+            # Log actual usage
             completion_tokens = self.count_tokens(response_text)
             actual_cost = self.estimate_cost(prompt_tokens, completion_tokens)
             logger.info(

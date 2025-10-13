@@ -133,6 +133,10 @@ class SpecificationWorkflow:
         else:
             spec = await self._generate_from_user_input(feature_description)
 
+        if not spec:
+            self.cli_interface.display_message("Specification generation was cancelled. Exiting.")
+            return None
+
         # Request approval and handle refinements
         spec = await self._approval_workflow_ai(spec, feature_description)
 
@@ -227,76 +231,108 @@ class SpecificationWorkflow:
         Returns:
             Generated specification document
         """
-        self.cli_interface.display_message("Analyzing existing codebase...")
+        from dev_agent.errors.llm_exceptions import LLMAPIError
 
-        # Perform codebase analysis
-        analysis = self.codebase_analyzer.analyze_for_specification()
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                self.cli_interface.display_message("Analyzing existing codebase...")
 
-        self.cli_interface.display_message(
-            f"Analysis complete with {analysis.confidence_score:.0%} confidence. "
-            f"Found {len(analysis.main_features)} main features and "
-            f"{len(analysis.requirement_evidence)} requirement areas."
-        )
+                # Perform codebase analysis
+                analysis = self.codebase_analyzer.analyze_for_specification()
 
-        # Generate specification from analysis using AI
-        self.cli_interface.display_message(
-            "🤖 Generating specification using AI... This may take a moment."
-        )
-        spec = await self.generator.generate_from_existing_code_ai(
-            analysis=analysis,
-            feature_description=feature_description,
-        )
-
-        # Display cost information if available
-        if self.cost_tracker:
-            report = self.cost_tracker.get_report()
-            self.cli_interface.display_message(
-                f"💰 Generation complete! API Usage: {report.total_tokens} tokens "
-                f"(~${report.total_cost:.4f})"
-            )
-        else:
-            self.cli_interface.display_message("✅ Specification generated successfully!")
-
-        # Validate the generated specification
-        is_valid, validation_issues = self.generator._validate_specification(spec)
-        req_count = len(spec.functional_requirements)
-        
-        if req_count > 0:
-            self.cli_interface.display_message(
-                f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
-            )
-        else:
-            self.cli_interface.display_message(
-                "⚠️ Warning: No requirements were generated. The specification may be incomplete."
-            )
-        
-        # Display validation warnings if specification has issues
-        if not is_valid and req_count < 3:
-            self.cli_interface.display_message(
-                Panel(
-                    f"[yellow]Warning: Only {req_count} requirement(s) generated.[/yellow]\n\n"
-                    "A complete specification typically has 3-5 requirements.\n"
-                    "You may want to regenerate or provide more detailed feedback.",
-                    title="⚠️ Incomplete Specification",
-                    border_style="yellow",
+                self.cli_interface.display_message(
+                    f"Analysis complete with {analysis.confidence_score:.0%} confidence. "
+                    f"Found {len(analysis.main_features)} main features and "
+                    f"{len(analysis.requirement_evidence)} requirement areas."
                 )
-            )
-        elif not is_valid:
-            # Show other validation issues
-            issues_text = "\n".join(f"• {issue}" for issue in validation_issues[:3])
-            if len(validation_issues) > 3:
-                issues_text += f"\n• ... and {len(validation_issues) - 3} more issues"
-            
-            self.cli_interface.display_message(
-                Panel(
-                    f"[yellow]Specification validation found some issues:[/yellow]\n\n{issues_text}\n\n"
-                    "You can still proceed, but consider regenerating for better quality.",
-                    title="⚠️ Specification Quality Issues",
-                    border_style="yellow",
-                )
-            )
 
-        return spec
+                # Generate specification from analysis using AI
+                self.cli_interface.display_message(
+                    "🤖 Generating specification using AI... This may take a moment."
+                )
+                spec = await self.generator.generate_from_existing_code_ai(
+                    analysis=analysis,
+                    feature_description=feature_description,
+                )
+
+                # Display cost information if available
+                if self.cost_tracker:
+                    report = self.cost_tracker.get_report()
+                    self.cli_interface.display_message(
+                        f"💰 Generation complete! API Usage: {report.total_tokens} tokens "
+                        f"(~${report.total_cost:.4f})"
+                    )
+                else:
+                    self.cli_interface.display_message("✅ Specification generated successfully!")
+
+                # Validate the generated specification
+                is_valid, validation_issues = self.generator._validate_specification(spec)
+                req_count = len(spec.functional_requirements)
+
+                if req_count > 0:
+                    self.cli_interface.display_message(
+                        f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
+                    )
+                else:
+                    self.cli_interface.display_message(
+                        "⚠️ Warning: No requirements were generated. The specification may be incomplete."
+                    )
+
+                # Display validation warnings if specification has issues
+                if not is_valid and req_count < 3:
+                    self.cli_interface.display_message(
+                        Panel(
+                            f"[yellow]Warning: Only {req_count} requirement(s) generated.[/yellow]\n\n"
+                            "A complete specification typically has 3-5 requirements.\n"
+                            "You may want to regenerate or provide more detailed feedback.",
+                            title="⚠️ Incomplete Specification",
+                            border_style="yellow",
+                        )
+                    )
+                elif not is_valid:
+                    # Show other validation issues
+                    issues_text = "\n".join(f"• {issue}" for issue in validation_issues[:3])
+                    if len(validation_issues) > 3:
+                        issues_text += f"\n• ... and {len(validation_issues) - 3} more issues"
+
+                    self.cli_interface.display_message(
+                        Panel(
+                            f"[yellow]Specification validation found some issues:[/yellow]\n\n{issues_text}\n\n"
+                            "You can still proceed, but consider regenerating for better quality.",
+                            title="⚠️ Specification Quality Issues",
+                            border_style="yellow",
+                        )
+                    )
+
+                # If generation is successful and yields at least one requirement, break the loop
+                if req_count > 0:
+                    return spec
+
+            except LLMAPIError as e:
+                logger.error(f"LLM API error during specification generation: {e}")
+                self.cli_interface.display_message(
+                    Panel(
+                        f"[red]Error: Specification generation failed due to an API error.[/red]\n\n"
+                        f"[bold]Details:[/bold] {e.message}\n"
+                        f"[bold]Suggestion:[/bold] {e.suggestion}",
+                        title="❌ API Error",
+                        border_style="red",
+                    )
+                )
+
+                if attempt < max_retries:
+                    user_choice = self.cli_interface.get_user_input(
+                        "Would you like to retry generation? (y/n): "
+                    ).lower()
+                    if user_choice != 'y':
+                        return None  # Gracefully exit if user declines retry
+                else:
+                    self.cli_interface.display_message("Maximum retries reached. Exiting.")
+                    return None
+
+        raise ValueError("Failed to generate a valid specification after multiple attempts.")
+
 
     async def _generate_from_user_input(
         self, feature_description: str
@@ -309,69 +345,100 @@ class SpecificationWorkflow:
         Returns:
             Generated specification document
         """
-        self.cli_interface.display_message(
-            "No existing codebase detected. "
-            "Let's create a specification from your requirements."
-        )
+        from dev_agent.errors.llm_exceptions import LLMAPIError
 
-        # Generate specification from user input using AI
-        self.cli_interface.display_message(
-            "🤖 Generating specification using AI... This may take a moment."
-        )
-        spec = await self.generator.generate_from_user_input_ai(
-            feature_description=feature_description,
-        )
-
-        # Display cost information if available
-        if self.cost_tracker:
-            report = self.cost_tracker.get_report()
-            self.cli_interface.display_message(
-                f"💰 Generation complete! API Usage: {report.total_tokens} tokens "
-                f"(~${report.total_cost:.4f})"
-            )
-        else:
-            self.cli_interface.display_message("✅ Specification generated successfully!")
-
-        # Validate the generated specification
-        is_valid, validation_issues = self.generator._validate_specification(spec)
-        req_count = len(spec.functional_requirements)
-        
-        if req_count > 0:
-            self.cli_interface.display_message(
-                f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
-            )
-        else:
-            self.cli_interface.display_message(
-                "⚠️ Warning: No requirements were generated. The specification may be incomplete."
-            )
-        
-        # Display validation warnings if specification has issues
-        if not is_valid and req_count < 3:
-            self.cli_interface.display_message(
-                Panel(
-                    f"[yellow]Warning: Only {req_count} requirement(s) generated.[/yellow]\n\n"
-                    "A complete specification typically has 3-5 requirements.\n"
-                    "You may want to regenerate or provide more detailed feedback.",
-                    title="⚠️ Incomplete Specification",
-                    border_style="yellow",
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                self.cli_interface.display_message(
+                    "No existing codebase detected. "
+                    "Let's create a specification from your requirements."
                 )
-            )
-        elif not is_valid:
-            # Show other validation issues
-            issues_text = "\n".join(f"• {issue}" for issue in validation_issues[:3])
-            if len(validation_issues) > 3:
-                issues_text += f"\n• ... and {len(validation_issues) - 3} more issues"
-            
-            self.cli_interface.display_message(
-                Panel(
-                    f"[yellow]Specification validation found some issues:[/yellow]\n\n{issues_text}\n\n"
-                    "You can still proceed, but consider regenerating for better quality.",
-                    title="⚠️ Specification Quality Issues",
-                    border_style="yellow",
-                )
-            )
 
-        return spec
+                # Generate specification from user input using AI
+                self.cli_interface.display_message(
+                    "🤖 Generating specification using AI... This may take a moment."
+                )
+                spec = await self.generator.generate_from_user_input_ai(
+                    feature_description=feature_description,
+                )
+
+                # Display cost information if available
+                if self.cost_tracker:
+                    report = self.cost_tracker.get_report()
+                    self.cli_interface.display_message(
+                        f"💰 Generation complete! API Usage: {report.total_tokens} tokens "
+                        f"(~${report.total_cost:.4f})"
+                    )
+                else:
+                    self.cli_interface.display_message("✅ Specification generated successfully!")
+
+                # Validate the generated specification
+                is_valid, validation_issues = self.generator._validate_specification(spec)
+                req_count = len(spec.functional_requirements)
+
+                if req_count > 0:
+                    self.cli_interface.display_message(
+                        f"📋 Generated {req_count} requirement{'s' if req_count != 1 else ''}"
+                    )
+                else:
+                    self.cli_interface.display_message(
+                        "⚠️ Warning: No requirements were generated. The specification may be incomplete."
+                    )
+
+                # Display validation warnings if specification has issues
+                if not is_valid and req_count < 3:
+                    self.cli_interface.display_message(
+                        Panel(
+                            f"[yellow]Warning: Only {req_count} requirement(s) generated.[/yellow]\n\n"
+                            "A complete specification typically has 3-5 requirements.\n"
+                            "You may want to regenerate or provide more detailed feedback.",
+                            title="⚠️ Incomplete Specification",
+                            border_style="yellow",
+                        )
+                    )
+                elif not is_valid:
+                    # Show other validation issues
+                    issues_text = "\n".join(f"• {issue}" for issue in validation_issues[:3])
+                    if len(validation_issues) > 3:
+                        issues_text += f"\n• ... and {len(validation_issues) - 3} more issues"
+
+                    self.cli_interface.display_message(
+                        Panel(
+                            f"[yellow]Specification validation found some issues:[/yellow]\n\n{issues_text}\n\n"
+                            "You can still proceed, but consider regenerating for better quality.",
+                            title="⚠️ Specification Quality Issues",
+                            border_style="yellow",
+                        )
+                    )
+
+                # If generation is successful and yields at least one requirement, break the loop
+                if req_count > 0:
+                    return spec
+
+            except LLMAPIError as e:
+                logger.error(f"LLM API error during specification generation: {e}")
+                self.cli_interface.display_message(
+                    Panel(
+                        f"[red]Error: Specification generation failed due to an API error.[/red]\n\n"
+                        f"[bold]Details:[/bold] {e.message}\n"
+                        f"[bold]Suggestion:[/bold] {e.suggestion}",
+                        title="❌ API Error",
+                        border_style="red",
+                    )
+                )
+
+                if attempt < max_retries:
+                    user_choice = self.cli_interface.get_user_input(
+                        "Would you like to retry generation? (y/n): "
+                    ).lower()
+                    if user_choice != 'y':
+                        return None  # Gracefully exit if user declines retry
+                else:
+                    self.cli_interface.display_message("Maximum retries reached. Exiting.")
+                    return None
+
+        raise ValueError("Failed to generate a valid specification after multiple attempts.")
 
     async def _approval_workflow_ai(
         self,
@@ -387,12 +454,33 @@ class SpecificationWorkflow:
         Returns:
             Final approved specification document
         """
+        if not spec:
+            return None
         current_spec = spec
         max_iterations = 3
         iteration = 0
 
         while iteration < max_iterations:
             iteration += 1
+
+            # Prevent approval of empty specifications
+            if not current_spec.functional_requirements:
+                self.cli_interface.display_message(
+                    Panel(
+                        "[red]Error: The generated specification has no requirements.[/red]\n\n"
+                        "This usually happens when the AI fails to generate a valid response.\n"
+                        "You cannot approve an empty specification.",
+                        title="❌ Empty Specification",
+                        border_style="red",
+                    )
+                )
+                user_choice = self.cli_interface.get_user_input(
+                    "Would you like to regenerate the specification? (y/n): "
+                ).lower()
+                if user_choice == 'y':
+                    return await self._generate_from_user_input(feature_description)
+                else:
+                    raise ValueError("Specification generation failed.")
 
             # Request user approval
             approved = self.generator.request_user_approval(current_spec)

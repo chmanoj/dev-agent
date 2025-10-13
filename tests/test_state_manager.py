@@ -66,7 +66,7 @@ class TestStateManager(unittest.TestCase):
             current_phase=PhaseType.SPECIFICATION,
             indexing_complete=True,
             specification=None,
-            design=None,
+            design_document=None,
             tasks=None,
             implementation_progress={
                 "task1": TaskStatus.COMPLETED,
@@ -376,7 +376,7 @@ class TestStateManager(unittest.TestCase):
             loaded_state.implementation_progress["task2"], TaskStatus.IN_PROGRESS
         )
 
-    def test_create_initial_state(self):
+    async def test_create_initial_state(self):
         """Test creating initial project state."""
         session_id = "new-session-456"
         initial_state = self.state_manager.create_initial_state(
@@ -387,7 +387,7 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(initial_state.current_phase, PhaseType.INDEXING)
         self.assertFalse(initial_state.indexing_complete)
         self.assertIsNone(initial_state.specification)
-        self.assertIsNone(initial_state.design)
+        self.assertIsNone(initial_state.design_document)
         self.assertIsNone(initial_state.tasks)
         self.assertEqual(initial_state.session_data.session_id, session_id)
         self.assertEqual(len(initial_state.implementation_progress), 0)

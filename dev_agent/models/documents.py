@@ -112,6 +112,25 @@ class ComponentSpec:
     interfaces: list[str]
     dependencies: list[str]
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "interfaces": self.interfaces,
+            "dependencies": self.dependencies,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ComponentSpec":
+        """Create from dictionary."""
+        return cls(
+            name=data["name"],
+            description=data["description"],
+            interfaces=data["interfaces"],
+            dependencies=data["dependencies"],
+        )
+
 
 @dataclass
 class DataModel:
@@ -120,6 +139,23 @@ class DataModel:
     name: str
     fields: dict[str, str]
     relationships: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "name": self.name,
+            "fields": self.fields,
+            "relationships": self.relationships,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DataModel":
+        """Create from dictionary."""
+        return cls(
+            name=data["name"],
+            fields=data["fields"],
+            relationships=data["relationships"],
+        )
 
 
 @dataclass
@@ -130,6 +166,23 @@ class InterfaceSpec:
     methods: list[str]
     description: str
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "name": self.name,
+            "methods": self.methods,
+            "description": self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "InterfaceSpec":
+        """Create from dictionary."""
+        return cls(
+            name=data["name"],
+            methods=data["methods"],
+            description=data["description"],
+        )
+
 
 @dataclass
 class ErrorHandlingStrategy:
@@ -138,6 +191,23 @@ class ErrorHandlingStrategy:
     error_categories: list[str]
     recovery_mechanisms: list[str]
     logging_strategy: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "error_categories": self.error_categories,
+            "recovery_mechanisms": self.recovery_mechanisms,
+            "logging_strategy": self.logging_strategy,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ErrorHandlingStrategy":
+        """Create from dictionary."""
+        return cls(
+            error_categories=data["error_categories"],
+            recovery_mechanisms=data["recovery_mechanisms"],
+            logging_strategy=data["logging_strategy"],
+        )
 
 
 @dataclass
@@ -149,6 +219,25 @@ class TestingStrategy:
     performance_testing: str
     test_coverage_target: float
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "unit_testing": self.unit_testing,
+            "integration_testing": self.integration_testing,
+            "performance_testing": self.performance_testing,
+            "test_coverage_target": self.test_coverage_target,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TestingStrategy":
+        """Create from dictionary."""
+        return cls(
+            unit_testing=data["unit_testing"],
+            integration_testing=data["integration_testing"],
+            performance_testing=data["performance_testing"],
+            test_coverage_target=data["test_coverage_target"],
+        )
+
 
 @dataclass
 class ArchitectureDescription:
@@ -157,6 +246,23 @@ class ArchitectureDescription:
     overview: str
     patterns: list[str]
     components: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "overview": self.overview,
+            "patterns": self.patterns,
+            "components": self.components,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ArchitectureDescription":
+        """Create from dictionary."""
+        return cls(
+            overview=data["overview"],
+            patterns=data["patterns"],
+            components=data["components"],
+        )
 
 
 @dataclass
@@ -172,6 +278,35 @@ class DesignDocument:
     testing_strategy: TestingStrategy
     version: str
     approved: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "overview": self.overview,
+            "architecture": self.architecture.to_dict(),
+            "components": [c.to_dict() for c in self.components],
+            "data_models": [d.to_dict() for d in self.data_models],
+            "interfaces": [i.to_dict() for i in self.interfaces],
+            "error_handling": self.error_handling.to_dict(),
+            "testing_strategy": self.testing_strategy.to_dict(),
+            "version": self.version,
+            "approved": self.approved,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DesignDocument":
+        """Create from dictionary."""
+        return cls(
+            overview=data["overview"],
+            architecture=ArchitectureDescription.from_dict(data["architecture"]),
+            components=[ComponentSpec.from_dict(c) for c in data["components"]],
+            data_models=[DataModel.from_dict(d) for d in data["data_models"]],
+            interfaces=[InterfaceSpec.from_dict(i) for i in data["interfaces"]],
+            error_handling=ErrorHandlingStrategy.from_dict(data["error_handling"]),
+            testing_strategy=TestingStrategy.from_dict(data["testing_strategy"]),
+            version=data["version"],
+            approved=data["approved"],
+        )
 
 
 @dataclass

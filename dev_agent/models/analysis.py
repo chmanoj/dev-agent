@@ -65,6 +65,31 @@ class CodePatterns:
     overall_style: dict[str, Any]
 
 
+
+@dataclass
+class ComponentAnalysis:
+    """Analysis of a system component."""
+
+    name: str
+    purpose: str
+    interfaces: list[str]
+    dependencies: list[str]
+    internal_structure: dict[str, Any]
+    complexity_score: float
+    test_coverage: float | None = None
+
+
+@dataclass
+class ContextualCode:
+    """Code with contextual information for task implementation."""
+
+    code: str
+    file_path: str
+    relevance_score: float
+    context_type: str  # 'similar_function', 'related_class', 'dependency', etc.
+    explanation: str
+
+
 @dataclass
 class RequirementEvidence:
     """Evidence from code analysis supporting a requirement."""
@@ -92,19 +117,6 @@ class SpecificationAnalysis:
 
 
 @dataclass
-class ComponentAnalysis:
-    """Analysis of a system component."""
-
-    name: str
-    purpose: str
-    interfaces: list[str]
-    dependencies: list[str]
-    internal_structure: dict[str, Any]
-    complexity_score: float
-    test_coverage: float | None = None
-
-
-@dataclass
 class DesignAnalysis:
     """Analysis results for design document generation."""
 
@@ -116,17 +128,6 @@ class DesignAnalysis:
     quality_metrics: dict[str, float]
     technical_debt: list[str]
     recommendations: list[str]
-
-
-@dataclass
-class ContextualCode:
-    """Code with contextual information for task implementation."""
-
-    code: str
-    file_path: str
-    relevance_score: float
-    context_type: str  # 'similar_function', 'related_class', 'dependency', etc.
-    explanation: str
 
 
 @dataclass
@@ -142,67 +143,6 @@ class CodeContext:
     test_examples: list[ContextualCode]
     style_guidelines: dict[str, Any]
 
-
-@dataclass
-class RequirementEvidence:
-    """Evidence for a requirement found in the codebase."""
-
-    requirement_type: str
-    description: str
-    supporting_files: list[str]
-    supporting_functions: list[str]
-    confidence: float
-
-
-@dataclass
-class SpecificationAnalysis:
-    """Analysis results for specification generation."""
-
-    project_purpose: str
-    main_features: list[str]
-    user_roles: list[str]
-    functional_areas: list[str]
-    technology_constraints: list[str]
-    requirement_evidence: list[RequirementEvidence]
-    confidence_score: float
-
-
-@dataclass
-class DesignAnalysis:
-    """Analysis results for design generation."""
-
-    architecture_overview: str
-    components: list[ComponentAnalysis]
-    design_patterns: list[str]
-    data_models: list[dict[str, Any]]
-    api_interfaces: list[dict[str, Any]]
-    quality_metrics: dict[str, float]
-    technical_debt: list[str]
-    recommendations: list[str] = field(default_factory=list)
-
-
-@dataclass
-class CodeContext:
-    """Context information for code generation."""
-
-    task: Any  # Task object
-    relevant_patterns: list[str]
-    similar_implementations: list[CodeExample]
-    dependencies: list[str]
-    suggested_approach: str
-
-
-@dataclass
-class ContextualCode:
-    """Code with contextual information."""
-
-    code: str
-    file_path: str
-    start_line: int
-    end_line: int
-    context_type: str  # 'function', 'class', 'module', etc.
-    related_symbols: list[str]
-    dependencies: list[str]
 
 @dataclass
 class LanguageInfo:

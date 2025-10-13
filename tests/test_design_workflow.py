@@ -1,6 +1,6 @@
 """Tests for design workflow."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 
 import pytest
 
@@ -66,7 +66,9 @@ class TestDesignWorkflow:
     def mock_state_manager(self):
         """Create a mock state manager."""
         state_manager = Mock(spec=StateManager)
-        state_manager.save_document = Mock()
+        state_manager.save_document = AsyncMock()
+        state_manager.save_project_state = AsyncMock()
+        state_manager.load_project_state = Mock(return_value=Mock())
         return state_manager
 
     @pytest.fixture
@@ -104,7 +106,8 @@ class TestDesignWorkflow:
             approved=True,
         )
 
-    def test_execute_design_phase_success(
+    @pytest.mark.asyncio
+    async def test_execute_design_phase_success(
         self, workflow, sample_specification, mock_cli, mock_analyzer
     ):
         """Test successful execution of design phase."""
@@ -117,15 +120,66 @@ class TestDesignWorkflow:
         with patch.object(
             workflow.generator, "request_user_approval", side_effect=mock_approval
         ):
-            result = workflow.execute_design_phase(sample_specification)
+            result = await workflow.execute_design_phase(sample_specification)
 
         assert isinstance(result, DesignDocument)
         assert result.approved
         mock_cli.display_message.assert_called()
         mock_analyzer.analyze_for_design.assert_called_once()
-        workflow.state_manager.save_document.assert_called_once()
+        workflow.state_manager.save_document.assert_awaited_once()
+        workflow.state_manager.save_project_state.assert_awaited_once()
 
-    def test_execute_design_phase_without_state_manager(
+    @pytest.mark.asyncio
+    async def test_design_document_persistence(self, tmp_path, sample_specification):
+        """Test that the design document is correctly saved to and loaded from state."""
+        # 1. Setup a real StateManager
+        state_manager = StateManager(project_path=str(tmp_path))
+        await state_manager.save_project_state(state_manager.create_initial_state(str(tmp_path), "test_session"))
+
+
+        # 2. Setup workflow with the real StateManager
+        cli = Mock(spec=ICLIInterface)
+        analyzer = Mock(spec=ICodebaseAnalyzer)
+        analyzer.analyze_for_design.return_value = DesignAnalysis(
+            architecture_overview="Test architecture",
+            components=[],
+            data_models=[],
+            api_interfaces=[],
+            design_patterns=[],
+            quality_metrics={},
+            technical_debt=[],
+            recommendations=[],
+        )
+        workflow = DesignWorkflow(
+            cli_interface=cli,
+            codebase_analyzer=analyzer,
+            state_manager=state_manager,
+        )
+
+        # 3. Execute design phase
+        def mock_approval(design):
+            design.approved = True
+            return True
+
+        with patch.object(
+            workflow.generator, "request_user_approval", side_effect=mock_approval
+        ):
+            design_doc = await workflow.execute_design_phase(sample_specification)
+
+        # 4. The workflow should have saved the state, so we can load it into a new manager
+        new_state_manager = StateManager(project_path=str(tmp_path))
+        new_state = new_state_manager.load_project_state()
+
+        # 5. Assert that the loaded design document is correct
+        loaded_design_doc = new_state.design_document
+        assert loaded_design_doc is not None
+        assert isinstance(loaded_design_doc, DesignDocument)
+        assert loaded_design_doc.overview == design_doc.overview
+        assert loaded_design_doc.version == design_doc.version
+        assert loaded_design_doc.approved is True
+
+    @pytest.mark.asyncio
+    async def test_execute_design_phase_without_state_manager(
         self, workflow_no_state, sample_specification
     ):
         """Test design phase execution without state manager."""
@@ -139,7 +193,7 @@ class TestDesignWorkflow:
             "request_user_approval",
             side_effect=mock_approval,
         ):
-            result = workflow_no_state.execute_design_phase(sample_specification)
+            result = await workflow_no_state.execute_design_phase(sample_specification)
 
         assert isinstance(result, DesignDocument)
         assert result.approved
@@ -179,7 +233,8 @@ class TestDesignWorkflow:
         assert design.architecture is not None
         mock_cli.display_message.assert_called()
 
-    def test_approval_workflow_immediate_approval(self, workflow, sample_specification):
+    @pytest.mark.asyncio
+    async def test_approval_workflow_immediate_approval(self, workflow, sample_specification):
         """Test approval workflow with immediate approval."""
         analysis = workflow._perform_design_analysis()
         design = workflow._generate_design_document(sample_specification, analysis)
@@ -191,12 +246,13 @@ class TestDesignWorkflow:
         with patch.object(
             workflow.generator, "request_user_approval", side_effect=mock_approval
         ):
-            approved_design = workflow._approval_workflow(design)
+            approved_design = await workflow._approval_workflow(design)
 
         assert approved_design.approved
         assert approved_design.version == design.version
 
-    def test_approval_workflow_with_refinement(
+    @pytest.mark.asyncio
+    async def test_approval_workflow_with_refinement(
         self, workflow, sample_specification, mock_cli
     ):
         """Test approval workflow with one refinement iteration."""
@@ -222,7 +278,7 @@ class TestDesignWorkflow:
             "request_user_approval",
             side_effect=mock_approval_sequence,
         ):
-            with patch.object(workflow.generator, "refine_design") as mock_refine:
+            with patch.object(workflow.generator, "refine_design", new_callable=AsyncMock) as mock_refine:
                 # Mock refine_design to return a modified design
                 refined_design = DesignDocument(
                     overview="Refined overview",
@@ -237,13 +293,14 @@ class TestDesignWorkflow:
                 )
                 mock_refine.return_value = refined_design
 
-                approved_design = workflow._approval_workflow(design)
+                approved_design = await workflow._approval_workflow(design)
 
         assert approved_design.approved
         mock_refine.assert_called_once_with(design, "Add more components")
         mock_cli.get_user_input.assert_called()
 
-    def test_approval_workflow_max_iterations(
+    @pytest.mark.asyncio
+    async def test_approval_workflow_max_iterations(
         self, workflow, sample_specification, mock_cli
     ):
         """Test approval workflow reaching maximum iterations."""
@@ -256,15 +313,16 @@ class TestDesignWorkflow:
         with patch.object(
             workflow.generator, "request_user_approval", return_value=False
         ):
-            with patch.object(workflow.generator, "refine_design", return_value=design):
-                approved_design = workflow._approval_workflow(design)
+            with patch.object(workflow.generator, "refine_design", new_callable=AsyncMock, return_value=design):
+                approved_design = await workflow._approval_workflow(design)
 
         assert approved_design.approved  # Should be force-approved after max iterations
         mock_cli.display_message.assert_any_call(
             "Maximum refinement iterations reached. Using current design."
         )
 
-    def test_approval_workflow_no_feedback(
+    @pytest.mark.asyncio
+    async def test_approval_workflow_no_feedback(
         self, workflow, sample_specification, mock_cli
     ):
         """Test approval workflow with no feedback provided."""
@@ -278,7 +336,7 @@ class TestDesignWorkflow:
         with patch.object(
             workflow.generator, "request_user_approval", side_effect=approval_calls
         ):
-            approved_design = workflow._approval_workflow(design)
+            approved_design = await workflow._approval_workflow(design)
 
         assert approved_design.approved
         mock_cli.display_message.assert_any_call(
@@ -297,26 +355,28 @@ class TestDesignWorkflow:
         mock_cli.display_message.assert_any_call(f"Version: {design.version}")
         mock_cli.display_message.assert_any_call("=====================\n")
 
-    def test_save_design_success(self, workflow, sample_specification):
+    @pytest.mark.asyncio
+    async def test_save_design_success(self, workflow, sample_specification):
         """Test successful design saving."""
         analysis = workflow._perform_design_analysis()
         design = workflow._generate_design_document(sample_specification, analysis)
 
-        workflow._save_design(design)
-
-        workflow.state_manager.save_document.assert_called_once()
+        await workflow._save_design(design)
+        workflow.state_manager.save_document.assert_awaited_once()
+        workflow.state_manager.save_project_state.assert_awaited_once()
         workflow.cli_interface.display_message.assert_any_call(
             "Design saved to DESIGN.md"
         )
 
-    def test_save_design_failure(self, workflow, sample_specification, mock_cli):
+    @pytest.mark.asyncio
+    async def test_save_design_failure(self, workflow, sample_specification, mock_cli):
         """Test design saving failure handling."""
         analysis = workflow._perform_design_analysis()
         design = workflow._generate_design_document(sample_specification, analysis)
 
-        workflow.state_manager.save_document.side_effect = Exception("Save failed")
+        workflow.state_manager.save_project_state.side_effect = Exception("Save failed")
 
-        workflow._save_design(design)
+        await workflow._save_design(design)
 
         mock_cli.display_message.assert_any_call(
             "Warning: Could not save design: Save failed"
@@ -478,11 +538,13 @@ class TestDesignWorkflowIntegration:
         )
 
         state_manager = Mock(spec=StateManager)
-        state_manager.save_document = Mock()
-
+        state_manager.save_document = AsyncMock()
+        state_manager.save_project_state = AsyncMock()
+        state_manager.load_project_state = Mock(return_value=Mock())
         return DesignWorkflow(cli, analyzer, state_manager)
 
-    def test_end_to_end_design_workflow(self, integration_workflow):
+    @pytest.mark.asyncio
+    async def test_end_to_end_design_workflow(self, integration_workflow):
         """Test complete end-to-end design workflow."""
         # Create a comprehensive specification
         requirements = [
@@ -521,7 +583,7 @@ class TestDesignWorkflowIntegration:
             "request_user_approval",
             side_effect=mock_approval,
         ):
-            design = integration_workflow.execute_design_phase(spec)
+            design = await integration_workflow.execute_design_phase(spec)
 
         # Verify the design was generated properly
         assert isinstance(design, DesignDocument)
@@ -533,7 +595,8 @@ class TestDesignWorkflowIntegration:
 
         # Verify workflow interactions
         integration_workflow.codebase_analyzer.analyze_for_design.assert_called_once()
-        integration_workflow.state_manager.save_document.assert_called_once()
+        integration_workflow.state_manager.save_document.assert_awaited_once()
+        integration_workflow.state_manager.save_project_state.assert_awaited_once()
 
         # Verify metrics
         metrics = integration_workflow.get_design_metrics(design)
