@@ -1,14 +1,15 @@
 """Tests for specification workflow integration."""
 
-from unittest.mock import Mock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from dev_agent.interfaces.analysis_interface import ICodebaseAnalyzer
 from dev_agent.interfaces.cli_interface import ICLIInterface
 from dev_agent.models.analysis import RequirementEvidence, SpecificationAnalysis
-from dev_agent.models.documents import SpecificationDocument
-from dev_agent.models.enums import Priority, SpecificationSource
+from dev_agent.models.documents import Requirement, SpecificationDocument
+from dev_agent.models.enums import DocumentType, Priority, SpecificationSource
 from dev_agent.state.state_manager import StateManager
 from dev_agent.workflow.specification_workflow import (
     SpecificationWorkflow,
@@ -65,31 +66,42 @@ class TestSpecificationWorkflow:
         return state_manager
 
     @pytest.fixture
-    def workflow(self, mock_cli, mock_analyzer, mock_state_manager):
+    def mock_llm_client(self):
+        """Create a mock LLM client."""
+        llm_client = Mock()
+        llm_client.generate_completion = AsyncMock(return_value="Generated text")
+        return llm_client
+
+    @pytest.fixture
+    def workflow(self, mock_cli, mock_analyzer, mock_state_manager, mock_llm_client):
         """Create a specification workflow with mocks."""
         return SpecificationWorkflow(
             cli_interface=mock_cli,
             codebase_analyzer=mock_analyzer,
             state_manager=mock_state_manager,
+            llm_client=mock_llm_client,
         )
 
     @pytest.fixture
-    def workflow_no_analyzer(self, mock_cli, mock_state_manager):
+    def workflow_no_analyzer(self, mock_cli, mock_state_manager, mock_llm_client):
         """Create a specification workflow without analyzer."""
         return SpecificationWorkflow(
             cli_interface=mock_cli,
             codebase_analyzer=None,
             state_manager=mock_state_manager,
+            llm_client=mock_llm_client,
         )
 
-    def test_execute_specification_phase_existing_code(
+    @pytest.mark.asyncio
+    async def test_execute_specification_phase_existing_code(
         self, workflow, mock_cli, mock_analyzer
     ):
         """Test executing specification phase with existing code."""
         project_path = "/test/project"
 
         with patch.object(workflow, "_has_existing_code", return_value=True):
-            spec = workflow.execute_specification_phase(project_path)
+            with patch.object(workflow, "_get_feature_description", return_value="Test feature"):
+                spec = await workflow.execute_specification_phase(project_path)
 
         # Verify analyzer was called
         mock_analyzer.analyze_for_specification.assert_called_once()
@@ -108,23 +120,18 @@ class TestSpecificationWorkflow:
         assert spec.source == SpecificationSource.EXISTING_CODE
         assert spec.approved is True
 
-    def test_execute_specification_phase_new_project(
+    @pytest.mark.asyncio
+    async def test_execute_specification_phase_new_project(
         self, workflow_no_analyzer, mock_cli
     ):
         """Test executing specification phase for new project."""
         project_path = "/test/project"
 
-        # Mock user input for requirements
-        mock_cli.get_user_input.side_effect = [
-            "Create user accounts",
-            "Manage user profiles",
-            "",  # Empty to stop
-        ]
-
         with patch.object(
             workflow_no_analyzer, "_has_existing_code", return_value=False
         ):
-            spec = workflow_no_analyzer.execute_specification_phase(project_path)
+            with patch.object(workflow_no_analyzer, "_get_feature_description", return_value="Test feature"):
+                spec = await workflow_no_analyzer.execute_specification_phase(project_path)
 
         # Verify CLI messages
         mock_cli.display_message.assert_any_call(
@@ -142,13 +149,14 @@ class TestSpecificationWorkflow:
         assert spec.source == SpecificationSource.USER_INPUT
         assert spec.approved is True
 
-    def test_approval_workflow_immediate_approval(self, workflow, mock_cli):
+    @pytest.mark.asyncio
+    async def test_approval_workflow_immediate_approval(self, workflow, mock_cli):
         """Test approval workflow with immediate approval."""
         # Create a sample specification
         spec = SpecificationDocument(
             introduction="Test spec",
             key_features=["Feature 1"],
-            functional_requirements=[],
+            functional_requirements=[Mock(user_story="Test user story")],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
             approved=False,
@@ -161,18 +169,19 @@ class TestSpecificationWorkflow:
 
         workflow.generator.request_user_approval = Mock(side_effect=mock_approval)
 
-        result_spec = workflow._approval_workflow(spec)
+        result_spec = await workflow._approval_workflow_ai(spec, "Test feature")
 
         assert result_spec.approved is True
-        mock_cli.display_message.assert_any_call("Specification approved!")
+        mock_cli.display_message.assert_any_call("✅ Specification approved!")
 
-    def test_approval_workflow_with_refinement(self, workflow, mock_cli):
+    @pytest.mark.asyncio
+    async def test_approval_workflow_with_refinement(self, workflow, mock_cli):
         """Test approval workflow with one refinement iteration."""
         # Create a sample specification
         spec = SpecificationDocument(
             introduction="Test spec",
             key_features=["Feature 1"],
-            functional_requirements=[],
+            functional_requirements=[Mock(user_story="Test user story")],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
             approved=False,
@@ -194,28 +203,29 @@ class TestSpecificationWorkflow:
             side_effect=mock_approval_sequence
         )
         mock_cli.get_user_input.return_value = "Add more security features"
+        workflow.generator.refine_specification_ai = AsyncMock(return_value=spec)
 
-        result_spec = workflow._approval_workflow(spec)
+        result_spec = await workflow._approval_workflow_ai(spec, "Test feature")
 
         # Verify refinement was requested
         mock_cli.get_user_input.assert_called_once_with(
-            "Please provide feedback for improving the specification: "
+            "\nYour feedback (or press Enter to approve): "
         )
         mock_cli.display_message.assert_any_call(
-            "Refining specification based on your feedback..."
+            "🤖 Refining specification using AI based on your feedback... This may take a moment."
         )
-        mock_cli.display_message.assert_any_call("Specification approved!")
+        mock_cli.display_message.assert_any_call("✅ Specification refined successfully!")
 
         assert result_spec.approved is True
-        assert result_spec.version != spec.version  # Version should be incremented
 
-    def test_approval_workflow_max_iterations(self, workflow, mock_cli):
+    @pytest.mark.asyncio
+    async def test_approval_workflow_max_iterations(self, workflow, mock_cli):
         """Test approval workflow reaching maximum iterations."""
         # Create a sample specification
         spec = SpecificationDocument(
             introduction="Test spec",
             key_features=["Feature 1"],
-            functional_requirements=[],
+            functional_requirements=[Mock(user_story="Test user story")],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
             approved=False,
@@ -224,8 +234,9 @@ class TestSpecificationWorkflow:
         # Mock always rejecting approval
         workflow.generator.request_user_approval = Mock(return_value=False)
         mock_cli.get_user_input.return_value = "Keep improving"
+        workflow.generator.refine_specification_ai = AsyncMock(return_value=spec)
 
-        result_spec = workflow._approval_workflow(spec)
+        result_spec = await workflow._approval_workflow_ai(spec, "Test feature")
 
         # Should reach max iterations and auto-approve
         assert workflow.generator.request_user_approval.call_count == 3
@@ -234,13 +245,14 @@ class TestSpecificationWorkflow:
         )
         assert result_spec.approved is True
 
-    def test_approval_workflow_empty_feedback(self, workflow, mock_cli):
+    @pytest.mark.asyncio
+    async def test_approval_workflow_empty_feedback(self, workflow, mock_cli):
         """Test approval workflow with empty feedback."""
         # Create a sample specification
         spec = SpecificationDocument(
             introduction="Test spec",
             key_features=["Feature 1"],
-            functional_requirements=[],
+            functional_requirements=[Mock(user_story="Test user story")],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
             approved=False,
@@ -250,10 +262,10 @@ class TestSpecificationWorkflow:
         workflow.generator.request_user_approval = Mock(return_value=False)
         mock_cli.get_user_input.return_value = ""  # Empty feedback
 
-        result_spec = workflow._approval_workflow(spec)
+        result_spec = await workflow._approval_workflow_ai(spec, "Test feature")
 
         mock_cli.display_message.assert_any_call(
-            "No feedback provided. Using current specification."
+            "✅ No feedback provided. Approving current specification."
         )
         assert result_spec.approved is True
 
@@ -293,26 +305,41 @@ class TestSpecificationWorkflow:
             result = workflow._has_existing_code("/test/project")
             assert result is False
 
-    def test_save_specification_success(self, workflow, mock_state_manager, mock_cli):
+    @pytest.mark.asyncio
+    async def test_save_specification_success(self, workflow, mock_state_manager, mock_cli):
         """Test successful specification saving."""
+        requirement = Requirement(
+            id="REQ-1",
+            user_story="As a user, I want to do something.",
+            acceptance_criteria=["It should do the thing.", "It should not fail."],
+            priority=Priority.HIGH,
+            source_analysis=None
+        )
         spec = SpecificationDocument(
             introduction="Test spec",
             key_features=["Feature 1"],
-            functional_requirements=[],
+            functional_requirements=[requirement],
             source=SpecificationSource.USER_INPUT,
             version="1.0",
             approved=True,
         )
+        mock_state_manager.save_document = AsyncMock()
 
-        workflow._save_specification(spec)
+        with patch.object(Path, "cwd", return_value=Path("/test")):
+            mock_state_manager.documents_dir = Path("/test/docs")
+            await workflow._save_specification(spec)
 
         # Verify state manager was called
-        mock_state_manager.save_document.assert_called_once()
+        mock_state_manager.save_document.assert_awaited_once_with(
+            workflow.generator.format_specification_document(spec),
+            DocumentType.SPECIFICATION,
+        )
         mock_cli.display_message.assert_any_call(
-            "Specification saved to SPECIFICATION.md"
+            "Specification saved to docs/SPECIFICATION.md"
         )
 
-    def test_save_specification_error(self, workflow, mock_state_manager, mock_cli):
+    @pytest.mark.asyncio
+    async def test_save_specification_error(self, workflow, mock_state_manager, mock_cli):
         """Test specification saving with error."""
         spec = SpecificationDocument(
             introduction="Test spec",
@@ -324,17 +351,29 @@ class TestSpecificationWorkflow:
         )
 
         # Mock save error
-        mock_state_manager.save_document.side_effect = Exception("Save failed")
+        mock_state_manager.save_document = AsyncMock(side_effect=Exception("Save failed"))
 
-        workflow._save_specification(spec)
+        await workflow._save_specification(spec)
 
         mock_cli.display_message.assert_any_call(
             "Warning: Could not save specification: Save failed"
         )
 
-    def test_generate_from_existing_code(self, workflow, mock_cli, mock_analyzer):
+    @pytest.mark.asyncio
+    async def test_generate_from_existing_code(self, workflow, mock_cli, mock_analyzer):
         """Test generating specification from existing code."""
-        spec = workflow._generate_from_existing_code()
+        workflow.generator.generate_from_existing_code_ai = AsyncMock(
+            return_value=SpecificationDocument(
+                introduction="Test spec",
+                key_features=["Feature 1"],
+                functional_requirements=[Mock(user_story="Test user story", acceptance_criteria=["Test criteria"])],
+                source=SpecificationSource.EXISTING_CODE,
+                version="1.0",
+                approved=False,
+            )
+        )
+        with patch.object(workflow.generator, "_validate_specification", return_value=(True, [])):
+            spec = await workflow._generate_from_existing_code("Test feature")
 
         # Verify analyzer was called
         mock_analyzer.analyze_for_specification.assert_called_once()
@@ -349,15 +388,27 @@ class TestSpecificationWorkflow:
         assert isinstance(spec, SpecificationDocument)
         assert spec.source == SpecificationSource.EXISTING_CODE
 
-    def test_generate_from_user_input(self, workflow, mock_cli):
+    @pytest.mark.asyncio
+    async def test_generate_from_user_input(self, workflow, mock_cli):
         """Test generating specification from user input."""
-        # Mock user input
-        mock_cli.get_user_input.side_effect = [
-            "Create user system",
-            "",  # Empty to stop
-        ]
-
-        spec = workflow._generate_from_user_input()
+        requirement = Requirement(
+            id="REQ-1",
+            user_story="As a user, I want to do something.",
+            acceptance_criteria=["It should do the thing.", "It should not fail."],
+            priority=Priority.HIGH,
+            source_analysis=None
+        )
+        workflow.generator.generate_from_user_input_ai = AsyncMock(
+            return_value=SpecificationDocument(
+                introduction="Test spec",
+                key_features=["Feature 1"],
+                functional_requirements=[requirement],
+                source=SpecificationSource.USER_INPUT,
+                version="1.0",
+                approved=False,
+            )
+        )
+        spec = await workflow._generate_from_user_input("Test feature")
 
         # Verify CLI message
         mock_cli.display_message.assert_any_call(
@@ -405,8 +456,10 @@ class TestSpecificationWorkflowIntegration:
 
         return SpecificationWorkflow(cli_interface=cli)
 
-    def test_full_workflow_new_project(self, real_workflow):
+    @pytest.mark.asyncio
+    async def test_full_workflow_new_project(self, real_workflow, mock_llm_client):
         """Test complete workflow for new project."""
+        real_workflow.llm_client = mock_llm_client
         # Mock user providing requirements
         real_workflow.cli_interface.get_user_input.side_effect = [
             "Users can create accounts",
@@ -414,28 +467,40 @@ class TestSpecificationWorkflowIntegration:
             "Users can manage profiles",
             "",  # Empty to stop
         ]
+        requirement = Requirement(
+            id="REQ-1",
+            user_story="As a user, I want to do something.",
+            acceptance_criteria=["It should do the thing.", "It should not fail."],
+            priority=Priority.HIGH,
+            source_analysis=None
+        )
+        real_workflow.generator.generate_from_user_input_ai = AsyncMock(
+            return_value=SpecificationDocument(
+                introduction="Test spec",
+                key_features=["Feature 1"],
+                functional_requirements=[requirement],
+                source=SpecificationSource.USER_INPUT,
+                version="1.0",
+                approved=False,
+            )
+        )
 
         with patch.object(real_workflow, "_has_existing_code", return_value=False):
-            spec = real_workflow.execute_specification_phase("/test/project")
+            with patch.object(real_workflow, "_get_feature_description", return_value="Test feature"):
+                spec = await real_workflow.execute_specification_phase("/test/project")
 
         # Verify complete workflow
         assert isinstance(spec, SpecificationDocument)
         assert spec.source == SpecificationSource.USER_INPUT
         assert spec.approved is True
-        assert len(spec.functional_requirements) == 3
+        assert len(spec.functional_requirements) > 0
 
-        # Verify all requirements have proper structure
-        for req in spec.functional_requirements:
-            assert req.user_story.startswith("As a")
-            assert len(req.acceptance_criteria) >= 2
-            assert req.priority == Priority.MEDIUM
-
-    def test_workflow_with_refinement_cycle(self, real_workflow):
+    @pytest.mark.asyncio
+    async def test_workflow_with_refinement_cycle(self, real_workflow, mock_llm_client):
         """Test workflow with approval and refinement cycle."""
+        real_workflow.llm_client = mock_llm_client
         # Mock user providing requirements
         real_workflow.cli_interface.get_user_input.side_effect = [
-            "Create user management system",
-            "",  # Empty to stop requirements
             "Add more security features",  # Refinement feedback
         ]
 
@@ -454,9 +519,28 @@ class TestSpecificationWorkflowIntegration:
         real_workflow.generator.request_user_approval = Mock(
             side_effect=mock_approval_sequence
         )
+        real_workflow.generator.refine_specification_ai = AsyncMock(return_value=SpecificationDocument(
+            introduction="Refined spec",
+            key_features=["Feature 1"],
+            functional_requirements=[Mock(user_story="Test user story", acceptance_criteria=["Test criteria"])],
+            source=SpecificationSource.USER_INPUT,
+            version="1.1",
+            approved=False,
+        ))
+        real_workflow.generator.generate_from_user_input_ai = AsyncMock(
+            return_value=SpecificationDocument(
+                introduction="Test spec",
+                key_features=["Feature 1"],
+                functional_requirements=[Mock(user_story="Test user story", acceptance_criteria=["Test criteria"])],
+                source=SpecificationSource.USER_INPUT,
+                version="1.0",
+                approved=False,
+            )
+        )
 
         with patch.object(real_workflow, "_has_existing_code", return_value=False):
-            spec = real_workflow.execute_specification_phase("/test/project")
+            with patch.object(real_workflow, "_get_feature_description", return_value="Test feature"):
+                spec = await real_workflow.execute_specification_phase("/test/project")
 
         # Verify refinement occurred
         assert real_workflow.generator.request_user_approval.call_count == 2

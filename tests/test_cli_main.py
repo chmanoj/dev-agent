@@ -79,11 +79,18 @@ class TestCLIMain(unittest.TestCase):
             # Should call setup_cli_logging with verbose=True
             mock_logging.assert_called()
 
-    def test_azure_status_command(self):
+    @patch('dev_agent.cli.main.config_manager')
+    def test_azure_status_command(self, mock_config_manager):
         """Test azure status command."""
         from typer.testing import CliRunner
         runner = CliRunner()
         
+        # Mock the config manager to simulate a configured environment
+        mock_config_manager.get_config.return_value.azure_openai.api_key = "test_key"
+        mock_config_manager.get_config.return_value.azure_openai.endpoint = "https://test.openai.azure.com/"
+        mock_config_manager.get_config.return_value.azure_openai.deployment_name = "test-deployment"
+        mock_config_manager.get_config.return_value.azure_openai.embedding_deployment = "test-embedding"
+
         result = runner.invoke(app, ["azure", "status"])
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Azure OpenAI", result.stdout)
@@ -125,6 +132,7 @@ class TestCLIMain(unittest.TestCase):
             operations_count=10,
             by_phase={},
             by_operation={},
+            by_provider={},
             start_time=datetime.now(),
             end_time=datetime.now(),
         )
@@ -133,6 +141,7 @@ class TestCLIMain(unittest.TestCase):
         mock_workflow_instance = Mock()
         mock_workflow.return_value = mock_workflow_instance
         mock_workflow_instance.cost_tracker.get_report.return_value = mock_report
+        mock_workflow_instance.resume_project.return_value = None
         
         # Create .dev_agent directory
         dev_agent_dir = os.path.join(self.temp_dir, ".dev_agent")
@@ -164,6 +173,7 @@ class TestCLIMain(unittest.TestCase):
             operations_count=5,
             by_phase={PhaseType.INDEXING: 0.075},
             by_operation={},
+            by_provider={},
             start_time=datetime.now(),
             end_time=datetime.now(),
         )

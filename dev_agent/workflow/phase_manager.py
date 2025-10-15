@@ -348,7 +348,7 @@ class PhaseManager(IPhaseManager):
                 )
 
             # Execute design generation
-            design = self.design_workflow.execute_design_phase(
+            design = await self.design_workflow.execute_design_phase(
                 project_state.specification
             )
 

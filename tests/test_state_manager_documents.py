@@ -34,10 +34,10 @@ from dev_agent.models.project_state import IndexMetadata, ProjectState, SessionD
 from dev_agent.state.state_manager import StateManager
 
 
-class TestStateManagerDocuments(unittest.TestCase):
+class TestStateManagerDocuments(unittest.IsolatedAsyncioTestCase):
     """Test StateManager with complex document structures."""
 
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_path = Path(self.temp_dir) / "test_project"
@@ -63,13 +63,13 @@ class TestStateManagerDocuments(unittest.TestCase):
             index_version="1.0.0",
         )
 
-    def tearDown(self):
+    async def asyncTearDown(self):
         """Clean up test environment."""
         import shutil
 
         shutil.rmtree(self.temp_dir)
 
-    def test_specification_document_persistence(self):
+    async def test_specification_document_persistence(self):
         """Test saving and loading specification documents with all fields."""
         # Create a comprehensive specification
         code_analysis = CodeAnalysisRef(
@@ -132,7 +132,7 @@ class TestStateManagerDocuments(unittest.TestCase):
         )
 
         # Save and load
-        success = self.state_manager.save_project_state(project_state)
+        success = await self.state_manager.save_project_state(project_state)
         self.assertTrue(success)
 
         loaded_state = self.state_manager.load_project_state()
@@ -161,7 +161,7 @@ class TestStateManagerDocuments(unittest.TestCase):
         self.assertEqual(req2.priority, Priority.MEDIUM)
         self.assertIsNone(req2.source_analysis)
 
-    def test_design_document_persistence(self):
+    async def test_design_document_persistence(self):
         """Test saving and loading design documents with all components."""
         # Create comprehensive design document
         architecture = ArchitectureDescription(
@@ -281,7 +281,7 @@ class TestStateManagerDocuments(unittest.TestCase):
         )
 
         # Save and load
-        success = self.state_manager.save_project_state(project_state)
+        success = await self.state_manager.save_project_state(project_state)
         self.assertTrue(success)
 
         loaded_state = self.state_manager.load_project_state()
@@ -329,7 +329,7 @@ class TestStateManagerDocuments(unittest.TestCase):
         ts = loaded_design.testing_strategy
         self.assertEqual(ts.test_coverage_target, 95.0)
 
-    def test_task_list_persistence(self):
+    async def test_task_list_persistence(self):
         """Test saving and loading task lists with all task details."""
         # Create comprehensive task list
         task1 = Task(
@@ -405,7 +405,7 @@ class TestStateManagerDocuments(unittest.TestCase):
         )
 
         # Save and load
-        success = self.state_manager.save_project_state(project_state)
+        success = await self.state_manager.save_project_state(project_state)
         self.assertTrue(success)
 
         loaded_state = self.state_manager.load_project_state()

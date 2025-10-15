@@ -66,6 +66,7 @@ class CodebaseAnalyzer(ICodebaseAnalyzer):
                 functional_areas=[],
                 technology_constraints=["Python 3.x"],
                 requirement_evidence=[],
+                external_dependencies=[],
                 confidence_score=0.1,
             )
 
@@ -76,6 +77,7 @@ class CodebaseAnalyzer(ICodebaseAnalyzer):
         functional_areas = self._identify_functional_areas()
         technology_constraints = self._identify_technology_constraints()
         requirement_evidence = self._extract_requirement_evidence()
+        external_dependencies = self._analyze_external_dependencies()
 
         # Calculate confidence based on available information
         confidence_score = self._calculate_specification_confidence(
@@ -89,6 +91,7 @@ class CodebaseAnalyzer(ICodebaseAnalyzer):
             functional_areas=functional_areas,
             technology_constraints=technology_constraints,
             requirement_evidence=requirement_evidence,
+            external_dependencies=external_dependencies,
             confidence_score=confidence_score,
         )
 
@@ -1718,6 +1721,7 @@ class CodebaseAnalyzer(ICodebaseAnalyzer):
                     confidence=min(
                         0.9, 0.5 + (len(funcs) * 0.1)
                     ),  # Higher confidence with more functions
+                    code_examples=[],
                 )
                 evidence.append(evidence_item)
 

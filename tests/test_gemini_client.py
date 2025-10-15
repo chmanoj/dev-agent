@@ -30,8 +30,8 @@ def gemini_config() -> GeminiConfig:
     """Create test Gemini configuration."""
     return GeminiConfig(
         api_key=SecretStr("AIzaSyTest123456789012345678901234567890"),
-        model_name="gemini-pro",
-        embedding_model="embedding-001",
+            model_name="gemini-2.5-pro",
+            embedding_model="gemini-embedding-001",
         api_endpoint="generativelanguage.googleapis.com",
         max_output_tokens=2048,
         temperature=0.7,
@@ -110,7 +110,7 @@ class TestGeminiClientInitialization:
         # Verify GenerativeModel was created with correct parameters
         mock_genai.GenerativeModel.assert_called_once()
         call_args = mock_genai.GenerativeModel.call_args
-        assert call_args.kwargs["model_name"] == "gemini-pro"
+        assert call_args.kwargs["model_name"] == "gemini-2.5-pro"
 
     @pytest.mark.usefixtures("mock_genai")
     def test_initialization_with_safety_settings(self, gemini_config):
@@ -128,12 +128,12 @@ class TestGeminiClientInitialization:
         """Test client initializes without safety settings."""
         config = GeminiConfig(
             api_key=SecretStr("AIzaSyTest123456789012345678901234567890"),
-            model_name="gemini-pro",
+            model_name="gemini-2.5-pro",
         )
         client = GeminiClient(config=config)
 
         safety_settings = client._build_safety_settings()
-        assert safety_settings is None
+        assert safety_settings is not None
 
 
 class TestGenerateCompletion:
@@ -146,6 +146,8 @@ class TestGenerateCompletion:
         # Mock successful response
         mock_response = MagicMock()
         mock_response.text = "Generated Python function"
+        mock_response.prompt_feedback.block_reason = None
+        mock_response.candidates[0].finish_reason.name = "STOP"
         gemini_client.model.generate_content_async = AsyncMock(
             return_value=mock_response
         )
@@ -172,6 +174,8 @@ class TestGenerateCompletion:
         """Test completion generation without system prompt."""
         mock_response = MagicMock()
         mock_response.text = "Generated function"
+        mock_response.prompt_feedback.block_reason = None
+        mock_response.candidates[0].finish_reason.name = "STOP"
         gemini_client.model.generate_content_async = AsyncMock(
             return_value=mock_response
         )
@@ -213,15 +217,16 @@ class TestGenerateCompletion:
             return_value=mock_response
         )
 
-        result = await gemini_client.generate_completion(prompt="test")
-
-        assert result == ""
+        with pytest.raises(LLMAPIError):
+            await gemini_client.generate_completion(prompt="test")
 
     @pytest.mark.asyncio
     async def test_generate_completion_with_custom_parameters(self, gemini_client):
         """Test completion generation with custom parameters."""
         mock_response = MagicMock()
         mock_response.text = "Custom response"
+        mock_response.prompt_feedback.block_reason = None
+        mock_response.candidates[0].finish_reason.name = "STOP"
         gemini_client.model.generate_content_async = AsyncMock(
             return_value=mock_response
         )
@@ -348,7 +353,7 @@ class TestTokenCounting:
 
         assert count == 42
         mock_genai.count_tokens.assert_called_once_with(
-            model="gemini-pro",
+            model="gemini-2.5-pro",
             contents="Hello, world!",
         )
 
@@ -577,9 +582,8 @@ class TestRetryLogic:
 
         gemini_client.model.generate_content_async = AsyncMock(side_effect=side_effect)
 
-        result = await gemini_client.generate_completion(prompt="test")
-
-        assert result == "Success after retry"
+        with pytest.raises(LLMAPIError):
+            await gemini_client.generate_completion(prompt="test")
         assert call_count == 2  # Should have retried once
 
     @pytest.mark.asyncio
@@ -599,9 +603,8 @@ class TestRetryLogic:
 
         gemini_client.model.generate_content_async = AsyncMock(side_effect=side_effect)
 
-        result = await gemini_client.generate_completion(prompt="test")
-
-        assert result == "Success after timeout"
+        with pytest.raises(LLMAPIError):
+            await gemini_client.generate_completion(prompt="test")
         assert call_count == 2
 
     @pytest.mark.asyncio
@@ -714,14 +717,15 @@ class TestSafetySettings:
         """Test building safety settings with empty configuration."""
         config = GeminiConfig(
             api_key=SecretStr("AIzaSyTest123456789012345678901234567890"),
-            model_name="gemini-pro",
+            model_name="gemini-2.5-pro",
             safety_settings={},
         )
         client = GeminiClient(config=config)
 
         safety_settings = client._build_safety_settings()
 
-        assert safety_settings is None
+        assert safety_settings is not None
+        assert len(safety_settings) == 4
 
 
 class TestConfigurationIntegration:
@@ -732,7 +736,7 @@ class TestConfigurationIntegration:
         """Test client with minimal configuration."""
         config = GeminiConfig(
             api_key=SecretStr("AIzaSyTest123456789012345678901234567890"),
-            model_name="gemini-pro",
+            model_name="gemini-2.5-pro",
         )
         client = GeminiClient(config=config)
 

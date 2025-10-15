@@ -33,10 +33,10 @@ from dev_agent.models.project_state import IndexMetadata, ProjectState, SessionD
 from dev_agent.state.state_manager import StateManager
 
 
-class TestStateManager(unittest.TestCase):
+class TestStateManager(unittest.IsolatedAsyncioTestCase):
     """Test cases for StateManager functionality."""
 
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up test environment with temporary directory."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_path = Path(self.temp_dir) / "test_project"
@@ -78,7 +78,7 @@ class TestStateManager(unittest.TestCase):
             updated_at=datetime(2024, 1, 1, 11, 0, 0),
         )
 
-    def tearDown(self):
+    async def asyncTearDown(self):
         """Clean up test environment."""
         import shutil
 
@@ -188,7 +188,7 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(req.source_analysis.confidence_score, 0.9)
 
     @pytest.mark.asyncio
-    async def test_save_and_load_design_document(self):
+    async def test_save_and_load_design(self):
         """Test saving and loading design documents."""
         # Create a sample design document
         architecture = ArchitectureDescription(
@@ -321,6 +321,8 @@ class TestStateManager(unittest.TestCase):
     async def test_save_and_load_documents(self, mock_get_spec_folder_name):
         """Test saving and loading markdown documents."""
         mock_get_spec_folder_name.return_value = "specification-test"
+        self.sample_project_state.spec_folder = "specification-test"
+        await self.state_manager.save_project_state(self.sample_project_state)
         # Test specification document
         spec_content = "# Specification\n\nThis is a test specification."
         success = await self.state_manager.save_document(
@@ -328,6 +330,7 @@ class TestStateManager(unittest.TestCase):
         )
         self.assertTrue(success)
 
+        self.state_manager.load_project_state()
         loaded_spec = self.state_manager.load_document(DocumentType.SPECIFICATION)
         self.assertEqual(loaded_spec, spec_content)
 
@@ -376,7 +379,7 @@ class TestStateManager(unittest.TestCase):
             loaded_state.implementation_progress["task2"], TaskStatus.IN_PROGRESS
         )
 
-    def test_create_initial_state(self):
+    async def test_create_initial_state(self):
         """Test creating initial project state."""
         session_id = "new-session-456"
         initial_state = self.state_manager.create_initial_state(

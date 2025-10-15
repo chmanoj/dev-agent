@@ -86,6 +86,11 @@ class GeminiEmbeddingClient(IEmbeddingClient):
     # Default to 768 but allow configuration via environment variable
     EMBEDDING_DIMENSION = int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
 
+    MODEL_DIMENSIONS = {
+        "embedding-001": 3072,
+        "text-embedding-004": 768,
+    }
+
     # Default batch size for API calls (Gemini supports up to 100)
     DEFAULT_BATCH_SIZE = 16
 
@@ -131,7 +136,9 @@ class GeminiEmbeddingClient(IEmbeddingClient):
             Configurable embedding dimension (default 768, can be set via GEMINI_EMBEDDING_DIMENSION)
         """
         # Always check environment variable for latest value
-        return int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
+        return self.MODEL_DIMENSIONS.get(
+            self.model, int(os.getenv("GEMINI_EMBEDDING_DIMENSION", "768"))
+        )
 
     async def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text.
