@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ..analysis.framework_detector import FrameworkDetector
+from ..analysis.language_detector import LanguageDetector
 from ..config.config_manager import ConfigManager
 from ..errors.exceptions import DocumentSaveError, ErrorContext
 from ..interfaces.cli_interface import ICLIInterface
@@ -62,6 +64,10 @@ class WorkflowManager(IWorkflowManager):
         self.llm_client: Any | None = None
         self.token_counter: Any | None = None
         self.vector_db: Any | None = None
+
+        # Initialize language and framework detection
+        self.language_detector = LanguageDetector()
+        self.framework_detector = FrameworkDetector()
 
         self._initialize_llm_components()
 
@@ -170,9 +176,60 @@ class WorkflowManager(IWorkflowManager):
         except Exception as e:
             logger.warning(f"Failed to initialize vector database: {e}")
             self.vector_db = None
+
+    async def _detect_and_store_project_context(self, project_state: ProjectState, project_path: Path) -> None:
+        """Detect and store language and framework context in project state.
+        
+        Args:
+            project_state: Project state to update
+            project_path: Path to the project directory
+        """
+        try:
+            self.cli_interface.display_message("Analyzing project language and frameworks...")
+            
+            # Detect primary language
+            primary_language = self.language_detector.detect_primary_language(project_path)
+            logger.info(f"Detected primary language: {primary_language.value}")
+            
+            # Detect frameworks
+            detected_frameworks = self.framework_detector.detect_frameworks(project_path, primary_language)
+            logger.info(f"Detected frameworks: {[f.value for f in detected_frameworks]}")
+            
+            # Get comprehensive project context
+            language_context = self.language_detector.analyze_project_context(project_path)
+            language_context.detected_frameworks = detected_frameworks
+            
+            # Get framework patterns for detected frameworks
+            framework_patterns = []
+            for framework in detected_frameworks:
+                try:
+                    patterns = self.framework_detector.get_framework_patterns(framework)
+                    framework_patterns.append(patterns)
+                except ValueError:
+                    logger.warning(f"No patterns available for framework: {framework.value}")
+            
+            language_context.framework_patterns = framework_patterns
+            
+            # Store in project state
+            project_state.language_context = language_context
+            project_state.primary_language = primary_language
+            project_state.detected_frameworks = detected_frameworks
+            
+            # Display results to user
+            self.cli_interface.display_message(f"✓ Primary language: {primary_language.value}")
+            if detected_frameworks:
+                frameworks_str = ", ".join([f.value for f in detected_frameworks])
+                self.cli_interface.display_message(f"✓ Detected frameworks: {frameworks_str}")
+            else:
+                self.cli_interface.display_message("✓ No specific frameworks detected")
+            
+            if language_context.package_manager:
+                self.cli_interface.display_message(f"✓ Package manager: {language_context.package_manager}")
+            
         except Exception as e:
-            logger.warning(f"Failed to initialize vector database: {e}")
-            self.vector_db = None
+            logger.error(f"Failed to detect project context: {e}")
+            # Continue without language context - don't fail project initialization
+            self.cli_interface.display_message(f"Warning: Could not analyze project context: {e}")
 
     async def start_new_project(self, project_path: str) -> ProjectState:
         """Start a new project workflow.
@@ -199,6 +256,9 @@ class WorkflowManager(IWorkflowManager):
             project_state = self.state_manager.create_initial_state(
                 project_path, session_id
             )
+
+            # Perform language and framework detection
+            await self._detect_and_store_project_context(project_state, Path(project_path))
 
             # Save initial state first
             if not await self.state_manager.save_project_state(project_state):
@@ -309,6 +369,11 @@ class WorkflowManager(IWorkflowManager):
 
             # Update session data
             project_state.session_data.last_activity = datetime.now()
+            
+            # Detect language context if not already present
+            if not project_state.language_context:
+                await self._detect_and_store_project_context(project_state, Path(project_path))
+            
             await self.state_manager.save_project_state(project_state)
 
             self.current_project_state = project_state
@@ -688,6 +753,7 @@ class WorkflowManager(IWorkflowManager):
             ast_index=None,  # Will be loaded by phase manager if needed
             codebase_patterns=None,  # Will be analyzed by phase manager if needed
             user_preferences={},  # Could be loaded from config in future
+            language_context=self.current_project_state.language_context if self.current_project_state else None,
         )
 
     def _display_progress_summary(self, project_state: ProjectState) -> None:

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import typer
@@ -35,7 +36,7 @@ app = typer.Typer(
   1. [cyan]Indexing[/cyan] - Analyze codebase structure and patterns
   2. [cyan]Specification[/cyan] - Generate detailed specifications
   3. [cyan]Design[/cyan] - Create technical design documents
-  4. [cyan]Implementation[/cyan] - Generate actionable tasks
+  4. [cyan]Implementation[/cyan] - Execute tasks and generate code
 
 [bold]AI Providers:[/bold]
   • [green]Azure OpenAI[/green] - GPT-4, GPT-4 Turbo, text-embedding-ada-002
@@ -43,9 +44,21 @@ app = typer.Typer(
 
 [bold]Quick Start:[/bold]
   [green]dev-agent setup[/green]        Configure AI providers
-  [green]dev-agent init[/green]         Initialize project
+  [green]dev-agent init[/green]         Initialize project (auto-detects language/framework)
   [green]dev-agent init --provider gemini[/green]  Use Gemini provider
   [green]dev-agent[/green]              Start interactive mode
+
+[bold]Language-Aware Features:[/bold]
+  • Automatic language detection (Python, TypeScript, JavaScript, Java)
+  • Framework detection (FastAPI, React, Django, Express, etc.)
+  • Language-specific naming conventions and patterns
+  • Framework-appropriate task generation and code structure
+
+[bold]Implementation Commands:[/bold]
+  [green]dev-agent tasks[/green]        List and manage implementation tasks
+  [green]dev-agent generate[/green]     Generate code for current task
+  [green]dev-agent test[/green]         Run tests for implementation
+  [green]dev-agent review[/green]       Review implementation progress
 
 [bold]Get Help:[/bold]
   [green]dev-agent help[/green]         Show all commands
@@ -1597,12 +1610,13 @@ def examples(
     """Display common workflow examples and usage patterns.
 
     Show step-by-step examples for common workflows including new projects,
-    existing codebases, quick start, cost management, and troubleshooting.
+    existing codebases, quick start, implementation, cost management, and troubleshooting.
 
     Available workflows:
         - new_project: Starting a new project from scratch
         - existing_codebase: Analyzing an existing codebase
         - quick_start: Get started in 5 minutes
+        - implementation: Execute implementation tasks and generate code
         - cost_management: Monitor and control costs
         - troubleshooting: Resolve common issues
 
@@ -1610,6 +1624,7 @@ def examples(
         dev-agent examples                    # Show all workflows
         dev-agent examples new_project        # New project workflow
         dev-agent examples existing_codebase  # Existing codebase workflow
+        dev-agent examples implementation     # Implementation phase workflow
         dev-agent examples quick_start        # Quick start guide
     """
     from dev_agent.cli.help_system import help_system
@@ -2572,6 +2587,103 @@ app.add_typer(scaffold_app, name="scaffold")
 # Cleanup command group
 cleanup_app = typer.Typer(name="cleanup", help="Repository cleanup and maintenance")
 app.add_typer(cleanup_app, name="cleanup")
+
+# Implementation command group
+implementation_app = typer.Typer(name="impl", help="Implementation phase commands")
+app.add_typer(implementation_app, name="impl")
+
+# Add implementation commands as top-level commands as well
+@app.command()
+def tasks(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    action: Annotated[
+        str | None, typer.Option("--action", help="Action to perform (list, start, complete)")
+    ] = "list",
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Specific task ID to operate on")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Display and manage implementation tasks."""
+    # Delegate to implementation command
+    tasks_command(project_path, action, task_id, verbose)
+
+
+@app.command()
+def generate(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Specific task ID to generate code for")
+    ] = None,
+    file_path: Annotated[
+        str | None, typer.Option("--file", help="Specific file to generate")
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)"),
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Generate code for current implementation task."""
+    # Delegate to implementation command
+    generate_command(project_path, task_id, file_path, provider, verbose)
+
+
+@app.command()
+def test(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Run tests for specific task")
+    ] = None,
+    coverage: Annotated[
+        bool, typer.Option("--coverage", help="Generate coverage report")
+    ] = False,
+    file_pattern: Annotated[
+        str | None, typer.Option("--pattern", help="Test file pattern to run")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Run tests for current implementation."""
+    # Delegate to implementation command
+    test_command(project_path, task_id, coverage, file_pattern, verbose)
+
+
+@app.command()
+def review(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    action: Annotated[
+        str | None, typer.Option("--action", help="Review action (approve, reject, comment)")
+    ] = "view",
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Review specific task")
+    ] = None,
+    file_path: Annotated[
+        str | None, typer.Option("--file", help="Review specific file")
+    ] = None,
+    comment: Annotated[
+        str | None, typer.Option("--comment", help="Add review comment")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Review implementation progress and code quality."""
+    # Delegate to implementation command
+    review_command(project_path, action, task_id, file_path, comment, verbose)
 
 
 @config_app.command("show")
@@ -3829,3 +3941,985 @@ def cleanup_callback() -> None:
     Use --scan to see what would be cleaned, --dry-run to simulate,
     and --execute to perform the actual cleanup.
     """
+
+
+# Implementation Phase Commands
+@implementation_app.command("tasks")
+def tasks_command(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    action: Annotated[
+        str | None, typer.Option("--action", help="Action to perform (list, start, complete)")
+    ] = "list",
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Specific task ID to operate on")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Display and manage implementation tasks.
+    
+    This command allows you to view, start, and complete implementation tasks
+    from the generated task list. Tasks are organized hierarchically and can
+    be executed in order to build your feature.
+    
+    Actions:
+        list     - Display all tasks with their current status (default)
+        start    - Mark a task as in progress
+        complete - Mark a task as completed
+    
+    Examples:
+        # List all tasks
+        dev-agent impl tasks
+        
+        # Start a specific task
+        dev-agent impl tasks --action start --task-id 1.1
+        
+        # Complete a task
+        dev-agent impl tasks --action complete --task-id 1.1
+        
+        # List tasks with verbose output
+        dev-agent impl tasks --verbose
+    """
+    if project_path is None:
+        project_path = os.getcwd()
+    
+    project_path = os.path.abspath(project_path)
+    
+    try:
+        setup_cli_logging(verbose, False, project_path)
+        
+        # Load project state
+        from ..state.state_manager import StateManager
+        state_manager = StateManager(project_path)
+        
+        try:
+            project_state = asyncio.run(state_manager.load_project_state())
+        except Exception:
+            console.print(
+                "[red]Error: No dev-agent project found in this directory.[/red]\n"
+                "Run [cyan]dev-agent init[/cyan] to initialize a project first."
+            )
+            raise typer.Exit(1)
+        
+        # Check if we're in implementation phase
+        if project_state.current_phase != PhaseType.IMPLEMENTATION:
+            console.print(
+                f"[yellow]Warning: Current phase is {project_state.current_phase.value}, "
+                f"not implementation.[/yellow]\n"
+                f"Tasks are available in the implementation phase."
+            )
+        
+        # Load tasks from tasks.md file if it exists
+        tasks_file = Path(project_path) / ".dev_agent" / "documents" / "tasks.md"
+        if not tasks_file.exists():
+            console.print(
+                "[red]Error: No tasks file found.[/red]\n"
+                "Tasks are generated during the design phase. "
+                "Complete the design phase first."
+            )
+            raise typer.Exit(1)
+        
+        # Display tasks based on action
+        if action == "list":
+            _display_task_list(tasks_file, verbose)
+        elif action == "start":
+            if not task_id:
+                console.print("[red]Error: --task-id is required for start action[/red]")
+                raise typer.Exit(1)
+            _start_task(tasks_file, task_id, project_state, state_manager)
+        elif action == "complete":
+            if not task_id:
+                console.print("[red]Error: --task-id is required for complete action[/red]")
+                raise typer.Exit(1)
+            _complete_task(tasks_file, task_id, project_state, state_manager)
+        else:
+            console.print(f"[red]Error: Unknown action '{action}'[/red]")
+            console.print("Valid actions: list, start, complete")
+            raise typer.Exit(1)
+            
+    except typer.Exit:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to manage tasks: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@implementation_app.command("generate")
+def generate_command(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Specific task ID to generate code for")
+    ] = None,
+    file_path: Annotated[
+        str | None, typer.Option("--file", help="Specific file to generate")
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="LLM provider to use (azure_openai, gemini)"),
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Generate code for current implementation task.
+    
+    This command generates code based on the current task, specifications,
+    and design documents. It uses the indexed codebase to maintain consistency
+    with existing patterns and conventions.
+    
+    Examples:
+        # Generate code for current task
+        dev-agent impl generate
+        
+        # Generate code for specific task
+        dev-agent impl generate --task-id 1.1
+        
+        # Generate specific file
+        dev-agent impl generate --file src/auth/service.py
+        
+        # Use specific provider
+        dev-agent impl generate --provider gemini
+    """
+    if project_path is None:
+        project_path = os.getcwd()
+    
+    project_path = os.path.abspath(project_path)
+    
+    try:
+        setup_cli_logging(verbose, False, project_path)
+        
+        # Validate provider selection if specified
+        if provider:
+            from ..models.enums import LLMProvider
+            
+            provider_mapping = {
+                "azure": LLMProvider.AZURE_OPENAI,
+                "azure_openai": LLMProvider.AZURE_OPENAI,
+                "gemini": LLMProvider.GEMINI,
+            }
+            
+            if provider.lower() not in provider_mapping:
+                console.print(
+                    f"[red]Error: Unsupported provider '{provider}'. "
+                    f"Supported providers: {', '.join(provider_mapping.keys())}[/red]"
+                )
+                raise typer.Exit(1)
+            
+            selected_provider = provider_mapping[provider.lower()]
+            
+            # Validate provider configuration
+            is_valid, error_msg = config_manager.validate_provider_config(selected_provider)
+            if not is_valid:
+                console.print(
+                    f"[red]Error: Provider '{provider}' is not properly configured: {error_msg}[/red]"
+                )
+                raise typer.Exit(1)
+            
+            # Set the provider preference for this session
+            os.environ["PREFERRED_LLM_PROVIDER"] = selected_provider.value
+            console.print(f"[green]Using {selected_provider.value.replace('_', ' ').title()} provider[/green]")
+        
+        # Load project state
+        from ..state.state_manager import StateManager
+        state_manager = StateManager(project_path)
+        
+        try:
+            project_state = asyncio.run(state_manager.load_project_state())
+        except Exception:
+            console.print(
+                "[red]Error: No dev-agent project found in this directory.[/red]\n"
+                "Run [cyan]dev-agent init[/cyan] to initialize a project first."
+            )
+            raise typer.Exit(1)
+        
+        # Check if we're in implementation phase
+        if project_state.current_phase != PhaseType.IMPLEMENTATION:
+            console.print(
+                f"[red]Error: Current phase is {project_state.current_phase.value}, "
+                f"not implementation.[/red]\n"
+                f"Code generation is only available in the implementation phase."
+            )
+            raise typer.Exit(1)
+        
+        # Initialize CLI and workflow manager
+        cli = EnhancedCLI()
+        workflow_manager = create_workflow_manager(cli)
+        cli.workflow_manager = workflow_manager
+        
+        console.print("[cyan]Starting code generation...[/cyan]")
+        
+        # Generate code based on parameters
+        if task_id:
+            console.print(f"[cyan]Generating code for task: {task_id}[/cyan]")
+            asyncio.run(_generate_code_for_task(workflow_manager, task_id, project_state))
+        elif file_path:
+            console.print(f"[cyan]Generating file: {file_path}[/cyan]")
+            asyncio.run(_generate_specific_file(workflow_manager, file_path, project_state))
+        else:
+            console.print("[cyan]Generating code for current context...[/cyan]")
+            asyncio.run(_generate_code_for_current_context(workflow_manager, project_state))
+        
+        console.print("[green]✓ Code generation completed[/green]")
+        
+    except typer.Exit:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to generate code: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@implementation_app.command("test")
+def test_command(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Run tests for specific task")
+    ] = None,
+    coverage: Annotated[
+        bool, typer.Option("--coverage", help="Generate coverage report")
+    ] = False,
+    file_pattern: Annotated[
+        str | None, typer.Option("--pattern", help="Test file pattern to run")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Run tests for current implementation.
+    
+    This command runs tests related to the current implementation task or
+    the entire test suite. It can generate coverage reports and filter
+    tests by patterns.
+    
+    Examples:
+        # Run all tests
+        dev-agent impl test
+        
+        # Run tests for specific task
+        dev-agent impl test --task-id 1.1
+        
+        # Run tests with coverage
+        dev-agent impl test --coverage
+        
+        # Run specific test pattern
+        dev-agent impl test --pattern "*auth*"
+    """
+    if project_path is None:
+        project_path = os.getcwd()
+    
+    project_path = os.path.abspath(project_path)
+    
+    try:
+        setup_cli_logging(verbose, False, project_path)
+        
+        # Load project state
+        from ..state.state_manager import StateManager
+        state_manager = StateManager(project_path)
+        
+        try:
+            project_state = asyncio.run(state_manager.load_project_state())
+        except Exception:
+            console.print(
+                "[red]Error: No dev-agent project found in this directory.[/red]\n"
+                "Run [cyan]dev-agent init[/cyan] to initialize a project first."
+            )
+            raise typer.Exit(1)
+        
+        console.print("[cyan]Running tests...[/cyan]")
+        
+        # Build test command based on parameters
+        test_cmd_parts = ["python", "-m", "pytest"]
+        
+        if verbose:
+            test_cmd_parts.append("-v")
+        
+        if coverage:
+            test_cmd_parts.extend(["--cov=.", "--cov-report=html", "--cov-report=term"])
+        
+        if file_pattern:
+            test_cmd_parts.extend(["-k", file_pattern])
+        
+        if task_id:
+            console.print(f"[cyan]Running tests for task: {task_id}[/cyan]")
+            # TODO: Map task ID to specific test files
+        
+        # Execute test command
+        import subprocess
+        
+        try:
+            result = subprocess.run(
+                test_cmd_parts,
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            # Display test output
+            if result.stdout:
+                console.print(result.stdout)
+            
+            if result.stderr:
+                console.print(f"[yellow]{result.stderr}[/yellow]")
+            
+            if result.returncode == 0:
+                console.print("[green]✓ All tests passed[/green]")
+            else:
+                console.print(f"[red]✗ Tests failed with exit code {result.returncode}[/red]")
+                raise typer.Exit(result.returncode)
+                
+        except subprocess.TimeoutExpired:
+            console.print("[red]Error: Tests timed out after 5 minutes[/red]")
+            raise typer.Exit(1)
+        except FileNotFoundError:
+            console.print(
+                "[red]Error: pytest not found.[/red]\n"
+                "Install pytest: [cyan]pip install pytest[/cyan]"
+            )
+            raise typer.Exit(1)
+        
+    except typer.Exit:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to run tests: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@implementation_app.command("review")
+def review_command(
+    project_path: Annotated[
+        str | None, typer.Argument(help="Project directory path")
+    ] = None,
+    action: Annotated[
+        str | None, typer.Option("--action", help="Review action (approve, reject, comment)")
+    ] = "view",
+    task_id: Annotated[
+        str | None, typer.Option("--task-id", help="Review specific task")
+    ] = None,
+    file_path: Annotated[
+        str | None, typer.Option("--file", help="Review specific file")
+    ] = None,
+    comment: Annotated[
+        str | None, typer.Option("--comment", help="Add review comment")
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
+    ] = False,
+) -> None:
+    """Review implementation progress and code quality.
+    
+    This command provides code review functionality for implementation tasks.
+    You can view progress, approve/reject tasks, and add comments.
+    
+    Actions:
+        view     - View current implementation status (default)
+        approve  - Approve a task or file
+        reject   - Reject a task or file
+        comment  - Add a review comment
+    
+    Examples:
+        # View implementation status
+        dev-agent impl review
+        
+        # Approve a task
+        dev-agent impl review --action approve --task-id 1.1
+        
+        # Add comment to a file
+        dev-agent impl review --action comment --file src/auth.py --comment "Add error handling"
+        
+        # Reject a task with comment
+        dev-agent impl review --action reject --task-id 1.2 --comment "Needs refactoring"
+    """
+    if project_path is None:
+        project_path = os.getcwd()
+    
+    project_path = os.path.abspath(project_path)
+    
+    try:
+        setup_cli_logging(verbose, False, project_path)
+        
+        # Load project state
+        from ..state.state_manager import StateManager
+        state_manager = StateManager(project_path)
+        
+        try:
+            project_state = asyncio.run(state_manager.load_project_state())
+        except Exception:
+            console.print(
+                "[red]Error: No dev-agent project found in this directory.[/red]\n"
+                "Run [cyan]dev-agent init[/cyan] to initialize a project first."
+            )
+            raise typer.Exit(1)
+        
+        # Check if we're in implementation phase
+        if project_state.current_phase != PhaseType.IMPLEMENTATION:
+            console.print(
+                f"[yellow]Warning: Current phase is {project_state.current_phase.value}, "
+                f"not implementation.[/yellow]\n"
+                f"Review is most useful in the implementation phase."
+            )
+        
+        if action == "view":
+            _display_implementation_status(project_state, verbose)
+        elif action == "approve":
+            if task_id:
+                _approve_task(task_id, project_state, state_manager)
+            elif file_path:
+                _approve_file(file_path, comment)
+            else:
+                console.print("[red]Error: --task-id or --file required for approve action[/red]")
+                raise typer.Exit(1)
+        elif action == "reject":
+            if task_id:
+                _reject_task(task_id, comment, project_state, state_manager)
+            elif file_path:
+                _reject_file(file_path, comment)
+            else:
+                console.print("[red]Error: --task-id or --file required for reject action[/red]")
+                raise typer.Exit(1)
+        elif action == "comment":
+            if not comment:
+                console.print("[red]Error: --comment required for comment action[/red]")
+                raise typer.Exit(1)
+            if task_id:
+                _add_task_comment(task_id, comment)
+            elif file_path:
+                _add_file_comment(file_path, comment)
+            else:
+                console.print("[red]Error: --task-id or --file required for comment action[/red]")
+                raise typer.Exit(1)
+        else:
+            console.print(f"[red]Error: Unknown action '{action}'[/red]")
+            console.print("Valid actions: view, approve, reject, comment")
+            raise typer.Exit(1)
+        
+    except typer.Exit:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to perform review: {e}"
+        if logger:
+            logger.error(error_msg, exc_info=True)
+        console.print(f"[red]Error: {error_msg}[/red]")
+        raise typer.Exit(1) from e
+
+
+@implementation_app.callback()
+def implementation_callback() -> None:
+    """Implementation phase commands for executing development tasks.
+    
+    These commands help you execute the implementation phase of the dev-agent
+    workflow. Use them to manage tasks, generate code, run tests, and review
+    progress during feature development.
+    
+    The implementation phase follows the specification and design phases,
+    where you execute the planned tasks to build your feature.
+    """
+
+
+# Helper functions for implementation phase commands
+def _display_task_list(tasks_file: Path, verbose: bool = False) -> None:
+    """Display the task list from tasks.md file.
+    
+    Args:
+        tasks_file: Path to the tasks.md file
+        verbose: Whether to show verbose output
+    """
+    try:
+        content = tasks_file.read_text(encoding="utf-8")
+        
+        # Parse tasks from markdown
+        tasks = _parse_tasks_from_markdown(content)
+        
+        if not tasks:
+            console.print("[yellow]No tasks found in tasks.md[/yellow]")
+            return
+        
+        # Display tasks in a table
+        from rich.table import Table
+        
+        table = Table(
+            title="Implementation Tasks",
+            show_header=True,
+            header_style="bold cyan"
+        )
+        table.add_column("ID", style="cyan", width=8)
+        table.add_column("Status", width=12)
+        table.add_column("Task", width=60)
+        table.add_column("Requirements", style="dim", width=20)
+        
+        for task in tasks:
+            # Determine status icon and color
+            status_icon = "⏳"
+            status_color = "yellow"
+            status_text = "Not Started"
+            
+            if "- [x]" in task["checkbox"]:
+                status_icon = "✅"
+                status_color = "green"
+                status_text = "Complete"
+            elif "- [-]" in task["checkbox"]:
+                status_icon = "🔄"
+                status_color = "blue"
+                status_text = "In Progress"
+            
+            status_display = f"[{status_color}]{status_icon} {status_text}[/{status_color}]"
+            
+            # Extract requirements if available
+            requirements = task.get("requirements", "")
+            if requirements and len(requirements) > 18:
+                requirements = requirements[:15] + "..."
+            
+            table.add_row(
+                task["id"],
+                status_display,
+                task["title"],
+                requirements
+            )
+        
+        console.print(table)
+        
+        if verbose:
+            console.print(f"\n[dim]Total tasks: {len(tasks)}[/dim]")
+            completed = sum(1 for task in tasks if "- [x]" in task["checkbox"])
+            in_progress = sum(1 for task in tasks if "- [-]" in task["checkbox"])
+            console.print(f"[dim]Completed: {completed}, In Progress: {in_progress}, Remaining: {len(tasks) - completed - in_progress}[/dim]")
+        
+    except Exception as e:
+        console.print(f"[red]Error reading tasks file: {e}[/red]")
+
+
+def _parse_tasks_from_markdown(content: str) -> list[dict[str, str]]:
+    """Parse tasks from markdown content.
+    
+    Args:
+        content: Markdown content from tasks.md
+        
+    Returns:
+        List of task dictionaries with id, title, checkbox, requirements
+    """
+    import re
+    
+    tasks = []
+    lines = content.split('\n')
+    
+    for line in lines:
+        # Match task lines with checkboxes
+        task_match = re.match(r'^(\s*- \[[x\-\s]\])\s*(\d+(?:\.\d+)?)\s+(.+)', line)
+        if task_match:
+            checkbox = task_match.group(1).strip()
+            task_id = task_match.group(2)
+            title = task_match.group(3)
+            
+            # Extract requirements from title if present
+            requirements = ""
+            req_match = re.search(r'_Requirements:\s*([^_]+)_', title)
+            if req_match:
+                requirements = req_match.group(1).strip()
+                # Remove requirements from title
+                title = re.sub(r'\s*_Requirements:[^_]+_\s*', '', title).strip()
+            
+            tasks.append({
+                "id": task_id,
+                "title": title,
+                "checkbox": checkbox,
+                "requirements": requirements
+            })
+    
+    return tasks
+
+
+def _start_task(tasks_file: Path, task_id: str, project_state, state_manager) -> None:
+    """Mark a task as started (in progress).
+    
+    Args:
+        tasks_file: Path to the tasks.md file
+        task_id: ID of the task to start
+        project_state: Current project state
+        state_manager: State manager instance
+    """
+    try:
+        content = tasks_file.read_text(encoding="utf-8")
+        
+        # Find and update the task
+        import re
+        pattern = rf'^(\s*- \[[x\-\s]\])\s*({re.escape(task_id)})\s+(.+)$'
+        
+        updated = False
+        lines = content.split('\n')
+        for i, line in enumerate(lines):
+            match = re.match(pattern, line)
+            if match:
+                # Update checkbox to in-progress
+                indent = match.group(1).replace('[x]', '[-]').replace('[ ]', '[-]').replace('[  ]', '[-]')
+                lines[i] = f"{indent} {task_id} {match.group(3)}"
+                updated = True
+                break
+        
+        if updated:
+            # Write back to file
+            tasks_file.write_text('\n'.join(lines), encoding="utf-8")
+            console.print(f"[green]✓ Task {task_id} marked as in progress[/green]")
+            
+            # Update project state
+            if not project_state.implementation_progress:
+                project_state.implementation_progress = {}
+            project_state.implementation_progress[task_id] = "in_progress"
+            asyncio.run(state_manager.save_project_state(project_state))
+        else:
+            console.print(f"[red]Error: Task {task_id} not found[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Error starting task: {e}[/red]")
+
+
+def _complete_task(tasks_file: Path, task_id: str, project_state, state_manager) -> None:
+    """Mark a task as completed.
+    
+    Args:
+        tasks_file: Path to the tasks.md file
+        task_id: ID of the task to complete
+        project_state: Current project state
+        state_manager: State manager instance
+    """
+    try:
+        content = tasks_file.read_text(encoding="utf-8")
+        
+        # Find and update the task
+        import re
+        pattern = rf'^(\s*- \[[x\-\s]\])\s*({re.escape(task_id)})\s+(.+)$'
+        
+        updated = False
+        lines = content.split('\n')
+        for i, line in enumerate(lines):
+            match = re.match(pattern, line)
+            if match:
+                # Update checkbox to completed
+                indent = match.group(1).replace('[-]', '[x]').replace('[ ]', '[x]').replace('[  ]', '[x]')
+                lines[i] = f"{indent} {task_id} {match.group(3)}"
+                updated = True
+                break
+        
+        if updated:
+            # Write back to file
+            tasks_file.write_text('\n'.join(lines), encoding="utf-8")
+            console.print(f"[green]✓ Task {task_id} marked as completed[/green]")
+            
+            # Update project state
+            if not project_state.implementation_progress:
+                project_state.implementation_progress = {}
+            project_state.implementation_progress[task_id] = "completed"
+            asyncio.run(state_manager.save_project_state(project_state))
+        else:
+            console.print(f"[red]Error: Task {task_id} not found[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Error completing task: {e}[/red]")
+
+
+def _display_implementation_status(project_state, verbose: bool = False) -> None:
+    """Display current implementation status.
+    
+    Args:
+        project_state: Current project state
+        verbose: Whether to show verbose output
+    """
+    from rich.panel import Panel
+    from rich.table import Table
+    
+    console.print(
+        Panel.fit(
+            "[bold cyan]Implementation Status[/bold cyan]",
+            border_style="cyan"
+        )
+    )
+    
+    # Display phase information
+    console.print(f"[bold]Current Phase:[/bold] {project_state.current_phase.value.title()}")
+    
+    if project_state.implementation_progress:
+        console.print(f"[bold]Tasks Progress:[/bold]")
+        
+        # Create progress table
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Task ID", style="cyan")
+        table.add_column("Status", width=15)
+        
+        for task_id, status in project_state.implementation_progress.items():
+            if status == "completed":
+                status_display = "[green]✅ Completed[/green]"
+            elif status == "in_progress":
+                status_display = "[blue]🔄 In Progress[/blue]"
+            else:
+                status_display = "[yellow]⏳ Not Started[/yellow]"
+            
+            table.add_row(task_id, status_display)
+        
+        console.print(table)
+    else:
+        console.print("[yellow]No task progress recorded yet[/yellow]")
+    
+    if verbose:
+        console.print(f"\n[dim]Project Path: {project_state.project_path}[/dim]")
+        if project_state.last_updated:
+            console.print(f"[dim]Last Updated: {project_state.last_updated}[/dim]")
+
+
+def _approve_task(task_id: str, project_state, state_manager) -> None:
+    """Approve a specific task.
+    
+    Args:
+        task_id: ID of the task to approve
+        project_state: Current project state
+        state_manager: State manager instance
+    """
+    console.print(f"[green]✓ Task {task_id} approved[/green]")
+    # TODO: Implement task approval logic
+    console.print("[yellow]Task approval functionality not yet implemented[/yellow]")
+
+
+def _reject_task(task_id: str, comment: str | None, project_state, state_manager) -> None:
+    """Reject a specific task.
+    
+    Args:
+        task_id: ID of the task to reject
+        comment: Optional rejection comment
+        project_state: Current project state
+        state_manager: State manager instance
+    """
+    console.print(f"[red]✗ Task {task_id} rejected[/red]")
+    if comment:
+        console.print(f"[yellow]Comment: {comment}[/yellow]")
+    # TODO: Implement task rejection logic
+    console.print("[yellow]Task rejection functionality not yet implemented[/yellow]")
+
+
+def _approve_file(file_path: str, comment: str | None) -> None:
+    """Approve a specific file.
+    
+    Args:
+        file_path: Path to the file to approve
+        comment: Optional approval comment
+    """
+    console.print(f"[green]✓ File {file_path} approved[/green]")
+    if comment:
+        console.print(f"[yellow]Comment: {comment}[/yellow]")
+    # TODO: Implement file approval logic
+    console.print("[yellow]File approval functionality not yet implemented[/yellow]")
+
+
+def _reject_file(file_path: str, comment: str | None) -> None:
+    """Reject a specific file.
+    
+    Args:
+        file_path: Path to the file to reject
+        comment: Optional rejection comment
+    """
+    console.print(f"[red]✗ File {file_path} rejected[/red]")
+    if comment:
+        console.print(f"[yellow]Comment: {comment}[/yellow]")
+    # TODO: Implement file rejection logic
+    console.print("[yellow]File rejection functionality not yet implemented[/yellow]")
+
+
+def _add_task_comment(task_id: str, comment: str) -> None:
+    """Add a comment to a specific task.
+    
+    Args:
+        task_id: ID of the task to comment on
+        comment: Comment text
+    """
+    console.print(f"[cyan]💬 Comment added to task {task_id}:[/cyan]")
+    console.print(f"[white]{comment}[/white]")
+    # TODO: Implement task commenting logic
+    console.print("[yellow]Task commenting functionality not yet implemented[/yellow]")
+
+
+def _add_file_comment(file_path: str, comment: str) -> None:
+    """Add a comment to a specific file.
+    
+    Args:
+        file_path: Path to the file to comment on
+        comment: Comment text
+    """
+    console.print(f"[cyan]💬 Comment added to file {file_path}:[/cyan]")
+    console.print(f"[white]{comment}[/white]")
+    # TODO: Implement file commenting logic
+    console.print("[yellow]File commenting functionality not yet implemented[/yellow]")
+
+
+async def _generate_code_for_task(workflow_manager, task_id: str, project_state) -> None:
+    """Generate code for a specific task.
+    
+    Args:
+        workflow_manager: Workflow manager instance
+        task_id: ID of the task to generate code for
+        project_state: Current project state
+    """
+    try:
+        # Load tasks from tasks.md to get task details
+        tasks_file = Path(project_state.project_path) / ".dev_agent" / "documents" / "tasks.md"
+        if not tasks_file.exists():
+            console.print("[red]Error: No tasks file found[/red]")
+            return
+        
+        content = tasks_file.read_text(encoding="utf-8")
+        tasks = _parse_tasks_from_markdown(content)
+        
+        # Find the specific task
+        target_task = None
+        for task in tasks:
+            if task["id"] == task_id:
+                target_task = task
+                break
+        
+        if not target_task:
+            console.print(f"[red]Error: Task {task_id} not found[/red]")
+            return
+        
+        console.print(f"[cyan]Task: {target_task['title']}[/cyan]")
+        
+        # Use workflow manager to generate code
+        if workflow_manager.phase_manager:
+            # Create a simple context for code generation
+            from ..models.context import ProjectContext
+            context = ProjectContext(
+                project_state=project_state,
+                ast_index=None,
+                codebase_patterns=None,
+                user_preferences={}
+            )
+            
+            # Generate code using the implementation phase
+            console.print("[cyan]Generating code using AI...[/cyan]")
+            result = await workflow_manager.phase_manager.execute_implementation_phase(context)
+            
+            if result.status.value == "completed":
+                console.print("[green]✓ Code generated successfully[/green]")
+            else:
+                console.print(f"[yellow]Code generation completed with status: {result.status.value}[/yellow]")
+                if result.message:
+                    console.print(f"[yellow]{result.message}[/yellow]")
+        else:
+            console.print("[yellow]Workflow manager not fully initialized for code generation[/yellow]")
+            
+    except Exception as e:
+        console.print(f"[red]Error generating code for task: {e}[/red]")
+
+
+async def _generate_specific_file(workflow_manager, file_path: str, project_state) -> None:
+    """Generate a specific file.
+    
+    Args:
+        workflow_manager: Workflow manager instance
+        file_path: Path to the file to generate
+        project_state: Current project state
+    """
+    try:
+        console.print(f"[cyan]Generating file: {file_path}[/cyan]")
+        
+        # Check if file already exists
+        full_path = Path(project_state.project_path) / file_path
+        if full_path.exists():
+            from rich.prompt import Confirm
+            if not Confirm.ask(f"File {file_path} already exists. Overwrite?"):
+                console.print("[yellow]File generation cancelled[/yellow]")
+                return
+        
+        # Use workflow manager for code generation
+        if workflow_manager.phase_manager:
+            console.print("[cyan]Using AI to generate file content...[/cyan]")
+            
+            # Create context for generation
+            from ..models.context import ProjectContext
+            context = ProjectContext(
+                project_state=project_state,
+                ast_index=None,
+                codebase_patterns=None,
+                user_preferences={"target_file": file_path}
+            )
+            
+            # Generate using implementation phase
+            result = await workflow_manager.phase_manager.execute_implementation_phase(context)
+            
+            if result.status.value == "completed":
+                console.print(f"[green]✓ File {file_path} generated successfully[/green]")
+            else:
+                console.print(f"[yellow]File generation completed with status: {result.status.value}[/yellow]")
+        else:
+            console.print("[yellow]Workflow manager not fully initialized for file generation[/yellow]")
+            
+    except Exception as e:
+        console.print(f"[red]Error generating file: {e}[/red]")
+
+
+async def _generate_code_for_current_context(workflow_manager, project_state) -> None:
+    """Generate code for the current context.
+    
+    Args:
+        workflow_manager: Workflow manager instance
+        project_state: Current project state
+    """
+    try:
+        console.print("[cyan]Analyzing current context for code generation...[/cyan]")
+        
+        # Check what needs to be generated based on current state
+        if not project_state.specification:
+            console.print("[yellow]No specification found. Generate specification first.[/yellow]")
+            return
+        
+        if not project_state.design:
+            console.print("[yellow]No design found. Generate design first.[/yellow]")
+            return
+        
+        if not project_state.tasks:
+            console.print("[yellow]No tasks found. Generate tasks first.[/yellow]")
+            return
+        
+        # Use workflow manager for general code generation
+        if workflow_manager.phase_manager:
+            console.print("[cyan]Generating code based on current project state...[/cyan]")
+            
+            # Create context for generation
+            from ..models.context import ProjectContext
+            context = ProjectContext(
+                project_state=project_state,
+                ast_index=None,
+                codebase_patterns=None,
+                user_preferences={}
+            )
+            
+            # Execute implementation phase
+            result = await workflow_manager.phase_manager.execute_implementation_phase(context)
+            
+            if result.status.value == "completed":
+                console.print("[green]✓ Code generation completed successfully[/green]")
+                
+                # Show what was generated
+                if result.artifacts:
+                    console.print("[cyan]Generated artifacts:[/cyan]")
+                    for artifact in result.artifacts:
+                        console.print(f"  • {artifact}")
+            else:
+                console.print(f"[yellow]Code generation completed with status: {result.status.value}[/yellow]")
+                if result.message:
+                    console.print(f"[yellow]{result.message}[/yellow]")
+        else:
+            console.print("[yellow]Workflow manager not fully initialized for code generation[/yellow]")
+            
+    except Exception as e:
+        console.print(f"[red]Error in context-based code generation: {e}[/red]")

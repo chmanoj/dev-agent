@@ -148,6 +148,25 @@ class StateManager:
                     logger.info(f"🔍 Has to_dict: {hasattr(obj, 'to_dict')}")
                     logger.info(f"🔍 to_dict callable: {callable(getattr(obj, 'to_dict', None))}")
                 
+                # Check for Pydantic models first (they have model_dump)
+                if hasattr(obj, 'model_dump') and callable(getattr(obj, 'model_dump')):
+                    try:
+                        logger.debug(f"Using model_dump() for Pydantic model {type(obj).__name__} at path '{field_path}'")
+                        result = obj.model_dump()
+                        logger.debug(f"model_dump() succeeded for {type(obj).__name__}, result type: {type(result)}")
+                        return result
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to serialize Pydantic model using model_dump() at path '{field_path}': {e}",
+                            exc_info=True,
+                            extra={
+                                "field_path": field_path,
+                                "object_type": type(obj).__name__,
+                                "operation": "pydantic_serialization"
+                            }
+                        )
+                        # Fall back to to_dict method
+
                 # Check if the object has a custom to_dict method
                 if hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
                     try:
@@ -1302,6 +1321,32 @@ class StateManager:
         for task_id, status_str in state_dict["implementation_progress"].items():
             implementation_progress[task_id] = TaskStatus(status_str)
 
+        # Handle language context (new field, may not exist in older states)
+        language_context = None
+        if "language_context" in state_dict and state_dict["language_context"]:
+            try:
+                from ..models.language_patterns import LanguageProjectContext
+                language_context = LanguageProjectContext.model_validate(state_dict["language_context"])
+            except Exception as e:
+                logger.warning(f"Failed to deserialize language context: {e}")
+
+        # Handle primary language and detected frameworks (new fields)
+        primary_language = None
+        if "primary_language" in state_dict and state_dict["primary_language"]:
+            try:
+                from ..models.enums import LanguageType
+                primary_language = LanguageType(state_dict["primary_language"])
+            except Exception as e:
+                logger.warning(f"Failed to deserialize primary language: {e}")
+
+        detected_frameworks = None
+        if "detected_frameworks" in state_dict and state_dict["detected_frameworks"]:
+            try:
+                from ..models.enums import FrameworkType
+                detected_frameworks = [FrameworkType(f) for f in state_dict["detected_frameworks"]]
+            except Exception as e:
+                logger.warning(f"Failed to deserialize detected frameworks: {e}")
+
         return ProjectState(
             project_path=state_dict["project_path"],
             current_phase=PhaseType(state_dict["current_phase"]),
@@ -1319,6 +1364,10 @@ class StateManager:
             specification_approved=state_dict.get("specification_approved", False),
             design_approved=state_dict.get("design_approved", False),
             tasks_approved=state_dict.get("tasks_approved", False),
+            # Load language context with backward compatibility
+            language_context=language_context,
+            primary_language=primary_language,
+            detected_frameworks=detected_frameworks,
         )
 
     def _reconstruct_specification(

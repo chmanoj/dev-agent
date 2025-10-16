@@ -1,10 +1,15 @@
 """Document data models for specifications, designs, and tasks."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .enums import Priority, SpecificationSource, TaskStatus
+
+if TYPE_CHECKING:
+    from .language_patterns import FrameworkPatterns, LanguagePatterns
 
 
 @dataclass
@@ -311,7 +316,7 @@ class DesignDocument:
 
 @dataclass
 class Task:
-    """Implementation task specification."""
+    """Implementation task specification with language and framework awareness."""
 
     id: str
     title: str
@@ -323,12 +328,140 @@ class Task:
     context_requirements: list[str] = None
     implementation_notes: str | None = None
     generated_files: list[str] = None
+    
+    # New fields for language and framework patterns
+    language: str | None = None  # Language type (e.g., "python", "typescript")
+    framework: str | None = None  # Framework type (e.g., "fastapi", "react")
+    naming_pattern: str | None = None  # Applied naming pattern (e.g., "snake_case", "PascalCase")
+    file_patterns: list[str] = None  # Expected file patterns for this task
+    validation_rules: list[str] = None  # Pattern validation rules to apply
 
     def __post_init__(self):
         if self.context_requirements is None:
             self.context_requirements = []
         if self.generated_files is None:
             self.generated_files = []
+        if self.file_patterns is None:
+            self.file_patterns = []
+        if self.validation_rules is None:
+            self.validation_rules = []
+    
+    def validate_naming_conventions(self, patterns: 'LanguagePatterns') -> list[str]:
+        """Validate task naming against language patterns.
+        
+        Args:
+            patterns: Language patterns to validate against
+            
+        Returns:
+            List of validation errors, empty if valid
+        """
+        errors = []
+        
+        # Validate class names in title/description
+        import re
+        class_names = re.findall(r'\b[A-Z][a-zA-Z]*\b', self.title + " " + self.description)
+        for class_name in class_names:
+            if not patterns.validate_class_name(class_name):
+                errors.append(f"Class name '{class_name}' doesn't follow {patterns.class_naming} convention")
+        
+        # Validate method names if mentioned
+        method_names = re.findall(r'\b[a-z][a-zA-Z_]*\(\)', self.description)
+        for method_name in method_names:
+            method_name = method_name.replace('()', '')
+            if not patterns.validate_method_name(method_name):
+                errors.append(f"Method name '{method_name}' doesn't follow {patterns.method_naming} convention")
+        
+        return errors
+    
+    def apply_naming_patterns(self, patterns: 'LanguagePatterns') -> 'Task':
+        """Apply language patterns to transform task naming.
+        
+        Args:
+            patterns: Language patterns to apply
+            
+        Returns:
+            New Task instance with transformed naming
+        """
+        # Transform class names in title and description
+        import re
+        
+        def transform_class_names(text: str) -> str:
+            class_names = re.findall(r'\b[A-Z][a-zA-Z]*\b', text)
+            for class_name in class_names:
+                transformed = patterns.transform_to_class_name(class_name)
+                text = text.replace(class_name, transformed)
+            return text
+        
+        def transform_method_names(text: str) -> str:
+            method_matches = re.findall(r'\b[a-z][a-zA-Z_]*\(\)', text)
+            for match in method_matches:
+                method_name = match.replace('()', '')
+                transformed = patterns.transform_to_method_name(method_name)
+                text = text.replace(match, f"{transformed}()")
+            return text
+        
+        # Create new task with transformed naming
+        new_task = Task(
+            id=self.id,
+            title=transform_method_names(transform_class_names(self.title)),
+            description=transform_method_names(transform_class_names(self.description)),
+            requirements_refs=self.requirements_refs.copy(),
+            subtasks=self.subtasks.copy(),
+            status=self.status,
+            target_language=self.target_language,
+            context_requirements=self.context_requirements.copy() if self.context_requirements else [],
+            implementation_notes=self.implementation_notes,
+            generated_files=self.generated_files.copy() if self.generated_files else [],
+            language=self.language,
+            framework=self.framework,
+            naming_pattern=f"{patterns.class_naming}/{patterns.method_naming}",
+            file_patterns=self.file_patterns.copy() if self.file_patterns else [],
+            validation_rules=self.validation_rules.copy() if self.validation_rules else []
+        )
+        
+        return new_task
+    
+    def add_framework_context(self, framework_patterns: 'FrameworkPatterns') -> 'Task':
+        """Add framework-specific context to the task.
+        
+        Args:
+            framework_patterns: Framework patterns to apply
+            
+        Returns:
+            New Task instance with framework context added
+        """
+        # Add framework-specific dependencies to context
+        framework_context = []
+        if framework_patterns.common_dependencies:
+            framework_context.append(f"Framework dependencies: {', '.join(framework_patterns.common_dependencies[:3])}")
+        
+        if framework_patterns.component_suffix:
+            framework_context.append(f"Component naming: use '{framework_patterns.component_suffix}' suffix")
+        
+        # Add framework-specific file patterns
+        new_file_patterns = self.file_patterns.copy() if self.file_patterns else []
+        new_file_patterns.extend(framework_patterns.test_file_patterns)
+        
+        # Create new task with framework context
+        new_task = Task(
+            id=self.id,
+            title=self.title,
+            description=self.description,
+            requirements_refs=self.requirements_refs.copy(),
+            subtasks=self.subtasks.copy(),
+            status=self.status,
+            target_language=self.target_language,
+            context_requirements=(self.context_requirements or []) + framework_context,
+            implementation_notes=self.implementation_notes,
+            generated_files=self.generated_files.copy() if self.generated_files else [],
+            language=self.language,
+            framework=framework_patterns.framework.value,
+            naming_pattern=self.naming_pattern,
+            file_patterns=new_file_patterns,
+            validation_rules=self.validation_rules.copy() if self.validation_rules else []
+        )
+        
+        return new_task
 
 
 @dataclass

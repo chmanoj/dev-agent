@@ -24,6 +24,9 @@ from .llm_config import AzureOpenAIConfig, GeminiConfig
 from .llm_responses import CompletionResponse, EmbeddingResponse
 from .project_state import IndexMetadata, ProjectState, SessionData
 
+# Language pattern models
+from .language_patterns import FrameworkPatterns, LanguagePatterns, LanguageProjectContext
+
 # Optional imports that may have external dependencies
 try:
     from .indexing import (
@@ -120,8 +123,12 @@ __all__ = [
     "DesignDocument",
     "DocumentType",
     "EmbeddingResponse",
+    # Language Pattern Models
+    "FrameworkPatterns",
     "GeminiConfig",
     "IndexMetadata",
+    "LanguagePatterns",
+    "LanguageProjectContext",
     "LLMOperationType",
     "LLMProvider",
     "PhaseStatus",

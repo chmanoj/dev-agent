@@ -448,13 +448,45 @@ class PhaseManager(IPhaseManager):
                     token_counter=self.token_counter,
                 )
 
-            # Step 1: Generate task list using AI
+            # Step 1: Generate task list using AI with language/framework patterns
             self.cli_interface.display_message("Generating implementation tasks...")
 
-            task_list = await self.task_generator.generate_from_design_async(
-                project_state.design,
-                specification=project_state.specification.introduction if project_state.specification else None
-            )
+            # Get language and framework context from project state
+            language_context = project_state.language_context
+            language_patterns = None
+            framework_patterns = None
+            target_language = "python"  # Default
+            target_framework = None
+
+            if language_context:
+                language_patterns = language_context.language_patterns
+                target_language = language_context.primary_language.value if language_context.primary_language else "python"
+                
+                # Get the primary framework if available
+                if language_context.detected_frameworks:
+                    target_framework = language_context.detected_frameworks[0].value
+                    # Get framework patterns for the primary framework
+                    framework_patterns = language_context.get_framework_patterns(language_context.detected_frameworks[0])
+
+            # Generate tasks with language and framework patterns
+            if language_patterns or framework_patterns:
+                self.cli_interface.display_message(f"Using {target_language} patterns" + 
+                    (f" with {target_framework} framework" if target_framework else ""))
+                
+                task_list = await self.task_generator.generate_from_design_with_patterns_async(
+                    project_state.design,
+                    specification=project_state.specification.introduction if project_state.specification else None,
+                    language_patterns=language_patterns,
+                    framework_patterns=framework_patterns,
+                    target_language=target_language,
+                    target_framework=target_framework,
+                )
+            else:
+                # Fallback to standard generation
+                task_list = await self.task_generator.generate_from_design_async(
+                    project_state.design,
+                    specification=project_state.specification.introduction if project_state.specification else None
+                )
 
             if not task_list:
                 result.status = PhaseStatus.FAILED

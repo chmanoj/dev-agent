@@ -81,6 +81,7 @@ class FrameworkType(Enum):
     DJANGO = "django"
     FLASK = "flask"
     FASTAPI = "fastapi"
+    STREAMLIT = "streamlit"
     PYTEST = "pytest"
     SQLALCHEMY = "sqlalchemy"
     CELERY = "celery"

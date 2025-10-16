@@ -32,9 +32,11 @@ class HelpSystem:
                 ],
                 "notes": [
                     "Detects if project is new or existing",
+                    "Automatically detects programming language and frameworks",
                     "Runs setup wizard if not configured",
                     "Automatically indexes existing codebases",
                     "Offers template selection for new projects",
+                    "Applies language-specific naming conventions",
                 ],
             },
             "resume": {
@@ -184,6 +186,92 @@ class HelpSystem:
                     "Validates deployment names",
                 ],
             },
+            "tasks": {
+                "description": "Display and manage implementation tasks",
+                "usage": "dev-agent tasks [OPTIONS]",
+                "options": [
+                    ("--action ACTION", "Action to perform (list, start, complete)"),
+                    ("--task-id ID", "Specific task ID to operate on"),
+                    ("-v, --verbose", "Enable verbose output"),
+                ],
+                "examples": [
+                    ("dev-agent tasks", "List all tasks"),
+                    ("dev-agent tasks --action start --task-id 1.1", "Start task 1.1"),
+                    ("dev-agent tasks --action complete --task-id 1.1", "Complete task 1.1"),
+                ],
+                "notes": [
+                    "Shows task status and progress",
+                    "Tracks task dependencies",
+                    "Updates project state automatically",
+                    "Available in implementation phase",
+                ],
+            },
+            "generate": {
+                "description": "Generate code for current implementation task",
+                "usage": "dev-agent generate [OPTIONS]",
+                "options": [
+                    ("--task-id ID", "Generate code for specific task"),
+                    ("--file FILE", "Generate specific file"),
+                    ("--provider PROVIDER", "Use specific LLM provider"),
+                    ("-v, --verbose", "Enable verbose output"),
+                ],
+                "examples": [
+                    ("dev-agent generate", "Generate code for current context"),
+                    ("dev-agent generate --task-id 1.1", "Generate code for task 1.1"),
+                    ("dev-agent generate --file src/auth.py", "Generate specific file"),
+                    ("dev-agent generate --provider gemini", "Use Gemini provider"),
+                ],
+                "notes": [
+                    "Uses indexed codebase patterns",
+                    "Maintains consistency with existing code",
+                    "Supports multiple LLM providers",
+                    "Available in implementation phase",
+                ],
+            },
+            "test": {
+                "description": "Run tests for current implementation",
+                "usage": "dev-agent test [OPTIONS]",
+                "options": [
+                    ("--task-id ID", "Run tests for specific task"),
+                    ("--coverage", "Generate coverage report"),
+                    ("--pattern PATTERN", "Test file pattern to run"),
+                    ("-v, --verbose", "Enable verbose output"),
+                ],
+                "examples": [
+                    ("dev-agent test", "Run all tests"),
+                    ("dev-agent test --coverage", "Run tests with coverage"),
+                    ("dev-agent test --task-id 1.1", "Run tests for task 1.1"),
+                    ("dev-agent test --pattern '*auth*'", "Run auth-related tests"),
+                ],
+                "notes": [
+                    "Integrates with pytest",
+                    "Supports coverage reporting",
+                    "Can filter by task or pattern",
+                    "Shows test results in CLI",
+                ],
+            },
+            "review": {
+                "description": "Review implementation progress and code quality",
+                "usage": "dev-agent review [OPTIONS]",
+                "options": [
+                    ("--action ACTION", "Review action (view, approve, reject, comment)"),
+                    ("--task-id ID", "Review specific task"),
+                    ("--file FILE", "Review specific file"),
+                    ("--comment TEXT", "Add review comment"),
+                    ("-v, --verbose", "Enable verbose output"),
+                ],
+                "examples": [
+                    ("dev-agent review", "View implementation status"),
+                    ("dev-agent review --action approve --task-id 1.1", "Approve task 1.1"),
+                    ("dev-agent review --action comment --file src/auth.py --comment 'Add error handling'", "Add comment"),
+                ],
+                "notes": [
+                    "Tracks implementation progress",
+                    "Supports approval workflow",
+                    "Allows commenting on tasks/files",
+                    "Available in implementation phase",
+                ],
+            },
             "interactive": {
                 "description": "Start interactive mode (default command)",
                 "usage": "dev-agent [interactive] [PROJECT_PATH]",
@@ -225,20 +313,46 @@ class HelpSystem:
             },
             "existing_codebase": {
                 "title": "Existing Codebase Workflow",
-                "description": "Analyzing and extending an existing project",
+                "description": "Analyzing and extending an existing project with automatic language detection",
                 "steps": [
                     ("1. Run setup wizard", "dev-agent setup"),
                     ("2. Initialize in project", "cd /path/to/existing/project\ndev-agent init"),
-                    ("3. Wait for indexing", "Automatic indexing of codebase"),
-                    ("4. Review index summary", "Check detected patterns and languages"),
-                    ("5. Start interactive mode", "dev-agent"),
-                    ("6. Generate specification", "Describe new feature to add"),
-                    ("7. Review design", "Design will match existing patterns"),
-                    ("8. Generate tasks", "Tasks will match existing code style"),
-                    ("9. Implement features", "Code generation uses indexed patterns"),
+                    ("3. Language detection", "Automatic detection of Python/TypeScript/JavaScript/Java"),
+                    ("4. Framework detection", "Detects FastAPI, React, Django, Express, etc."),
+                    ("5. Wait for indexing", "Automatic indexing of codebase"),
+                    ("6. Review index summary", "Check detected patterns and languages"),
+                    ("7. Start interactive mode", "dev-agent"),
+                    ("8. Generate specification", "Describe new feature to add"),
+                    ("9. Review design", "Design will match existing patterns"),
+                    ("10. Generate tasks", "Tasks use language-specific naming conventions"),
+                    ("11. Implement features", "Code generation follows detected patterns"),
                 ],
                 "estimated_time": "15-30 minutes for indexing + 30-60 minutes for workflow",
                 "estimated_cost": "$1.00-$5.00 depending on codebase size",
+            },
+            "language_detection": {
+                "title": "Language Detection Features",
+                "description": "Understanding how dev-agent detects and applies language patterns",
+                "steps": [
+                    ("1. Configuration analysis", "Scans pyproject.toml, package.json, pom.xml"),
+                    ("2. File extension analysis", "Counts .py, .ts, .js, .java files"),
+                    ("3. Framework detection", "Analyzes dependencies and file patterns"),
+                    ("4. Pattern application", "Applies snake_case for Python, camelCase for JS/TS"),
+                    ("5. Task generation", "Creates tasks with correct naming conventions"),
+                    ("6. Code generation", "Generates code following detected patterns"),
+                ],
+                "estimated_time": "Automatic (< 1 minute)",
+                "estimated_cost": "Free (no API calls for detection)",
+                "supported_languages": [
+                    "Python (snake_case methods, PascalCase classes)",
+                    "TypeScript (camelCase methods, PascalCase classes)",
+                    "JavaScript (camelCase methods, PascalCase classes)",
+                    "Java (camelCase methods, PascalCase classes)",
+                ],
+                "supported_frameworks": [
+                    "Python: FastAPI, Django, Flask, Streamlit",
+                    "TypeScript/JavaScript: React, Angular, Express, NestJS",
+                ],
             },
             "quick_start": {
                 "title": "Quick Start (5 Minutes)",
@@ -267,6 +381,22 @@ class HelpSystem:
                 "estimated_time": "Ongoing monitoring",
                 "estimated_cost": "Varies by usage",
             },
+            "implementation": {
+                "title": "Implementation Phase Workflow",
+                "description": "Execute implementation tasks and generate code",
+                "steps": [
+                    ("1. View task list", "dev-agent tasks"),
+                    ("2. Start a task", "dev-agent tasks --action start --task-id 1.1"),
+                    ("3. Generate code", "dev-agent generate --task-id 1.1"),
+                    ("4. Run tests", "dev-agent test --coverage"),
+                    ("5. Review progress", "dev-agent review"),
+                    ("6. Complete task", "dev-agent tasks --action complete --task-id 1.1"),
+                    ("7. Repeat for next task", "Continue with remaining tasks"),
+                    ("8. Final review", "dev-agent review --action approve"),
+                ],
+                "estimated_time": "Varies by task complexity (30 minutes - 2 hours per task)",
+                "estimated_cost": "$0.10-$1.00 per task depending on code complexity",
+            },
             "troubleshooting": {
                 "title": "Troubleshooting Common Issues",
                 "description": "Resolve common problems",
@@ -283,17 +413,89 @@ class HelpSystem:
             },
         }
 
+    def show_language_detection_help(self) -> None:
+        """Display help about language and framework detection."""
+        console.print(Panel.fit(
+            "[bold cyan]Language and Framework Detection[/bold cyan]\n\n"
+            "[bold]Automatic Detection:[/bold]\n"
+            "• Analyzes project files and configuration\n"
+            "• Detects primary programming language\n"
+            "• Identifies frameworks and libraries\n"
+            "• Applies appropriate naming conventions\n\n"
+            "[bold]Supported Languages:[/bold]\n"
+            "• Python (snake_case, PascalCase classes)\n"
+            "• TypeScript/JavaScript (camelCase, PascalCase classes)\n"
+            "• Java (camelCase, PascalCase classes)\n\n"
+            "[bold]Supported Frameworks:[/bold]\n"
+            "• Python: FastAPI, Django, Flask, Streamlit\n"
+            "• TypeScript: React, Angular, Express, NestJS\n"
+            "• JavaScript: React, Vue, Express\n\n"
+            "[bold]Detection Sources:[/bold]\n"
+            "• Configuration files (pyproject.toml, package.json, etc.)\n"
+            "• File extensions and naming patterns\n"
+            "• Dependencies and imports\n"
+            "• Directory structure analysis\n\n"
+            "[bold]Pattern Application:[/bold]\n"
+            "• Task generation uses detected patterns\n"
+            "• Code generation follows conventions\n"
+            "• File naming matches project style\n"
+            "• Import statements use correct format\n\n"
+            "[bold]Troubleshooting:[/bold]\n"
+            "• Ensure config files exist (pyproject.toml, package.json)\n"
+            "• Check file permissions for project analysis\n"
+            "• Language defaults to Python if detection fails\n"
+            "• Use 'dev-agent analyze' to see detected patterns",
+            title="Language Detection",
+            border_style="cyan"
+        ))
+
+    def show_troubleshooting_guide(self) -> None:
+        """Display troubleshooting guide for common issues."""
+        console.print(Panel.fit(
+            "[bold red]Common Issues and Solutions[/bold red]\n\n"
+            "[bold]Language Detection Issues:[/bold]\n"
+            "• Problem: Wrong language detected\n"
+            "  Solution: Ensure config files exist (pyproject.toml, package.json)\n"
+            "• Problem: No frameworks detected\n"
+            "  Solution: Check dependencies in requirements.txt or package.json\n"
+            "• Problem: Tasks use wrong naming conventions\n"
+            "  Solution: Verify language detection with 'dev-agent analyze'\n\n"
+            "[bold]Task Generation Issues:[/bold]\n"
+            "• Problem: Tasks don't match project style\n"
+            "  Solution: Re-run 'dev-agent init' to re-detect patterns\n"
+            "• Problem: Generated code uses wrong patterns\n"
+            "  Solution: Check that framework is correctly detected\n\n"
+            "[bold]General Issues:[/bold]\n"
+            "• Problem: Indexing fails\n"
+            "  Solution: Check file permissions and Azure OpenAI config\n"
+            "• Problem: API errors during generation\n"
+            "  Solution: Verify Azure OpenAI credentials and quotas",
+            title="Troubleshooting Guide",
+            border_style="red"
+        ))
+
     def show_command_help(self, command: str) -> None:
         """Display detailed help for a specific command.
 
         Args:
             command: Command name to show help for
         """
+        # Handle special help topics
+        if command == "language-detection":
+            self.show_language_detection_help()
+            return
+        elif command == "troubleshooting":
+            self.show_troubleshooting_guide()
+            return
+        
         if command not in self.commands:
             console.print(f"[red]Unknown command: {command}[/red]")
             console.print("\nAvailable commands:")
             for cmd in sorted(self.commands.keys()):
                 console.print(f"  • {cmd}")
+            console.print("\nSpecial help topics:")
+            console.print("  • language-detection")
+            console.print("  • troubleshooting")
             console.print("\nUse [cyan]dev-agent help <command>[/cyan] for details")
             return
 

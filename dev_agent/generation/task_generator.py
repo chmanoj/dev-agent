@@ -18,11 +18,16 @@ from ..models.documents import (
     TaskList,
 )
 from ..models.enums import LLMProvider, PhaseType, TaskStatus
+from .enhanced_task_templates import (
+    ENHANCED_TASK_GENERATION_TEMPLATE,
+    get_template_for_language_and_framework,
+)
 
 if TYPE_CHECKING:
     from ..llm.base import ILLMClient
     from ..llm.cost_tracker import CostTracker
     from ..llm.token_counter import TokenCounter
+    from ..models.language_patterns import FrameworkPatterns, LanguagePatterns
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +92,346 @@ class TaskGenerator(ITaskGenerator):
             f"cost_tracker={'present' if cost_tracker else 'absent'}"
         )
 
+    async def generate_from_design_with_patterns_async(
+        self,
+        design: DesignDocument,
+        specification: str | None = None,
+        language_patterns: LanguagePatterns | None = None,
+        framework_patterns: FrameworkPatterns | None = None,
+        target_language: str = "python",
+        target_framework: str | None = None,
+    ) -> TaskList:
+        """Generate implementation tasks with language and framework patterns applied.
+        
+        This enhanced method uses language and framework patterns to generate
+        tasks that follow the correct naming conventions and patterns for the
+        target technology stack.
+        
+        Args:
+            design: Design document to generate tasks from
+            specification: Optional specification text for additional context
+            language_patterns: Language-specific patterns to apply
+            framework_patterns: Framework-specific patterns to apply
+            target_language: Target programming language
+            target_framework: Target framework (optional)
+            
+        Returns:
+            Generated task list with pattern-aware tasks
+            
+        Raises:
+            ValueError: If LLM client is not configured
+        """
+        if not self.llm_client:
+            raise ValueError(
+                "LLM client not configured. AI task generation requires an LLM client. "
+                "Initialize TaskGenerator with an ILLMClient instance."
+            )
+
+        logger.info(
+            f"Generating tasks with patterns: language={target_language}, "
+            f"framework={target_framework}"
+        )
+
+        # Set phase for cost tracking
+        if self.cost_tracker:
+            self.cost_tracker.set_phase(PhaseType.DESIGN)
+
+        # Get appropriate template for language and framework
+        template = get_template_for_language_and_framework(
+            target_language, target_framework
+        )
+
+        # Build context for prompt with language/framework info
+        context = self._build_llm_context_with_patterns(
+            design, specification, target_language, target_framework
+        )
+
+        # Render prompt with language and framework patterns
+        system_prompt, user_prompt = template.render_with_patterns(
+            context,
+            language_patterns=language_patterns,
+            framework_patterns=framework_patterns,
+            token_counter=self.token_counter,
+        )
+
+        # Validate token limits
+        if self.token_counter:
+            prompt_tokens = self.token_counter.count_tokens(user_prompt)
+            is_valid, error_msg = self.token_counter.validate_context_window(
+                prompt_tokens=prompt_tokens,
+                max_completion_tokens=template.base_template.max_tokens,
+            )
+
+            if not is_valid:
+                logger.error(f"Token validation failed: {error_msg}")
+                raise ValueError(error_msg)
+
+            # Estimate cost before generation
+            estimated_cost = self.token_counter.estimate_cost(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=template.base_template.max_tokens,
+            )
+            logger.info(
+                f"Generating tasks: {prompt_tokens} prompt tokens, "
+                f"estimated cost ${estimated_cost:.4f}"
+            )
+
+        # Generate tasks using LLM with enhanced template
+        try:
+            task_content = await self.llm_client.generate_completion(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=template.base_template.temperature,
+                max_tokens=template.base_template.max_tokens,
+            )
+
+            # Track actual token usage if available
+            if self.cost_tracker and self.token_counter:
+                completion_tokens = self.token_counter.count_tokens(task_content)
+                prompt_tokens = self.token_counter.count_tokens(user_prompt)
+
+                self.cost_tracker.record_completion(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    model=self.token_counter.get_model_name(),
+                )
+
+                logger.info(
+                    f"Task generation complete: {completion_tokens} completion tokens, "
+                    f"total cost ${self.cost_tracker.get_current_cost():.4f}"
+                )
+
+            # Parse the generated task content into TaskList with patterns applied
+            task_list = self._parse_llm_response_with_patterns(
+                task_content,
+                language_patterns,
+                framework_patterns,
+                target_language,
+                target_framework,
+            )
+
+            return task_list
+
+        except Exception as e:
+            logger.error(f"Failed to generate tasks with patterns: {e}")
+            raise RuntimeError(f"AI task generation with patterns failed: {e}") from e
+
+    def apply_patterns_to_tasks(
+        self,
+        task_list: TaskList,
+        language_patterns: LanguagePatterns | None = None,
+        framework_patterns: FrameworkPatterns | None = None,
+    ) -> TaskList:
+        """Apply language and framework patterns to existing tasks.
+        
+        Args:
+            task_list: Original task list
+            language_patterns: Language patterns to apply
+            framework_patterns: Framework patterns to apply
+            
+        Returns:
+            Task list with patterns applied
+        """
+        if not language_patterns:
+            return task_list
+
+        logger.info("Applying language and framework patterns to tasks")
+
+        # Apply patterns to each task
+        updated_tasks = []
+        for task in task_list.tasks:
+            # Apply language patterns
+            updated_task = task.apply_naming_patterns(language_patterns)
+            
+            # Apply framework patterns if available
+            if framework_patterns:
+                updated_task = updated_task.add_framework_context(framework_patterns)
+            
+            # Validate naming conventions
+            validation_errors = updated_task.validate_naming_conventions(language_patterns)
+            if validation_errors:
+                logger.warning(f"Task {task.id} has naming issues: {validation_errors}")
+                # Add validation errors to implementation notes
+                if updated_task.implementation_notes:
+                    updated_task.implementation_notes += f"\n\nNaming validation: {'; '.join(validation_errors)}"
+                else:
+                    updated_task.implementation_notes = f"Naming validation: {'; '.join(validation_errors)}"
+            
+            updated_tasks.append(updated_task)
+
+        # Create new task list with updated tasks
+        return TaskList(
+            tasks=updated_tasks,
+            dependencies=task_list.dependencies.copy(),
+            estimated_effort=task_list.estimated_effort.copy(),
+            version=task_list.version,
+            approved=task_list.approved,
+        )
+
+    def _build_llm_context_with_patterns(
+        self,
+        design: DesignDocument,
+        specification: str | None = None,
+        target_language: str = "python",
+        target_framework: str | None = None,
+    ) -> dict[str, Any]:
+        """Build context dictionary for LLM prompt with language/framework info.
+        
+        Args:
+            design: Design document
+            specification: Optional specification text
+            target_language: Target programming language
+            target_framework: Target framework
+            
+        Returns:
+            Context dictionary for prompt template
+        """
+        # Start with base context
+        context = self._build_llm_context(design, specification)
+        
+        # Add language and framework information
+        context.update({
+            "target_language": target_language,
+            "framework_name": target_framework or "none",
+        })
+        
+        # Add framework-specific context
+        if target_framework:
+            framework_context = self._get_framework_context(target_framework)
+            context.update(framework_context)
+        
+        return context
+
+    def _get_framework_context(self, framework: str) -> dict[str, str]:
+        """Get framework-specific context information.
+        
+        Args:
+            framework: Framework name
+            
+        Returns:
+            Framework context dictionary
+        """
+        framework_contexts = {
+            "fastapi": {
+                "framework_specific_patterns": "FastAPI router patterns, Pydantic models, dependency injection",
+                "framework_specific_context": "Use routers/ for API endpoints, models/ for Pydantic schemas, services/ for business logic",
+                "framework_requirements": "- Use FastAPI routers for API endpoints\n- Create Pydantic models for request/response\n- Implement dependency injection patterns\n- Use TestClient for API testing",
+            },
+            "streamlit": {
+                "framework_specific_patterns": "Streamlit app structure, page-based navigation, session state",
+                "framework_specific_context": "Main app.py file, pages/ directory for multi-page apps, components/ for reusable widgets",
+                "framework_requirements": "- Create main app.py entry point\n- Use pages/ directory for multi-page structure\n- Implement session state management\n- Create reusable components",
+            },
+            "react": {
+                "framework_specific_patterns": "React component patterns, hooks, TypeScript interfaces",
+                "framework_specific_context": "Components in src/components/, hooks in src/hooks/, services in src/services/",
+                "framework_requirements": "- Create functional components with TypeScript\n- Define prop interfaces\n- Use custom hooks for state logic\n- Implement proper error boundaries",
+            },
+        }
+        
+        return framework_contexts.get(framework.lower(), {
+            "framework_specific_patterns": f"{framework} patterns",
+            "framework_specific_context": f"Standard {framework} project structure",
+            "framework_requirements": f"- Follow {framework} best practices\n- Use appropriate file organization",
+        })
+
+    def _parse_llm_response_with_patterns(
+        self,
+        task_content: str,
+        language_patterns: LanguagePatterns | None = None,
+        framework_patterns: FrameworkPatterns | None = None,
+        target_language: str = "python",
+        target_framework: str | None = None,
+    ) -> TaskList:
+        """Parse LLM response into TaskList with patterns applied.
+        
+        Args:
+            task_content: Raw LLM response content
+            language_patterns: Language patterns to apply
+            framework_patterns: Framework patterns to apply
+            target_language: Target programming language
+            target_framework: Target framework
+            
+        Returns:
+            Parsed TaskList with patterns applied
+        """
+        # Extract tasks from AI content (enhanced parsing)
+        task_lines = [
+            line.strip() for line in task_content.split('\n') 
+            if line.strip() and (line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'))
+        ]
+        
+        tasks = []
+        
+        for i, line in enumerate(task_lines[:15]):  # Limit to 15 tasks
+            if line and len(line) > 10:  # Skip very short lines
+                # Extract task title from markdown format
+                title = line.replace('- [ ]', '').replace('- [x]', '').strip()
+                if title.startswith(f'{i+1}.'):
+                    title = title[len(f'{i+1}.'):].strip()
+                
+                # Create task with language/framework context
+                task = Task(
+                    id=f"task_{i+1}",
+                    title=title[:100],  # First 100 chars as title
+                    description=line,
+                    requirements_refs=[],
+                    subtasks=[],
+                    status=TaskStatus.NOT_STARTED,
+                    target_language=target_language,
+                    context_requirements=[],
+                    implementation_notes=None,
+                    language=target_language,
+                    framework=target_framework,
+                    naming_pattern=None,
+                    file_patterns=[],
+                    validation_rules=[],
+                )
+                
+                # Apply patterns if available
+                if language_patterns:
+                    task = task.apply_naming_patterns(language_patterns)
+                
+                if framework_patterns:
+                    task = task.add_framework_context(framework_patterns)
+                
+                tasks.append(task)
+        
+        if not tasks:
+            # If no tasks were parsed, create at least one task
+            task = Task(
+                id="task_1",
+                title="Implement feature based on design",
+                description=task_content[:500],  # Use AI content as description
+                requirements_refs=[],
+                subtasks=[],
+                status=TaskStatus.NOT_STARTED,
+                target_language=target_language,
+                context_requirements=[],
+                implementation_notes=None,
+                language=target_language,
+                framework=target_framework,
+                naming_pattern=None,
+                file_patterns=[],
+                validation_rules=[],
+            )
+            tasks.append(task)
+        
+        # Generate dependencies and effort estimates
+        dependencies = {}
+        estimated_effort = {}
+        for task in tasks:
+            dependencies[task.id] = []  # No dependencies for now
+            estimated_effort[task.id] = 2  # Default 2 hours per task
+        
+        return TaskList(
+            tasks=tasks,
+            dependencies=dependencies,
+            estimated_effort=estimated_effort,
+            version="1.0",
+            approved=False
+        )
+
     async def generate_from_design_async(
         self,
         design: DesignDocument,
@@ -124,9 +469,14 @@ class TaskGenerator(ITaskGenerator):
         # Build context for prompt
         context = self._build_llm_context(design, specification)
 
+        # Use enhanced template by default
+        template = ENHANCED_TASK_GENERATION_TEMPLATE
+        
         # Render prompt with context
-        system_prompt, user_prompt = TASK_GENERATION_TEMPLATE.render(
+        system_prompt, user_prompt = template.render_with_patterns(
             context,
+            language_patterns=None,  # No patterns provided, use defaults
+            framework_patterns=None,
             token_counter=self.token_counter,
         )
 
@@ -135,7 +485,7 @@ class TaskGenerator(ITaskGenerator):
             prompt_tokens = self.token_counter.count_tokens(user_prompt)
             is_valid, error_msg = self.token_counter.validate_context_window(
                 prompt_tokens=prompt_tokens,
-                max_completion_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+                max_completion_tokens=template.base_template.max_tokens,
             )
 
             if not is_valid:
@@ -145,7 +495,7 @@ class TaskGenerator(ITaskGenerator):
             # Estimate cost before generation
             estimated_cost = self.token_counter.estimate_cost(
                 prompt_tokens=prompt_tokens,
-                completion_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+                completion_tokens=template.base_template.max_tokens,
             )
             logger.info(
                 f"Generating tasks: {prompt_tokens} prompt tokens, "
@@ -158,8 +508,8 @@ class TaskGenerator(ITaskGenerator):
                 task_content = await self.llm_client.generate_completion(
                     prompt=user_prompt,
                     system_prompt=system_prompt,
-                    temperature=TASK_GENERATION_TEMPLATE.temperature,
-                    max_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+                    temperature=template.base_template.temperature,
+                    max_tokens=template.base_template.max_tokens,
                 )
             except RuntimeError as e:
                 if "Event loop is closed" in str(e):
@@ -171,8 +521,8 @@ class TaskGenerator(ITaskGenerator):
                     task_content = await self.llm_client.generate_completion(
                         prompt=user_prompt,
                         system_prompt=system_prompt,
-                        temperature=TASK_GENERATION_TEMPLATE.temperature,
-                        max_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+                        temperature=template.base_template.temperature,
+                        max_tokens=template.base_template.max_tokens,
                     )
                 else:
                     raise

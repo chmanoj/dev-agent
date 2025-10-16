@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from .documents import DesignDocument, SpecificationDocument, TaskList
-from .enums import PhaseType, TaskStatus
+from .enums import FrameworkType, LanguageType, PhaseType, TaskStatus
+from .language_patterns import LanguageProjectContext
 
 
 @dataclass
@@ -53,3 +54,8 @@ class ProjectState:
     specification_approved: bool = False
     design_approved: bool = False
     tasks_approved: bool = False
+
+    # Language and framework detection results
+    language_context: LanguageProjectContext | None = None
+    primary_language: LanguageType | None = None
+    detected_frameworks: list[FrameworkType] | None = None

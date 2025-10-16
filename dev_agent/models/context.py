@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from .indexing import ASTIndex, SymbolInfo
+from .language_patterns import LanguageProjectContext
 from .project_state import ProjectState
 
 
@@ -15,6 +16,7 @@ class ProjectContext:
     ast_index: ASTIndex | None
     codebase_patterns: Optional["CodePatterns"]
     user_preferences: dict[str, Any]
+    language_context: LanguageProjectContext | None = None
 
 
 @dataclass
