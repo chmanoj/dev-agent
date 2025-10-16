@@ -16,7 +16,7 @@ from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.indexing_interface import IIndexingEngine
 from ..interfaces.workflow_interface import IPhaseManager
 from ..models.context import ProjectContext
-from ..models.enums import PhaseStatus, PhaseType
+from ..models.enums import DocumentType, PhaseStatus, PhaseType
 from ..models.project_state import IndexMetadata
 from ..models.results import (
     DesignResult,
@@ -107,7 +107,10 @@ class PhaseManager(IPhaseManager):
         try:
             # Initialize indexing engine
             if not self.indexing_engine:
-                self.indexing_engine = IndexingEngine(project_path)
+                self.indexing_engine = IndexingEngine(
+                    project_path=project_path,
+                    embedding_client=self.embedding_client,
+                )
 
                 # Set up progress callback
                 def progress_callback(current: int, total: int, message: str):
@@ -345,6 +348,10 @@ class PhaseManager(IPhaseManager):
                     cli_interface=self.cli_interface,
                     codebase_analyzer=self.codebase_analyzer,
                     state_manager=self.state_manager,
+                    llm_client=self.llm_client,
+                    cost_tracker=self.cost_tracker,
+                    token_counter=self.token_counter,
+                    vector_db=self.vector_db,
                 )
 
             # Execute design generation
@@ -426,15 +433,28 @@ class PhaseManager(IPhaseManager):
                 self.codebase_analyzer = CodebaseAnalyzer(self.indexing_engine)
 
             if not self.task_generator:
-                self.task_generator = TaskGenerator(self.cli_interface)
+                self.task_generator = TaskGenerator(
+                    cli_interface=self.cli_interface,
+                    llm_client=self.llm_client,
+                    cost_tracker=self.cost_tracker,
+                    token_counter=self.token_counter,
+                )
 
             if not self.code_generator:
-                self.code_generator = PythonCodeGenerator(self.codebase_analyzer)
+                self.code_generator = PythonCodeGenerator(
+                    codebase_analyzer=self.codebase_analyzer,
+                    llm_client=self.llm_client,
+                    cost_tracker=self.cost_tracker,
+                    token_counter=self.token_counter,
+                )
 
-            # Step 1: Generate task list
+            # Step 1: Generate task list using AI
             self.cli_interface.display_message("Generating implementation tasks...")
 
-            task_list = self.task_generator.generate_from_design(project_state.design)
+            task_list = await self.task_generator.generate_from_design_async(
+                project_state.design,
+                specification=project_state.specification.introduction if project_state.specification else None
+            )
 
             if not task_list:
                 result.status = PhaseStatus.FAILED
@@ -454,7 +474,7 @@ class PhaseManager(IPhaseManager):
             task_list.approved = True
             project_state.tasks = task_list
             await self.state_manager.save_project_state(project_state)
-            await self.state_manager.save_document(task_content, "tasks")
+            await self.state_manager.save_document(task_content, DocumentType.TASKS)
 
             # Step 2: Initialize implementation tracking
             implementation_progress = {}

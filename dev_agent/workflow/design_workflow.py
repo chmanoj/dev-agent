@@ -1,5 +1,9 @@
 """Workflow integration for design generation phase."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from ..generation.design_generator import DesignGenerator
 from ..interfaces.analysis_interface import ICodebaseAnalyzer
 from ..interfaces.cli_interface import ICLIInterface
@@ -7,6 +11,12 @@ from ..models.analysis import DesignAnalysis
 from ..models.documents import DesignDocument, SpecificationDocument
 from ..models.enums import DocumentType
 from ..state.state_manager import StateManager
+
+if TYPE_CHECKING:
+    from ..indexing.vector_database import VectorDatabase
+    from ..llm.base import ILLMClient
+    from ..llm.cost_tracker import CostTracker
+    from ..llm.token_counter import TokenCounter
 
 
 class DesignWorkflow:
@@ -17,6 +27,10 @@ class DesignWorkflow:
         cli_interface: ICLIInterface,
         codebase_analyzer: ICodebaseAnalyzer,
         state_manager: StateManager | None = None,
+        llm_client: ILLMClient | None = None,
+        cost_tracker: CostTracker | None = None,
+        token_counter: TokenCounter | None = None,
+        vector_db: VectorDatabase | None = None,
     ):
         """Initialize the design workflow.
 
@@ -24,11 +38,22 @@ class DesignWorkflow:
             cli_interface: CLI interface for user interaction
             codebase_analyzer: Codebase analyzer for architecture analysis
             state_manager: Optional state manager for persistence
+            llm_client: Optional LLM client for AI-powered generation
+            cost_tracker: Optional cost tracker for monitoring API usage
+            token_counter: Optional token counter for validation
+            vector_db: Optional vector database for context retrieval
         """
         self.cli_interface = cli_interface
         self.codebase_analyzer = codebase_analyzer
         self.state_manager = state_manager
-        self.generator = DesignGenerator(codebase_analyzer, cli_interface)
+        self.generator = DesignGenerator(
+            codebase_analyzer=codebase_analyzer,
+            cli_interface=cli_interface,
+            llm_client=llm_client,
+            cost_tracker=cost_tracker,
+            token_counter=token_counter,
+            vector_db=vector_db,
+        )
 
     async def execute_design_phase(
         self, specification: SpecificationDocument
@@ -47,7 +72,7 @@ class DesignWorkflow:
         design_analysis = self._perform_design_analysis()
 
         # Generate design
-        design = self._generate_design(specification, design_analysis)
+        design = await self._generate_design(specification, design_analysis)
 
         # Request approval and handle refinements
         design = await self._approval_workflow(design)
@@ -99,7 +124,7 @@ class DesignWorkflow:
                 recommendations=[],
             )
 
-    def _generate_design(
+    async def _generate_design(
         self, specification: SpecificationDocument, analysis: DesignAnalysis
     ) -> DesignDocument:
         """Generate design document from specification and analysis.
@@ -113,7 +138,8 @@ class DesignWorkflow:
         """
         self.cli_interface.display_message("Generating design document...")
 
-        design = self.generator.generate_from_specification(specification, analysis)
+        # Use AI-powered generation
+        design = await self.generator.generate_from_specification_ai(specification, analysis)
 
         self.cli_interface.display_message(
             f"Design document generated with {len(design.components)} components, "

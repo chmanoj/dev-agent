@@ -157,12 +157,28 @@ class PythonCodeGenerator(IPythonCodeGenerator):
 
         # Generate code using LLM
         try:
-            generated_code = await self.llm_client.generate_completion(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-                temperature=CODE_GENERATION_TEMPLATE.temperature,
-                max_tokens=CODE_GENERATION_TEMPLATE.max_tokens,
-            )
+            try:
+                generated_code = await self.llm_client.generate_completion(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    temperature=CODE_GENERATION_TEMPLATE.temperature,
+                    max_tokens=CODE_GENERATION_TEMPLATE.max_tokens,
+                )
+            except RuntimeError as e:
+                if "Event loop is closed" in str(e):
+                    logger.error("Event loop closed during LLM call - recreating client")
+                    from ..llm import create_llm_client
+                    logger.info("Attempting to recreate LLM client...")
+                    self.llm_client = create_llm_client()
+                    # Retry the call
+                    generated_code = await self.llm_client.generate_completion(
+                        prompt=user_prompt,
+                        system_prompt=system_prompt,
+                        temperature=CODE_GENERATION_TEMPLATE.temperature,
+                        max_tokens=CODE_GENERATION_TEMPLATE.max_tokens,
+                    )
+                else:
+                    raise
 
             # Track cost if tracker is available
             if self.cost_tracker:

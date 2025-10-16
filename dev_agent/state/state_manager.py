@@ -109,11 +109,11 @@ class StateManager:
             DatetimeSerializationError: If datetime serialization fails
         """
         try:
-            # Debug logging for specification objects
-            if field_path == "specification" or "specification" in field_path:
-                logger.debug(f"Serializing specification object at path '{field_path}': {type(obj)}")
-                if obj is not None:
-                    logger.debug(f"Specification object is not None: {hasattr(obj, 'to_dict')}")
+            # Debug logging for specification objects (removed for cleaner output)
+            # if field_path == "specification" or "specification" in field_path:
+            #     logger.debug(f"Serializing specification object at path '{field_path}': {type(obj)}")
+            #     if obj is not None:
+            #         logger.debug(f"Specification object is not None: {hasattr(obj, 'to_dict')}")
             
             # Check datetime FIRST before other type checks
             if isinstance(obj, datetime):

@@ -142,8 +142,8 @@ class WorkflowManager(IWorkflowManager):
                     # Import embedding factory function
                     from ..llm import create_embedding_client
 
-                    # Create embedding client
-                    cache_dir = Path(project_path) / ".dev_agent" / "embedding_cache"
+                    # Create embedding client with cache in index directory
+                    cache_dir = Path(project_path) / ".dev_agent" / "index" / "embedding_cache"
                     self.embedding_client = create_embedding_client(
                         provider=provider, cache_dir=cache_dir
                     )
@@ -235,6 +235,45 @@ class WorkflowManager(IWorkflowManager):
             self.cli_interface.display_message(
                 f"Starting with {project_state.current_phase.value} phase"
             )
+
+            # Check if there are code files to index and automatically run indexing
+            logger.info("Checking for code files to automatically index...")
+            
+            try:
+                from ..onboarding.journey_manager import JourneyManager
+                from pathlib import Path
+                
+                journey_manager = JourneyManager()
+                project_context = journey_manager.detect_project_type(Path(project_path))
+                
+                logger.info(f"Project context: has_code={project_context.has_code}, file_count={project_context.file_count}")
+                
+                # If there are code files, automatically run indexing
+                if project_context.has_code and project_context.file_count > 0:
+                    logger.info(f"Detected {project_context.file_count} code files, starting automatic indexing...")
+                    
+                    try:
+                        # Run indexing phase
+                        indexing_result = await self.phase_manager.execute_indexing_phase(project_path)
+                        
+                        if indexing_result.status == PhaseStatus.COMPLETED:
+                            logger.info("Automatic indexing completed successfully")
+                            # Update project state to specification phase
+                            project_state.current_phase = PhaseType.SPECIFICATION
+                            project_state.last_updated = datetime.now()
+                            await self.state_manager.save_project_state(project_state)
+                        else:
+                            logger.warning(f"Indexing completed with status {indexing_result.status}: {indexing_result.message}")
+                            
+                    except Exception as e:
+                        logger.error(f"Automatic indexing failed: {e}")
+                        # Continue with project initialization even if indexing fails
+                else:
+                    logger.info("No code files detected, skipping automatic indexing")
+                    
+            except Exception as e:
+                logger.error(f"Failed to check for code files: {e}")
+                logger.info("Continuing with project initialization without automatic indexing")
 
             return project_state
 
@@ -612,7 +651,7 @@ class WorkflowManager(IWorkflowManager):
 
         # Execute phase based on type
         if phase == PhaseType.INDEXING:
-            result = self.phase_manager.execute_indexing_phase(
+            result = await self.phase_manager.execute_indexing_phase(
                 self.current_project_state.project_path
             )
         elif phase == PhaseType.SPECIFICATION:

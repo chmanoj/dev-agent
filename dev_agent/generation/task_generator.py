@@ -110,8 +110,10 @@ class TaskGenerator(ITaskGenerator):
             LLMTokenLimitError: If prompt exceeds token limits
         """
         if not self.llm_client:
-            logger.warning("No LLM client configured, falling back to rule-based generation")
-            return self.generate_from_design(design)
+            raise ValueError(
+                "LLM client not configured. AI task generation requires an LLM client. "
+                "Initialize TaskGenerator with an ILLMClient instance."
+            )
 
         logger.info("Generating tasks from design using Azure OpenAI")
 
@@ -152,12 +154,28 @@ class TaskGenerator(ITaskGenerator):
 
         # Generate tasks using LLM
         try:
-            task_content = await self.llm_client.generate_completion(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-                temperature=TASK_GENERATION_TEMPLATE.temperature,
-                max_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
-            )
+            try:
+                task_content = await self.llm_client.generate_completion(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    temperature=TASK_GENERATION_TEMPLATE.temperature,
+                    max_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+                )
+            except RuntimeError as e:
+                if "Event loop is closed" in str(e):
+                    logger.error("Event loop closed during LLM call - recreating client")
+                    from ..llm import create_llm_client
+                    logger.info("Attempting to recreate LLM client...")
+                    self.llm_client = create_llm_client()
+                    # Retry the call
+                    task_content = await self.llm_client.generate_completion(
+                        prompt=user_prompt,
+                        system_prompt=system_prompt,
+                        temperature=TASK_GENERATION_TEMPLATE.temperature,
+                        max_tokens=TASK_GENERATION_TEMPLATE.max_tokens,
+                    )
+                else:
+                    raise
 
             # Track actual token usage if available
             if self.cost_tracker and self.token_counter:
@@ -177,15 +195,65 @@ class TaskGenerator(ITaskGenerator):
                 )
 
             # Parse the generated task content into TaskList
-            # For now, fall back to rule-based parsing
-            # TODO: Implement LLM response parsing
-            logger.info("Generated task content, parsing into TaskList structure")
-            return self.generate_from_design(design)
+            # TODO: Implement proper LLM response parsing
+            # For now, create a basic task list with the AI-generated content
+            logger.info("Generated task content, creating TaskList structure")
+            
+            # Create a basic task list with AI-generated content as description
+            from ..models.documents import Task
+            
+            # Extract tasks from AI content (simple parsing)
+            task_lines = [line.strip() for line in task_content.split('\n') if line.strip() and not line.startswith('#')]
+            tasks = []
+            
+            for i, line in enumerate(task_lines[:10]):  # Limit to 10 tasks
+                if line and len(line) > 10:  # Skip very short lines
+                    task = Task(
+                        id=f"task_{i+1}",
+                        title=line[:100],  # First 100 chars as title
+                        description=line,
+                        requirements_refs=[],
+                        subtasks=[],
+                        status=TaskStatus.NOT_STARTED,
+                        target_language="python",
+                        context_requirements=[],
+                        implementation_notes=None
+                    )
+                    tasks.append(task)
+            
+            if not tasks:
+                # If no tasks were parsed, create at least one task
+                task = Task(
+                    id="task_1",
+                    title="Implement feature based on design",
+                    description=task_content[:500],  # Use AI content as description
+                    requirements_refs=[],
+                    subtasks=[],
+                    status=TaskStatus.NOT_STARTED,
+                    target_language="python",
+                    context_requirements=[],
+                    implementation_notes=None
+                )
+                tasks.append(task)
+            
+            # Generate dependencies and effort estimates
+            dependencies = {}
+            estimated_effort = {}
+            for task in tasks:
+                dependencies[task.id] = []  # No dependencies for now
+                estimated_effort[task.id] = 2  # Default 2 hours per task
+            
+            return TaskList(
+                tasks=tasks,
+                dependencies=dependencies,
+                estimated_effort=estimated_effort,
+                version="1.0",
+                approved=False
+            )
 
         except Exception as e:
             logger.error(f"Failed to generate tasks with LLM: {e}")
-            logger.info("Falling back to rule-based task generation")
-            return self.generate_from_design(design)
+            raise RuntimeError(f"AI task generation failed: {e}") from e
 
     def generate_from_design(self, design: DesignDocument) -> TaskList:
         """Generate implementation tasks from design document (rule-based).

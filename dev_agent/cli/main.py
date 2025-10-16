@@ -271,8 +271,8 @@ def _run_indexing_with_progress(
             try:
                 provider = config_manager.get_llm_provider()
 
-                # Create embedding client using factory function
-                cache_dir = Path(project_path) / ".dev_agent" / "embedding_cache"
+                # Create embedding client using factory function with cache in index directory
+                cache_dir = Path(project_path) / ".dev_agent" / "index" / "embedding_cache"
                 embedding_client = create_embedding_client(
                     provider=provider, cache_dir=cache_dir
                 )
@@ -672,11 +672,14 @@ def init(
         console.print(f"[green]{success_msg}[/green]")
 
         # For existing codebases, automatically start indexing
-        if not is_new_project:
+        # Check if there are code files to index (more robust than just project type)
+        should_index = not is_new_project or (project_context.has_code and project_context.file_count > 0)
+        
+        if should_index:
             console.print()
             console.print(
                 Panel(
-                    "[bold]Existing Codebase Detected[/bold]\n\n"
+                    "[bold]Codebase Detected[/bold]\n\n"
                     "dev-agent will now index your codebase to understand its structure,\n"
                     "patterns, and conventions. This enables context-aware code generation.\n\n"
                     "[dim]This may take a few minutes depending on codebase size...[/dim]",
@@ -688,6 +691,17 @@ def init(
             # Start indexing with progress display
             _run_indexing_with_progress(
                 workflow_manager, project_path, project_context, console
+            )
+        else:
+            console.print()
+            console.print(
+                Panel(
+                    "[bold]New Project Detected[/bold]\n\n"
+                    "No existing code files found. You can start by creating a specification\n"
+                    "for your new project in interactive mode.\n\n"
+                    "[dim]Indexing will be available once you add code files.[/dim]",
+                    border_style="green",
+                )
             )
 
         # Provide next steps guidance

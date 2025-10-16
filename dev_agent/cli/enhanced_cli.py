@@ -1185,23 +1185,8 @@ class EnhancedCLI(ICLIInterface):
                 WorkflowManager,
             )
 
-            # Initialize embedding client for workflow
-            config_manager = ConfigManager()
-            config = config_manager.get_config()
-
-            embedding_client = None
-            if config.azure_openai:
-                try:
-                    embedding_client = AzureEmbeddingClient(config.azure_openai)
-                except Exception as e:
-                    self.console.print(
-                        f"[yellow]Warning: Could not initialize embedding client: {e}[/yellow]"
-                    )
-                    self.console.print("[yellow]Some features may be limited.[/yellow]")
-
-            self.workflow_manager = WorkflowManager(
-                self, embedding_client=embedding_client
-            )
+            # Initialize workflow manager (it will create its own embedding client)
+            self.workflow_manager = WorkflowManager(self)
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""

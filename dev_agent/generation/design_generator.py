@@ -188,12 +188,29 @@ class DesignGenerator(IDesignGenerator):
 
             # Generate design using LLM
             logger.info("Calling Azure OpenAI for design generation...")
-            design_content = await self.llm_client.generate_completion(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-                temperature=template.temperature,
-                max_tokens=template.max_tokens,
-            )
+            try:
+                design_content = await self.llm_client.generate_completion(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    temperature=template.temperature,
+                    max_tokens=template.max_tokens,
+                )
+            except RuntimeError as e:
+                if "Event loop is closed" in str(e):
+                    logger.error("Event loop closed during LLM call - this is likely a Gemini client issue")
+                    # Try to recreate the LLM client
+                    from ..llm import create_llm_client
+                    logger.info("Attempting to recreate LLM client...")
+                    self.llm_client = create_llm_client()
+                    # Retry the call
+                    design_content = await self.llm_client.generate_completion(
+                        prompt=user_prompt,
+                        system_prompt=system_prompt,
+                        temperature=template.temperature,
+                        max_tokens=template.max_tokens,
+                    )
+                else:
+                    raise
 
             # Track cost if tracker available
             if self.cost_tracker and self.token_counter:
@@ -1114,10 +1131,10 @@ class DesignGenerator(IDesignGenerator):
             query = " ".join(query_parts)
 
             # Search for relevant architecture patterns
-            results = await self.vector_db.search(
-                query=query,
-                top_k=5,
-                filter_metadata={"type": "architecture"},  # Prefer architecture-related code
+            results = await self.vector_db.query_similar(
+                query_text=query,
+                k=5,
+                min_similarity=0.0,
             )
 
             logger.info(f"Retrieved {len(results)} relevant architecture patterns")
@@ -1306,31 +1323,278 @@ class DesignGenerator(IDesignGenerator):
         Returns:
             Structured design document
         """
-        # For now, use the rule-based generation as fallback
-        # In a production system, you would parse the AI-generated markdown
-        # into structured components
         logger.info("Parsing AI-generated design content")
 
-        # Use rule-based generation to create structure
-        # The AI content would be used to enhance the descriptions
-        design = self.generate_from_specification(spec, analysis)
+        # Create a basic design document structure and populate with AI content
+        design = DesignDocument(
+            overview="",
+            architecture=ArchitectureDescription(
+                overview="",
+                patterns=[],
+                components=[]
+            ),
+            components=[],
+            data_models=[],
+            interfaces=[],
+            error_handling=self._create_error_handling_strategy(spec, analysis),
+            testing_strategy=self._create_testing_strategy(spec, analysis),
+            version=self.version,
+            approved=False,
+        )
 
-        # Enhance with AI-generated content
-        # In a full implementation, you would parse sections from design_content
-        # and update the structured document accordingly
+        # Use the AI-generated content directly as the overview
+        # Extract overview section if it exists, otherwise use the entire content as overview
+        if "## Overview" in design_content:
+            overview_start = design_content.find("## Overview")
+            overview_end = design_content.find("##", overview_start + 10)
+            if overview_end == -1:
+                overview_end = len(design_content)
+            ai_overview = design_content[overview_start:overview_end].strip()
+            ai_overview = ai_overview.replace("## Overview", "").strip()
+            design.overview = ai_overview[:2000] if ai_overview else design_content[:2000]
+        else:
+            # Use the entire AI content as overview if no specific overview section
+            design.overview = design_content[:2000]
 
-        # For now, prepend AI overview to the generated overview
-        if "## Overview" in design_content or "# Overview" in design_content:
-            # Extract overview section (simplified parsing)
-            overview_start = design_content.find("Overview")
-            if overview_start != -1:
-                overview_end = design_content.find("##", overview_start + 10)
-                if overview_end == -1:
-                    overview_end = len(design_content)
-                ai_overview = design_content[overview_start:overview_end].strip()
-                # Clean up markdown headers
-                ai_overview = ai_overview.replace("## Overview", "").replace("# Overview", "").strip()
-                if ai_overview:
-                    design.overview = ai_overview[:1000]  # Use AI overview
+        # Extract architecture information if present
+        if "## Architecture" in design_content:
+            arch_start = design_content.find("## Architecture")
+            arch_end = design_content.find("##", arch_start + 12)
+            if arch_end == -1:
+                arch_end = len(design_content)
+            arch_content = design_content[arch_start:arch_end].strip()
+            arch_content = arch_content.replace("## Architecture", "").strip()
+            design.architecture.overview = arch_content[:1000] if arch_content else "Architecture based on specification requirements"
+
+        # Parse AI-generated content for components, data models, and interfaces
+        # Only add fallback content if AI didn't generate anything meaningful
+        
+        # Try to extract components from AI content
+        components_extracted = self._extract_components_from_ai_content(design_content)
+        if components_extracted:
+            design.components.extend(components_extracted)
+        elif not design.components:
+            # Only add generic components if no AI content and no existing components
+            logger.info("No components found in AI content, generating minimal fallback")
+            # Generate minimal components based on actual specification requirements
+            component_map = {}
+            for req in spec.functional_requirements:
+                req_text = req.user_story.lower()
+                # Only add components that are actually mentioned in the requirements
+                if any(keyword in req_text for keyword in ["auth", "login", "jwt", "token"]):
+                    if "Authentication Service" not in component_map:
+                        component_map["Authentication Service"] = {
+                            "description": "Handles authentication based on specification requirements",
+                            "interfaces": ["IAuthService"],
+                            "dependencies": ["Authentication Framework"]
+                        }
+
+            # Convert to ComponentSpec objects (only if we found relevant requirements)
+            for name, details in component_map.items():
+                component = ComponentSpec(
+                    name=name,
+                    description=details["description"],
+                    interfaces=details["interfaces"],
+                    dependencies=details["dependencies"],
+                )
+                design.components.append(component)
+
+        # Try to extract data models from AI content
+        data_models_extracted = self._extract_data_models_from_ai_content(design_content)
+        if data_models_extracted:
+            design.data_models.extend(data_models_extracted)
+        elif not design.data_models:
+            # Only add minimal data models if actually needed by the specification
+            logger.info("No data models found in AI content, checking specification requirements")
+            for req in spec.functional_requirements:
+                req_text = req.user_story.lower()
+                if any(keyword in req_text for keyword in ["user", "account", "profile"]):
+                    user_model = DataModel(
+                        name="User",
+                        fields={
+                            "id": "int",
+                            "username": "str",
+                            "created_at": "datetime"
+                        },
+                        relationships=[]
+                    )
+                    design.data_models.append(user_model)
+                    break  # Only add one model to avoid duplication
+
+        # Try to extract interfaces from AI content
+        interfaces_extracted = self._extract_interfaces_from_ai_content(design_content)
+        if interfaces_extracted:
+            design.interfaces.extend(interfaces_extracted)
+        elif not design.interfaces:
+            # Only add minimal interfaces if actually needed
+            logger.info("No interfaces found in AI content, checking specification requirements")
+            for req in spec.functional_requirements:
+                req_text = req.user_story.lower()
+                if any(keyword in req_text for keyword in ["service", "api", "interface"]):
+                    service_interface = InterfaceSpec(
+                        name="IService",
+                        description="Interface for service operations based on specification",
+                        methods=["process() -> Result"]
+                    )
+                    design.interfaces.append(service_interface)
+                    break  # Only add one interface to avoid duplication
 
         return design
+
+    def _extract_components_from_ai_content(self, content: str) -> list[ComponentSpec]:
+        """Extract component specifications from AI-generated content.
+        
+        Args:
+            content: AI-generated design content
+            
+        Returns:
+            List of extracted ComponentSpec objects
+        """
+        components = []
+        
+        # Look for component sections in the AI content
+        lines = content.split('\n')
+        current_component = None
+        current_description = ""
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Look for component headers (### ComponentName or **ComponentName**)
+            if line.startswith('### ') and not line.lower().startswith('### overview'):
+                if current_component:
+                    # Save previous component
+                    components.append(ComponentSpec(
+                        name=current_component,
+                        description=current_description.strip(),
+                        interfaces=[],
+                        dependencies=[]
+                    ))
+                
+                current_component = line[4:].strip()
+                current_description = ""
+            elif line.startswith('**') and line.endswith('**') and len(line) > 4:
+                component_name = line[2:-2].strip()
+                if not any(skip in component_name.lower() for skip in ['overview', 'description', 'purpose', 'responsibilities']):
+                    if current_component:
+                        components.append(ComponentSpec(
+                            name=current_component,
+                            description=current_description.strip(),
+                            interfaces=[],
+                            dependencies=[]
+                        ))
+                    
+                    current_component = component_name
+                    current_description = ""
+            elif current_component and line and not line.startswith('#'):
+                current_description += line + " "
+        
+        # Add the last component
+        if current_component:
+            components.append(ComponentSpec(
+                name=current_component,
+                description=current_description.strip(),
+                interfaces=[],
+                dependencies=[]
+            ))
+        
+        return components
+
+    def _extract_data_models_from_ai_content(self, content: str) -> list[DataModel]:
+        """Extract data models from AI-generated content.
+        
+        Args:
+            content: AI-generated design content
+            
+        Returns:
+            List of extracted DataModel objects
+        """
+        models = []
+        
+        # Look for data model sections
+        if "## Data Model" in content or "## Database" in content:
+            lines = content.split('\n')
+            current_model = None
+            current_fields = {}
+            
+            for line in lines:
+                line = line.strip()
+                
+                # Look for model headers
+                if line.startswith('### ') and 'model' in line.lower():
+                    if current_model:
+                        models.append(DataModel(
+                            name=current_model,
+                            fields=current_fields,
+                            relationships=[]
+                        ))
+                    
+                    current_model = line[4:].strip()
+                    current_fields = {}
+                elif current_model and ':' in line and not line.startswith('#'):
+                    # Try to extract field definitions
+                    parts = line.split(':')
+                    if len(parts) == 2:
+                        field_name = parts[0].strip('- ').strip()
+                        field_type = parts[1].strip()
+                        current_fields[field_name] = field_type
+            
+            # Add the last model
+            if current_model:
+                models.append(DataModel(
+                    name=current_model,
+                    fields=current_fields,
+                    relationships=[]
+                ))
+        
+        return models
+
+    def _extract_interfaces_from_ai_content(self, content: str) -> list[InterfaceSpec]:
+        """Extract interface specifications from AI-generated content.
+        
+        Args:
+            content: AI-generated design content
+            
+        Returns:
+            List of extracted InterfaceSpec objects
+        """
+        interfaces = []
+        
+        # Look for interface sections
+        if "## Interface" in content or "## API" in content:
+            lines = content.split('\n')
+            current_interface = None
+            current_methods = []
+            current_description = ""
+            
+            for line in lines:
+                line = line.strip()
+                
+                # Look for interface headers
+                if line.startswith('### ') and ('interface' in line.lower() or 'api' in line.lower()):
+                    if current_interface:
+                        interfaces.append(InterfaceSpec(
+                            name=current_interface,
+                            description=current_description.strip(),
+                            methods=current_methods
+                        ))
+                    
+                    current_interface = line[4:].strip()
+                    current_methods = []
+                    current_description = ""
+                elif current_interface and line.startswith('- ') and '(' in line:
+                    # Extract method definitions
+                    method = line[2:].strip()
+                    current_methods.append(method)
+                elif current_interface and line and not line.startswith('#') and not line.startswith('- '):
+                    current_description += line + " "
+            
+            # Add the last interface
+            if current_interface:
+                interfaces.append(InterfaceSpec(
+                    name=current_interface,
+                    description=current_description.strip(),
+                    methods=current_methods
+                ))
+        
+        return interfaces

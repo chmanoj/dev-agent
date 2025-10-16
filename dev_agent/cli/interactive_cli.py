@@ -37,23 +37,8 @@ class InteractiveCLI(ICLIInterface):
             from ..llm.embeddings import AzureEmbeddingClient
             from ..workflow.workflow_manager import WorkflowManager
 
-            # Initialize embedding client for workflow
-            config_manager = ConfigManager()
-            config = config_manager.get_config()
-            
-            embedding_client = None
-            if config.azure_openai:
-                try:
-                    embedding_client = AzureEmbeddingClient(config.azure_openai)
-                except Exception as e:
-                    console.print(
-                        f"[yellow]Warning: Could not initialize embedding client: {e}[/yellow]"
-                    )
-                    console.print(
-                        "[yellow]Some features may be limited.[/yellow]"
-                    )
-
-            self.workflow_manager = WorkflowManager(self, embedding_client=embedding_client)
+            # Initialize workflow manager (it will create its own embedding client)
+            self.workflow_manager = WorkflowManager(self)
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""
@@ -122,7 +107,7 @@ class InteractiveCLI(ICLIInterface):
                 project_path = os.getcwd()
 
             try:
-                self.init_command(project_path)
+                await self.init_command(project_path)
                 return f"[green]Project initialized at: {project_path}[/green]"
             except Exception as e:
                 return f"[red]Error initializing project: {e!s}[/red]"
@@ -362,7 +347,7 @@ class InteractiveCLI(ICLIInterface):
             f"{report.end_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]"
         )
 
-    def init_command(self, project_path: str) -> None:
+    async def init_command(self, project_path: str) -> None:
         """Initialize a new project or resume an existing one.
 
         Args:
@@ -379,7 +364,7 @@ class InteractiveCLI(ICLIInterface):
         if os.path.exists(documents_dir) and os.path.exists(index_dir):
             self.display_message("Found existing dev-agent project. Resuming...")
             if self.workflow_manager:
-                self.workflow_manager.resume_project(project_path)
+                await self.workflow_manager.resume_project(project_path)
         else:
             self.display_message("Initializing new dev-agent project...")
             # Create .dev_agent directory structure
@@ -388,7 +373,7 @@ class InteractiveCLI(ICLIInterface):
             os.makedirs(index_dir, exist_ok=True)
 
             if self.workflow_manager:
-                self.workflow_manager.start_new_project(project_path)
+                await self.workflow_manager.start_new_project(project_path)
 
     def display_message(self, message: str) -> None:
         """Display a message to the user.

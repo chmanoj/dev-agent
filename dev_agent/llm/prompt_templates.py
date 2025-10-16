@@ -277,7 +277,7 @@ Key principles:
 {similar_implementations}
 
 ## Task
-Create a comprehensive technical design document that:
+Create a concise technical design document that:
 - Aligns with the existing architecture
 - Follows established design patterns
 - Defines clear component interfaces
@@ -287,14 +287,14 @@ Create a comprehensive technical design document that:
 
 ## Output Format
 Provide a structured design document with:
-1. **Overview**: High-level design summary
-2. **Architecture**: Component structure and relationships
-3. **Components and Interfaces**: Detailed component specifications
-4. **Data Models**: Data structures and schemas
-5. **Data Flow**: How data moves through the system
-6. **Error Handling**: Error scenarios and recovery strategies
-7. **Testing Strategy**: Unit, integration, and end-to-end testing approach
-8. **Security Considerations**: Authentication, authorization, data protection""",
+1. **Overview**: High-level design summary (2-3 sentences)
+2. **Architecture**: Component structure and relationships (bullet points)
+3. **Components and Interfaces**: Key component specifications (concise)
+4. **Data Models**: Essential data structures only
+5. **Error Handling**: Key error scenarios and recovery strategies
+6. **Testing Strategy**: Brief testing approach
+
+Keep each section concise and focused. Avoid lengthy explanations.""",
     
     required_context=[
         "specification",
@@ -303,7 +303,7 @@ Provide a structured design document with:
     ],
     max_context_tokens=6000,
     temperature=0.7,
-    max_tokens=4000,
+    max_tokens=2000,
 )
 
 

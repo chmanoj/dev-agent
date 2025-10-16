@@ -229,7 +229,24 @@ class IndexingEngine(IIndexingEngine):
                 # Store embeddings with progress tracking (async)
                 import asyncio
                 
-                chunk_ids = asyncio.run(self._store_embeddings_with_progress(all_chunks))
+                # Store embeddings with progress tracking (async)
+                import asyncio
+                import concurrent.futures
+                import threading
+                
+                try:
+                    # Check if we're already in an event loop
+                    asyncio.get_running_loop()
+                    # We're in a loop, run in a separate thread
+                    def run_in_thread():
+                        return asyncio.run(self._store_embeddings_with_progress(all_chunks))
+                    
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_in_thread)
+                        chunk_ids = future.result()
+                except RuntimeError:
+                    # No running loop, safe to use asyncio.run()
+                    chunk_ids = asyncio.run(self._store_embeddings_with_progress(all_chunks))
                 embeddings_count = len(chunk_ids)
                 print(f"Generated {embeddings_count} embeddings")
                 
