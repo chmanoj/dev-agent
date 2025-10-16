@@ -301,7 +301,6 @@ class WorkflowManager(IWorkflowManager):
             
             try:
                 from ..onboarding.journey_manager import JourneyManager
-                from pathlib import Path
                 
                 journey_manager = JourneyManager()
                 project_context = journey_manager.detect_project_type(Path(project_path))

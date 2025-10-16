@@ -7,6 +7,7 @@ import os
 import tempfile
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -139,21 +140,15 @@ class StateManager:
                             additional_info={"field_path": field_path, "datetime_value": str(obj)}
                         )
                     ) from e
-            elif hasattr(obj, "value"):  # Handle enums
+            elif isinstance(obj, Enum):  # Handle enums
                 return obj.value
             elif is_dataclass(obj):
-                # Debug logging for SpecificationDocument
-                if type(obj).__name__ == 'SpecificationDocument':
-                    logger.info(f"🔍 Found SpecificationDocument at path '{field_path}'")
-                    logger.info(f"🔍 Has to_dict: {hasattr(obj, 'to_dict')}")
-                    logger.info(f"🔍 to_dict callable: {callable(getattr(obj, 'to_dict', None))}")
                 
                 # Check for Pydantic models first (they have model_dump)
                 if hasattr(obj, 'model_dump') and callable(getattr(obj, 'model_dump')):
                     try:
-                        logger.debug(f"Using model_dump() for Pydantic model {type(obj).__name__} at path '{field_path}'")
-                        result = obj.model_dump()
-                        logger.debug(f"model_dump() succeeded for {type(obj).__name__}, result type: {type(result)}")
+                        # Use mode='json' to ensure enums are serialized as values
+                        result = obj.model_dump(mode='json')
                         return result
                     except Exception as e:
                         logger.error(
@@ -170,9 +165,7 @@ class StateManager:
                 # Check if the object has a custom to_dict method
                 if hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
                     try:
-                        logger.debug(f"Using to_dict() for {type(obj).__name__} at path '{field_path}'")
                         result = obj.to_dict()
-                        logger.debug(f"to_dict() succeeded for {type(obj).__name__}, result type: {type(result)}")
                         if type(obj).__name__ == 'SpecificationDocument':
                             logger.info(f"✅ SpecificationDocument serialized successfully")
                         return result
@@ -190,7 +183,12 @@ class StateManager:
                 
                 # Manually iterate through fields to maintain recursive handling
                 result = {}
-                for field_name, field_value in asdict(obj).items():
+                # Use fields() to get field names and getattr() to get values
+                # This avoids the asdict() issue with Pydantic models
+                from dataclasses import fields
+                for field in fields(obj):
+                    field_name = field.name
+                    field_value = getattr(obj, field_name)
                     current_path = f"{field_path}.{field_name}" if field_path else field_name
                     try:
                         result[field_name] = self._serialize_dataclass(field_value, current_path)
@@ -231,6 +229,17 @@ class StateManager:
                     result[key] = self._serialize_dataclass(value, current_path)
                 return result
             else:
+                # Check if this is a Pydantic model that wasn't caught by is_dataclass
+                if hasattr(obj, 'model_dump') and callable(getattr(obj, 'model_dump')):
+                    try:
+                        # Use mode='json' to ensure enums are serialized as values
+                        result = obj.model_dump(mode='json')
+                        return result
+                    except Exception as e:
+                        logger.error(f"model_dump() failed for {type(obj).__name__} in else clause: {e}")
+                        return None
+                
+                # For primitive types, return as-is
                 return obj
         except DatetimeSerializationError:
             # Re-raise datetime errors

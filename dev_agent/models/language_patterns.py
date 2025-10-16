@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from dev_agent.models.enums import FrameworkType, LanguageType
 
 
-@dataclass
-class LanguagePatterns:
+class LanguagePatterns(BaseModel):
     """Defines naming conventions and patterns for a programming language.
     
     This class encapsulates the various naming and structural conventions
@@ -20,30 +18,30 @@ class LanguagePatterns:
     """
     
     # File and extension patterns
-    file_extension: str
-    test_file_suffix: str
-    config_files: List[str]
+    file_extension: str = Field(..., description="Primary file extension for the language")
+    test_file_suffix: str = Field(..., description="Suffix for test files")
+    config_files: List[str] = Field(default_factory=list, description="Common configuration file names")
     
     # Naming conventions
-    class_naming: str  # "PascalCase" | "snake_case"
-    method_naming: str  # "camelCase" | "snake_case"
-    variable_naming: str  # "camelCase" | "snake_case"
-    constant_naming: str  # "UPPER_CASE" | "camelCase"
-    file_naming: str   # "kebab-case" | "snake_case" | "PascalCase"
+    class_naming: str = Field(..., description="Class naming convention (PascalCase, snake_case)")
+    method_naming: str = Field(..., description="Method naming convention (camelCase, snake_case)")
+    variable_naming: str = Field(..., description="Variable naming convention (camelCase, snake_case)")
+    constant_naming: str = Field(..., description="Constant naming convention (UPPER_CASE, camelCase)")
+    file_naming: str = Field(..., description="File naming convention (kebab-case, snake_case, PascalCase)")
     
     # Service and component patterns
-    service_suffix: str  # "Service" | "_service" | ""
-    interface_prefix: str  # "I" | "" 
-    abstract_prefix: str  # "Abstract" | "Base" | ""
+    service_suffix: str = Field(default="", description="Suffix for service classes")
+    interface_prefix: str = Field(default="", description="Prefix for interface classes")
+    abstract_prefix: str = Field(default="", description="Prefix for abstract classes")
     
     # Directory structure patterns
-    source_directory: str  # "src" | "lib" | ""
-    test_directory: str   # "tests" | "test" | "__tests__"
-    config_directory: str  # "config" | "conf" | "settings"
+    source_directory: str = Field(default="", description="Primary source code directory")
+    test_directory: str = Field(default="tests", description="Test directory name")
+    config_directory: str = Field(default="config", description="Configuration directory name")
     
     # Import and module patterns
-    import_style: str  # "explicit" | "wildcard" | "namespace"
-    module_separator: str  # "." | "/" | "::"
+    import_style: str = Field(default="explicit", description="Import style (explicit, wildcard, namespace)")
+    module_separator: str = Field(default=".", description="Module path separator")
     
     def validate_class_name(self, name: str) -> bool:
         """Validate if a class name follows the language conventions.
@@ -178,6 +176,8 @@ class FrameworkPatterns(BaseModel):
     This model defines patterns specific to frameworks like FastAPI, React, etc.
     that extend beyond basic language patterns.
     """
+    
+    model_config = ConfigDict(use_enum_values=True)
     
     framework: FrameworkType = Field(..., description="The framework type")
     
@@ -314,6 +314,8 @@ class LanguageProjectContext(BaseModel):
     This model combines language and framework information to provide
     complete context for code generation and analysis.
     """
+    
+    model_config = ConfigDict(use_enum_values=True)
     
     primary_language: LanguageType = Field(..., description="Primary programming language")
     detected_frameworks: List[FrameworkType] = Field(

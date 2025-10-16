@@ -460,13 +460,13 @@ class PhaseManager(IPhaseManager):
 
             if language_context:
                 language_patterns = language_context.language_patterns
-                target_language = language_context.primary_language.value if language_context.primary_language else "python"
+                target_language = project_state.primary_language.value if project_state.primary_language else "python"
                 
                 # Get the primary framework if available
-                if language_context.detected_frameworks:
-                    target_framework = language_context.detected_frameworks[0].value
+                if project_state.detected_frameworks:
+                    target_framework = project_state.detected_frameworks[0].value
                     # Get framework patterns for the primary framework
-                    framework_patterns = language_context.get_framework_patterns(language_context.detected_frameworks[0])
+                    framework_patterns = language_context.get_framework_patterns(project_state.detected_frameworks[0])
 
             # Generate tasks with language and framework patterns
             if language_patterns or framework_patterns:
