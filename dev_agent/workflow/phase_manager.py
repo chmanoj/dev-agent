@@ -16,7 +16,7 @@ from ..interfaces.cli_interface import ICLIInterface
 from ..interfaces.indexing_interface import IIndexingEngine
 from ..interfaces.workflow_interface import IPhaseManager
 from ..models.context import ProjectContext
-from ..models.enums import DocumentType, PhaseStatus, PhaseType
+from ..models.enums import DocumentType, FrameworkType, PhaseStatus, PhaseType
 from ..models.project_state import IndexMetadata
 from ..models.results import (
     DesignResult,
@@ -464,9 +464,11 @@ class PhaseManager(IPhaseManager):
                 
                 # Get the primary framework if available
                 if project_state.detected_frameworks:
-                    target_framework = project_state.detected_frameworks[0].value
+                    # Prioritize frameworks by specificity (more specific frameworks first)
+                    primary_framework = self._select_primary_framework(project_state.detected_frameworks)
+                    target_framework = primary_framework.value
                     # Get framework patterns for the primary framework
-                    framework_patterns = language_context.get_framework_patterns(project_state.detected_frameworks[0])
+                    framework_patterns = language_context.get_framework_patterns(primary_framework)
 
             # Generate tasks with language and framework patterns
             if language_patterns or framework_patterns:
@@ -809,3 +811,61 @@ class PhaseManager(IPhaseManager):
         # This would be tracked during phase execution
         # For now, return None as we don't have active tracking
         return None
+
+    def _select_primary_framework(self, frameworks: list[FrameworkType]) -> FrameworkType:
+        """Select the primary framework from detected frameworks.
+        
+        Prioritizes frameworks by specificity and relevance to avoid generic
+        frameworks taking precedence over specific ones.
+        
+        Args:
+            frameworks: List of detected frameworks
+            
+        Returns:
+            The most appropriate primary framework
+        """
+        if not frameworks:
+            return FrameworkType.DJANGO  # Default fallback
+        
+        # Framework priority order (most specific first)
+        priority_order = [
+            # Web application frameworks (specific)
+            FrameworkType.STREAMLIT,
+            FrameworkType.FASTAPI,
+            FrameworkType.FLASK,
+            FrameworkType.DJANGO,
+            
+            # Frontend frameworks
+            FrameworkType.REACT,
+            FrameworkType.VUE,
+            FrameworkType.ANGULAR,
+            
+            # Backend frameworks
+            FrameworkType.EXPRESS,
+            FrameworkType.NESTJS,
+            FrameworkType.SPRING_BOOT,
+            FrameworkType.SPRING,
+            
+            # Testing frameworks
+            FrameworkType.PYTEST,
+            FrameworkType.JEST,
+            FrameworkType.JUNIT,
+            
+            # Data/ML frameworks
+            FrameworkType.PANDAS,
+            FrameworkType.NUMPY,
+            FrameworkType.TENSORFLOW,
+            FrameworkType.PYTORCH,
+            
+            # Other frameworks
+            FrameworkType.SQLALCHEMY,
+            FrameworkType.CELERY,
+        ]
+        
+        # Find the highest priority framework that's in the detected list
+        for framework in priority_order:
+            if framework in frameworks:
+                return framework
+        
+        # If no prioritized framework found, return the first one
+        return frameworks[0]
