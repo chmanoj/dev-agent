@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import os
 import re
 import signal
 import sys
@@ -1187,6 +1188,34 @@ class EnhancedCLI(ICLIInterface):
 
             # Initialize workflow manager (it will create its own embedding client)
             self.workflow_manager = WorkflowManager(self)
+            
+            # Auto-resume project if .dev_agent directory exists
+            self._auto_resume_project()
+
+    def _auto_resume_project(self) -> None:
+        """Automatically resume project if .dev_agent directory exists."""
+        try:
+            from pathlib import Path
+            import asyncio
+            
+            current_dir = Path.cwd()
+            dev_agent_dir = current_dir / ".dev_agent"
+            state_file = dev_agent_dir / "state.json"
+            
+            if dev_agent_dir.exists() and state_file.exists():
+                self.console.print("[blue]Found existing dev-agent project. Resuming...[/blue]")
+                
+                # Resume the project using asyncio.run()
+                try:
+                    project_state = asyncio.run(self.workflow_manager.resume_project(str(current_dir)))
+                    self.current_project_path = str(current_dir)
+                    self.console.print(f"[green]✓ Resumed project in {project_state.current_phase.value} phase[/green]")
+                except Exception as e:
+                    self.console.print(f"[yellow]Warning: Could not resume project: {e}[/yellow]")
+                    self.console.print("[dim]You can use 'init' to start a new project or check the project state.[/dim]")
+        except Exception:
+            # Silently fail - this is just a convenience feature
+            pass
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful exit."""
@@ -1297,7 +1326,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
                 context["current_phase"] = current_phase
 
                 # Get project state if available
-                project_state = getattr(self.workflow_manager, "project_state", None)
+                project_state = getattr(self.workflow_manager, "current_project_state", None)
                 if project_state:
                     context["indexing_complete"] = project_state.indexing_complete
                     context["has_specification"] = (
@@ -1396,6 +1425,48 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             elif command == "cancel":
                 return self._handle_cancel_command()
 
+            elif command == "generate":
+                return self._handle_generate_command(args)
+
+            elif command == "tasks":
+                return self._handle_tasks_command(args)
+
+            elif command == "setup":
+                return self._handle_setup_command(args)
+
+            elif command == "validate":
+                return self._handle_validate_command(args)
+
+            elif command == "examples":
+                return self._handle_examples_command()
+
+            elif command == "cost-report":
+                return self._handle_cost_report_command()
+
+            elif command == "index":
+                return self._handle_index_command(args)
+
+            elif command == "analyze":
+                return self._handle_analyze_command(args)
+
+            elif command == "spec":
+                return self._handle_spec_command(args)
+
+            elif command == "requirements":
+                return self._handle_requirements_command(args)
+
+            elif command == "design":
+                return self._handle_design_command(args)
+
+            elif command == "test":
+                return self._handle_test_command(args)
+
+            elif command == "review":
+                return self._handle_review_command(args)
+
+            elif command == "complete":
+                return self._handle_complete_command(args)
+
             else:
                 # Show command suggestions for unknown commands
                 context = self._get_current_context()
@@ -1420,7 +1491,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             return "No active project. Use 'init [path]' to start."
 
         try:
-            project_state = getattr(self.workflow_manager, "project_state", None)
+            project_state = getattr(self.workflow_manager, "current_project_state", None)
             if not project_state:
                 return "No project state available."
 
@@ -1968,7 +2039,7 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
             return "No active project. Use 'init [path]' to start."
 
         try:
-            project_state = getattr(self.workflow_manager, "project_state", None)
+            project_state = getattr(self.workflow_manager, "current_project_state", None)
             if not project_state:
                 return "No project state available."
 
@@ -2051,6 +2122,1082 @@ Type [bold]help[/bold] for commands or [bold]exit[/bold] to quit.
 
         except Exception as e:
             return f"Error filtering files: {e!s}"
+
+    def _handle_generate_command(self, args: list[str]) -> str:
+        """Handle generate command for code generation.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            # Check if we're in implementation phase
+            current_phase = self.workflow_manager.get_current_phase()
+            if current_phase != PhaseType.IMPLEMENTATION:
+                return f"Generate command is only available in implementation phase. Current phase: {current_phase.value}"
+
+            project_state = getattr(self.workflow_manager, "current_project_state", None)
+            if not project_state or not project_state.tasks:
+                return "No tasks available. Generate tasks from design first."
+
+            # Parse arguments
+            task_id = None
+            file_path = None
+            force = False
+            
+            i = 0
+            while i < len(args):
+                if args[i] == "--task-id" and i + 1 < len(args):
+                    task_id = args[i + 1]
+                    i += 2
+                elif args[i] == "--file" and i + 1 < len(args):
+                    file_path = args[i + 1]
+                    i += 2
+                elif args[i] == "--force":
+                    force = True
+                    i += 1
+                else:
+                    i += 1
+
+            # Import required modules
+            import asyncio
+            from ..generation.python_code_generator import PythonCodeGenerator
+            from ..models.context import CodeContext
+            from ..models.enums import TaskStatus
+
+            if task_id:
+                # Find the specific task
+                target_task = None
+                for task in project_state.tasks.tasks:
+                    if task.id == task_id:
+                        target_task = task
+                        break
+                
+                if not target_task:
+                    return f"Task '{task_id}' not found. Use 'tasks' to see available tasks."
+                
+                if target_task.status == TaskStatus.COMPLETED and not force:
+                    return f"Task '{task_id}' is already completed. Use --force to regenerate."
+
+                self.console.print(f"[cyan]Generating code for task: {task_id}[/cyan]")
+                
+                # Generate code for specific task
+                result = asyncio.run(self._generate_code_for_task(target_task, project_state))
+                return result
+
+            elif file_path:
+                self.console.print(f"[cyan]Generating file: {file_path}[/cyan]")
+                
+                # Find tasks that would generate this file
+                matching_tasks = []
+                for task in project_state.tasks.tasks:
+                    if file_path in task.description.lower() or any(file_path in pattern for pattern in getattr(task, 'file_patterns', [])):
+                        matching_tasks.append(task)
+                
+                if not matching_tasks:
+                    return f"No tasks found that would generate '{file_path}'. Use 'tasks' to see available tasks."
+                
+                # Generate code for all matching tasks
+                results = []
+                for task in matching_tasks:
+                    if task.status != TaskStatus.COMPLETED or force:
+                        result = asyncio.run(self._generate_code_for_task(task, project_state))
+                        results.append(f"Task {task.id}: {result}")
+                
+                return "\n".join(results) if results else f"All tasks for '{file_path}' are already completed."
+
+            else:
+                # Generate code for next available task
+                next_task = None
+                for task in project_state.tasks.tasks:
+                    if task.status == TaskStatus.NOT_STARTED:
+                        next_task = task
+                        break
+                
+                if not next_task:
+                    return "No pending tasks found. All tasks are completed or in progress."
+                
+                self.console.print(f"[cyan]Generating code for next task: {next_task.id} - {next_task.title}[/cyan]")
+                
+                result = asyncio.run(self._generate_code_for_task(next_task, project_state))
+                return result
+
+        except Exception as e:
+            return f"Error generating code: {e!s}"
+
+    async def _generate_code_for_task(self, task, project_state):
+        """Generate code for a specific task.
+        
+        Args:
+            task: The task to generate code for
+            project_state: Current project state
+            
+        Returns:
+            Result message
+        """
+        try:
+            from ..generation.python_code_generator import PythonCodeGenerator
+            from ..models.analysis import CodeContext
+            from ..models.enums import TaskStatus
+            from ..indexing.indexing_engine import IndexingEngine
+            from ..analysis.codebase_analyzer import CodebaseAnalyzer
+            from pathlib import Path
+
+            # Initialize indexing engine and codebase analyzer
+            indexing_engine = IndexingEngine(
+                embedding_client=self.workflow_manager.embedding_client,
+                project_path=Path(project_state.project_path)
+            )
+            codebase_analyzer = CodebaseAnalyzer(indexing_engine)
+
+            # Create code context using the analyzer
+            context = codebase_analyzer.get_context_for_task(task)
+
+            # Initialize code generator with analyzer
+            generator = PythonCodeGenerator(
+                codebase_analyzer=codebase_analyzer,
+                llm_client=self.workflow_manager.llm_client,
+                cost_tracker=self.workflow_manager.cost_tracker
+            )
+            
+            # Generate code
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=self.console,
+            ) as progress:
+                gen_task = progress.add_task(f"Generating code for {task.title}...", total=None)
+                
+                generated_code = generator.generate_code_from_task(task, context)
+                
+                progress.update(gen_task, description="[green]✓ Code generated successfully")
+
+            # Display generated code
+            if generated_code and generated_code.code:
+                self.console.print("\n[bold green]Generated Code:[/bold green]")
+                
+                # Show syntax highlighted code
+                from rich.syntax import Syntax
+                syntax = Syntax(
+                    generated_code.code, 
+                    "python", 
+                    theme="monokai", 
+                    line_numbers=True,
+                    word_wrap=True
+                )
+                self.console.print(syntax)
+                
+                # Ask for approval to save
+                from rich.prompt import Confirm
+                if Confirm.ask(f"\nSave generated code to {generated_code.file_path}?", default=True):
+                    # Save the file
+                    file_path = Path(project_state.project_path) / generated_code.file_path
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+                    file_path.write_text(generated_code.code)
+                    
+                    # Update task status
+                    task.status = TaskStatus.COMPLETED
+                    
+                    # Save project state
+                    if hasattr(self.workflow_manager, 'state_manager'):
+                        await self.workflow_manager.state_manager.save_project_state(project_state)
+                    
+                    return f"✓ Code generated and saved to {generated_code.file_path}"
+                else:
+                    return "Code generation completed but not saved."
+            else:
+                return "Code generation failed - no code produced."
+
+        except Exception as e:
+            return f"Error generating code for task: {e!s}"
+
+    def _handle_tasks_command(self, args: list[str]) -> str:
+        """Handle tasks command to list and manage implementation tasks.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            project_state = getattr(self.workflow_manager, "current_project_state", None)
+            if not project_state:
+                return "No project state available."
+
+            if not project_state.tasks:
+                return "No tasks available. Generate tasks from design first."
+
+            # Parse command arguments
+            show_details = "--details" in args
+            filter_status = None
+            task_id = None
+            
+            i = 0
+            while i < len(args):
+                if args[i] == "--status" and i + 1 < len(args):
+                    filter_status = args[i + 1].lower()
+                    i += 2
+                elif args[i] == "--id" and i + 1 < len(args):
+                    task_id = args[i + 1]
+                    i += 2
+                elif args[i] == "--details":
+                    show_details = True
+                    i += 1
+                else:
+                    i += 1
+
+            # If specific task ID requested, show task details
+            if task_id:
+                target_task = None
+                for task in project_state.tasks.tasks:
+                    if task.id == task_id:
+                        target_task = task
+                        break
+                
+                if not target_task:
+                    return f"Task '{task_id}' not found."
+                
+                # Display detailed task information
+                task_panel = Panel(
+                    f"[bold]Title:[/bold] {target_task.title}\n"
+                    f"[bold]Description:[/bold] {target_task.description}\n"
+                    f"[bold]Status:[/bold] {target_task.status.value}\n"
+                    f"[bold]Language:[/bold] {getattr(target_task, 'target_language', 'python')}\n"
+                    f"[bold]Requirements:[/bold] {', '.join(target_task.requirements_refs) if target_task.requirements_refs else 'None'}\n"
+                    f"[bold]Subtasks:[/bold] {len(target_task.subtasks)} subtasks" +
+                    (f"\n[bold]Implementation Notes:[/bold] {target_task.implementation_notes}" if getattr(target_task, 'implementation_notes') else ""),
+                    title=f"[bold cyan]Task {task_id} Details[/bold cyan]",
+                    border_style="cyan"
+                )
+                self.console.print(task_panel)
+                return ""
+
+            # Filter tasks by status if specified
+            tasks_to_show = project_state.tasks.tasks
+            if filter_status:
+                from ..models.enums import TaskStatus
+                try:
+                    status_enum = TaskStatus(filter_status)
+                    tasks_to_show = [task for task in tasks_to_show if task.status == status_enum]
+                except ValueError:
+                    return f"Invalid status '{filter_status}'. Valid statuses: not_started, in_progress, completed, failed, blocked"
+
+            if not tasks_to_show:
+                status_msg = f" with status '{filter_status}'" if filter_status else ""
+                return f"No tasks found{status_msg}."
+
+            # Display tasks summary
+            self.console.print(f"\n[bold cyan]📋 Implementation Tasks ({len(tasks_to_show)} tasks)[/bold cyan]")
+            
+            # Count tasks by status
+            from collections import Counter
+            status_counts = Counter(task.status.value for task in project_state.tasks.tasks)
+            
+            summary_table = Table(show_header=False, box=None, padding=(0, 2))
+            summary_table.add_column("Status", style="cyan")
+            summary_table.add_column("Count", style="white")
+            
+            for status, count in status_counts.items():
+                status_style = {
+                    "completed": "green",
+                    "in_progress": "yellow", 
+                    "not_started": "blue",
+                    "failed": "red",
+                    "blocked": "magenta"
+                }.get(status, "white")
+                
+                summary_table.add_row(
+                    f"[{status_style}]{status.replace('_', ' ').title()}[/{status_style}]",
+                    str(count)
+                )
+            
+            self.console.print(summary_table)
+            self.console.print()
+
+            # Display main tasks table
+            tasks_table = Table(
+                show_header=True, 
+                header_style="bold cyan",
+                title="Task List" if not filter_status else f"Tasks - {filter_status.replace('_', ' ').title()}"
+            )
+            tasks_table.add_column("ID", style="cyan", width=10)
+            tasks_table.add_column("Title", style="white", width=35)
+            tasks_table.add_column("Status", style="white", width=12)
+            tasks_table.add_column("Language", style="dim", width=10)
+            
+            if show_details:
+                tasks_table.add_column("Description", style="dim", width=40)
+
+            for task in tasks_to_show:
+                status_style = {
+                    "completed": "green",
+                    "in_progress": "yellow",
+                    "not_started": "blue", 
+                    "failed": "red",
+                    "blocked": "magenta"
+                }.get(task.status.value, "white")
+                
+                status_display = f"[{status_style}]{task.status.value.replace('_', ' ').title()}[/{status_style}]"
+                
+                row_data = [
+                    task.id,
+                    task.title[:32] + "..." if len(task.title) > 35 else task.title,
+                    status_display,
+                    getattr(task, 'target_language', 'python')
+                ]
+                
+                if show_details:
+                    desc = task.description[:37] + "..." if len(task.description) > 40 else task.description
+                    row_data.append(desc)
+                
+                tasks_table.add_row(*row_data)
+
+            self.console.print(tasks_table)
+            
+            # Show helpful commands
+            self.console.print("\n[dim]Commands:[/dim]")
+            self.console.print("  [cyan]tasks --id <task_id>[/cyan]     Show task details")
+            self.console.print("  [cyan]tasks --status completed[/cyan] Filter by status")
+            self.console.print("  [cyan]tasks --details[/cyan]          Show descriptions")
+            self.console.print("  [cyan]generate --task-id <id>[/cyan]  Generate code for task")
+            
+            return ""
+
+        except Exception as e:
+            return f"Error displaying tasks: {e!s}"
+
+    def _handle_setup_command(self, args: list[str]) -> str:
+        """Handle setup command for configuration.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        try:
+            # Check for --status flag
+            if "--status" in args:
+                from ..config import ConfigManager
+                config_manager = ConfigManager()
+                config = config_manager.get_config()
+                
+                # Display configuration status
+                status_table = Table(
+                    title="Configuration Status",
+                    show_header=True,
+                    header_style="bold cyan"
+                )
+                status_table.add_column("Component", style="cyan", width=20)
+                status_table.add_column("Status", style="white", width=15)
+                status_table.add_column("Details", style="dim", width=40)
+
+                # Check Azure OpenAI
+                if config.azure_openai:
+                    status_table.add_row(
+                        "Azure OpenAI",
+                        "[green]✓ Configured[/green]",
+                        f"Endpoint: {config.azure_openai.endpoint}"
+                    )
+                else:
+                    status_table.add_row(
+                        "Azure OpenAI",
+                        "[red]✗ Not configured[/red]",
+                        "Run 'dev-agent azure configure'"
+                    )
+
+                # Check Gemini
+                gemini_key = os.getenv("GEMINI_API_KEY")
+                if gemini_key:
+                    status_table.add_row(
+                        "Google Gemini",
+                        "[green]✓ Configured[/green]",
+                        "API key found in environment"
+                    )
+                else:
+                    status_table.add_row(
+                        "Google Gemini",
+                        "[red]✗ Not configured[/red]",
+                        "Set GEMINI_API_KEY environment variable"
+                    )
+
+                self.console.print(status_table)
+                return ""
+            else:
+                return "Interactive setup wizard not yet implemented. Use 'setup --status' to check configuration."
+
+        except Exception as e:
+            return f"Error in setup: {e!s}"
+
+    def _handle_validate_command(self, args: list[str]) -> str:
+        """Handle validate command for project validation.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            # Validate current project state
+            project_state = getattr(self.workflow_manager, "current_project_state", None)
+            if not project_state:
+                return "No project state to validate."
+
+            validation_results = []
+            
+            # Validate based on current phase
+            current_phase = self.workflow_manager.get_current_phase()
+            
+            if current_phase == PhaseType.INDEXING:
+                if project_state.indexing_complete:
+                    validation_results.append(("Indexing", "✓", "Complete"))
+                else:
+                    validation_results.append(("Indexing", "✗", "Not complete"))
+            
+            elif current_phase == PhaseType.SPECIFICATION:
+                if project_state.specification:
+                    validation_results.append(("Specification", "✓", "Generated"))
+                else:
+                    validation_results.append(("Specification", "✗", "Missing"))
+            
+            elif current_phase == PhaseType.DESIGN:
+                if project_state.design:
+                    validation_results.append(("Design", "✓", "Generated"))
+                else:
+                    validation_results.append(("Design", "✗", "Missing"))
+            
+            elif current_phase == PhaseType.IMPLEMENTATION:
+                if project_state.tasks:
+                    validation_results.append(("Tasks", "✓", f"{len(project_state.tasks.tasks)} tasks"))
+                else:
+                    validation_results.append(("Tasks", "✗", "No tasks generated"))
+
+            # Display validation results
+            validation_table = Table(
+                title="Project Validation",
+                show_header=True,
+                header_style="bold cyan"
+            )
+            validation_table.add_column("Component", style="cyan", width=20)
+            validation_table.add_column("Status", style="white", width=10)
+            validation_table.add_column("Details", style="dim", width=30)
+
+            for component, status, details in validation_results:
+                status_style = "green" if status == "✓" else "red"
+                validation_table.add_row(
+                    component,
+                    f"[{status_style}]{status}[/{status_style}]",
+                    details
+                )
+
+            self.console.print(validation_table)
+            return ""
+
+        except Exception as e:
+            return f"Error validating project: {e!s}"
+
+    def _handle_examples_command(self) -> str:
+        """Handle examples command to show usage examples.
+
+        Returns:
+            Response message
+        """
+        examples_text = """
+[bold cyan]dev-agent Usage Examples[/bold cyan]
+
+[bold]1. Initialize a new project:[/bold]
+  dev-agent init
+  dev-agent init /path/to/project --provider azure
+
+[bold]2. Resume existing project:[/bold]
+  dev-agent resume
+  dev-agent resume /path/to/project
+
+[bold]3. Interactive workflow:[/bold]
+  dev-agent                    # Start interactive mode
+  help                         # Show available commands
+  status                       # Check project status
+  next                         # Proceed to next phase
+
+[bold]4. Implementation phase:[/bold]
+  tasks                        # List implementation tasks
+  generate                     # Generate code for current task
+  generate --task-id 1.1       # Generate specific task
+  test                         # Run tests
+  review                       # Review implementation
+
+[bold]5. Document management:[/bold]
+  preview specification        # Preview specification document
+  preview design              # Preview design document
+  search "auth" specification # Search in documents
+
+[bold]6. Configuration:[/bold]
+  setup --status              # Check configuration
+  validate                    # Validate project state
+  cost-report                 # Show API usage costs
+        """
+        
+        panel = Panel(
+            examples_text.strip(),
+            title="[bold]Usage Examples[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+        self.console.print(panel)
+        return ""
+
+    def _handle_cost_report_command(self) -> str:
+        """Handle cost-report command to show API usage costs.
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            cost_tracker = getattr(self.workflow_manager, "cost_tracker", None)
+            if not cost_tracker:
+                return "No cost tracking available."
+
+            # Get cost report
+            report = cost_tracker.get_report()
+            
+            # Display cost information
+            cost_table = Table(
+                title="API Usage & Cost Report",
+                show_header=True,
+                header_style="bold cyan"
+            )
+            cost_table.add_column("Metric", style="cyan", width=25)
+            cost_table.add_column("Value", style="white", width=15)
+            cost_table.add_column("Cost", style="green", width=15)
+
+            cost_table.add_row(
+                "Prompt Tokens",
+                f"{report.get('prompt_tokens', 0):,}",
+                f"${report.get('prompt_cost', 0):.4f}"
+            )
+            cost_table.add_row(
+                "Completion Tokens", 
+                f"{report.get('completion_tokens', 0):,}",
+                f"${report.get('completion_cost', 0):.4f}"
+            )
+            cost_table.add_row(
+                "Embedding Tokens",
+                f"{report.get('embedding_tokens', 0):,}",
+                f"${report.get('embedding_cost', 0):.4f}"
+            )
+            cost_table.add_row(
+                "[bold]Total",
+                f"[bold]{report.get('total_tokens', 0):,}",
+                f"[bold green]${report.get('total_cost', 0):.4f}"
+            )
+
+            self.console.print(cost_table)
+            return ""
+
+        except Exception as e:
+            return f"Error generating cost report: {e!s}"
+
+    def _handle_index_command(self, args: list[str]) -> str:
+        """Handle index command for codebase indexing.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            # Check if already indexed
+            project_state = getattr(self.workflow_manager, "current_project_state", None)
+            if project_state and project_state.indexing_complete:
+                if "--force" not in args:
+                    return "Codebase already indexed. Use 'index --force' to re-index."
+
+            self.console.print("[cyan]Starting codebase indexing...[/cyan]")
+            # TODO: Implement indexing trigger
+            return "Indexing functionality needs to be implemented"
+
+        except Exception as e:
+            return f"Error indexing codebase: {e!s}"
+
+    def _handle_analyze_command(self, args: list[str]) -> str:
+        """Handle analyze command for codebase analysis.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            # TODO: Implement codebase analysis
+            return "Codebase analysis functionality needs to be implemented"
+
+        except Exception as e:
+            return f"Error analyzing codebase: {e!s}"
+
+    def _handle_spec_command(self, args: list[str]) -> str:
+        """Handle spec command for specification generation.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+            if current_phase != PhaseType.SPECIFICATION:
+                return f"Specification generation is only available in specification phase. Current phase: {current_phase.value}"
+
+            # TODO: Implement specification generation
+            return "Specification generation functionality needs to be implemented"
+
+        except Exception as e:
+            return f"Error generating specification: {e!s}"
+
+    def _handle_requirements_command(self, args: list[str]) -> str:
+        """Handle requirements command (alias for spec).
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        return self._handle_spec_command(args)
+
+    def _handle_design_command(self, args: list[str]) -> str:
+        """Handle design command for design generation.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+            if current_phase != PhaseType.DESIGN:
+                return f"Design generation is only available in design phase. Current phase: {current_phase.value}"
+
+            # TODO: Implement design generation
+            return "Design generation functionality needs to be implemented"
+
+        except Exception as e:
+            return f"Error generating design: {e!s}"
+
+    def _handle_test_command(self, args: list[str]) -> str:
+        """Handle test command for running tests.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            # Parse test arguments
+            coverage = "--coverage" in args
+            pattern = None
+            
+            for i, arg in enumerate(args):
+                if arg == "--pattern" and i + 1 < len(args):
+                    pattern = args[i + 1]
+                    break
+
+            self.console.print("[cyan]Running tests...[/cyan]")
+            
+            if coverage:
+                self.console.print("[dim]Generating coverage report...[/dim]")
+            
+            if pattern:
+                self.console.print(f"[dim]Using pattern: {pattern}[/dim]")
+
+            # TODO: Implement test execution
+            return "Test execution functionality needs to be implemented"
+
+        except Exception as e:
+            return f"Error running tests: {e!s}"
+
+    def _handle_review_command(self, args: list[str]) -> str:
+        """Handle review command for code review.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            project_state = getattr(self.workflow_manager, "current_project_state", None)
+            if not project_state:
+                return "No project state available."
+
+            # Parse arguments
+            show_files = "--files" in args
+            show_progress = "--progress" in args
+            task_id = None
+            
+            i = 0
+            while i < len(args):
+                if args[i] == "--task-id" and i + 1 < len(args):
+                    task_id = args[i + 1]
+                    i += 2
+                elif args[i] in ["--files", "--progress"]:
+                    i += 1
+                else:
+                    i += 1
+
+            # If no specific arguments, show overall review
+            if not any([show_files, show_progress, task_id]):
+                return self._show_implementation_review(project_state)
+            
+            # Show specific reviews based on arguments
+            if task_id:
+                return self._review_specific_task(project_state, task_id)
+            elif show_files:
+                return self._review_generated_files(project_state)
+            elif show_progress:
+                return self._review_progress(project_state)
+            
+            return ""
+
+        except Exception as e:
+            return f"Error reviewing code: {e!s}"
+
+    def _show_implementation_review(self, project_state) -> str:
+        """Show overall implementation review.
+        
+        Args:
+            project_state: Current project state
+            
+        Returns:
+            Review summary
+        """
+        if not project_state.tasks:
+            return "No tasks available to review."
+
+        # Calculate progress statistics
+        from ..models.enums import TaskStatus
+        total_tasks = len(project_state.tasks.tasks)
+        completed_tasks = sum(1 for task in project_state.tasks.tasks if task.status == TaskStatus.COMPLETED)
+        in_progress_tasks = sum(1 for task in project_state.tasks.tasks if task.status == TaskStatus.IN_PROGRESS)
+        failed_tasks = sum(1 for task in project_state.tasks.tasks if task.status == TaskStatus.FAILED)
+        
+        progress_percentage = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+
+        # Create review summary
+        review_content = f"""
+[bold]Implementation Progress Review[/bold]
+
+[bold cyan]📊 Progress Overview[/bold cyan]
+• Total Tasks: {total_tasks}
+• Completed: [green]{completed_tasks}[/green] ({progress_percentage:.1f}%)
+• In Progress: [yellow]{in_progress_tasks}[/yellow]
+• Failed: [red]{failed_tasks}[/red]
+• Remaining: [blue]{total_tasks - completed_tasks - in_progress_tasks - failed_tasks}[/blue]
+
+[bold cyan]🎯 Status Summary[/bold cyan]
+"""
+
+        if progress_percentage >= 100:
+            review_content += "✅ [bold green]All tasks completed![/bold green] Ready for final testing.\n"
+        elif progress_percentage >= 75:
+            review_content += "🚀 [bold yellow]Nearly complete![/bold yellow] Most tasks are done.\n"
+        elif progress_percentage >= 50:
+            review_content += "⚡ [bold blue]Good progress![/bold blue] Halfway through implementation.\n"
+        elif progress_percentage >= 25:
+            review_content += "🔄 [bold cyan]Getting started![/bold cyan] Some tasks completed.\n"
+        else:
+            review_content += "🏁 [bold white]Just beginning![/bold white] Most tasks still pending.\n"
+
+        # Show recent activity
+        completed_tasks_list = [task for task in project_state.tasks.tasks if task.status == TaskStatus.COMPLETED]
+        if completed_tasks_list:
+            review_content += f"\n[bold cyan]✅ Recently Completed[/bold cyan]\n"
+            for task in completed_tasks_list[-3:]:  # Show last 3 completed
+                review_content += f"• {task.id}: {task.title}\n"
+
+        # Show next tasks
+        pending_tasks = [task for task in project_state.tasks.tasks if task.status == TaskStatus.NOT_STARTED]
+        if pending_tasks:
+            review_content += f"\n[bold cyan]📋 Next Up[/bold cyan]\n"
+            for task in pending_tasks[:3]:  # Show next 3 tasks
+                review_content += f"• {task.id}: {task.title}\n"
+
+        # Show any failed tasks
+        failed_tasks_list = [task for task in project_state.tasks.tasks if task.status == TaskStatus.FAILED]
+        if failed_tasks_list:
+            review_content += f"\n[bold red]❌ Failed Tasks (Need Attention)[/bold red]\n"
+            for task in failed_tasks_list:
+                review_content += f"• {task.id}: {task.title}\n"
+
+        review_content += f"""
+[bold cyan]🔧 Available Commands[/bold cyan]
+• [cyan]review --progress[/cyan]     Detailed progress breakdown
+• [cyan]review --files[/cyan]        Review generated files
+• [cyan]review --task-id <id>[/cyan] Review specific task
+• [cyan]generate[/cyan]              Generate code for next task
+• [cyan]tasks[/cyan]                 View all tasks
+        """
+
+        panel = Panel(
+            review_content.strip(),
+            title="[bold]Implementation Review[/bold]",
+            border_style="cyan",
+            padding=(1, 2)
+        )
+        self.console.print(panel)
+        return ""
+
+    def _review_specific_task(self, project_state, task_id: str) -> str:
+        """Review a specific task.
+        
+        Args:
+            project_state: Current project state
+            task_id: ID of task to review
+            
+        Returns:
+            Task review
+        """
+        target_task = None
+        for task in project_state.tasks.tasks:
+            if task.id == task_id:
+                target_task = task
+                break
+        
+        if not target_task:
+            return f"Task '{task_id}' not found."
+
+        # Check if task has generated files
+        generated_files = getattr(target_task, 'generated_files', [])
+        
+        review_content = f"""
+[bold]Task Review: {target_task.id}[/bold]
+
+[bold cyan]📋 Task Details[/bold cyan]
+• Title: {target_task.title}
+• Status: {target_task.status.value}
+• Language: {getattr(target_task, 'target_language', 'python')}
+• Description: {target_task.description}
+
+[bold cyan]📁 Generated Files[/bold cyan]
+"""
+        
+        if generated_files:
+            from pathlib import Path
+            for file_info in generated_files:
+                file_path = Path(project_state.project_path) / file_info.get('path', '')
+                exists = file_path.exists()
+                status_icon = "✅" if exists else "❌"
+                review_content += f"• {status_icon} {file_info.get('path', 'Unknown')}\n"
+        else:
+            review_content += "• No files generated yet\n"
+
+        # Show implementation notes if available
+        if hasattr(target_task, 'implementation_notes') and target_task.implementation_notes:
+            review_content += f"\n[bold cyan]📝 Implementation Notes[/bold cyan]\n{target_task.implementation_notes}\n"
+
+        # Show next steps
+        from ..models.enums import TaskStatus
+        if target_task.status == TaskStatus.NOT_STARTED:
+            review_content += f"\n[bold cyan]🚀 Next Steps[/bold cyan]\n• Run: [cyan]generate --task-id {task_id}[/cyan]\n"
+        elif target_task.status == TaskStatus.COMPLETED:
+            review_content += f"\n[bold green]✅ Task Completed[/bold green]\n• Files generated and saved\n"
+        elif target_task.status == TaskStatus.FAILED:
+            review_content += f"\n[bold red]❌ Task Failed[/bold red]\n• Review errors and retry generation\n"
+
+        panel = Panel(
+            review_content.strip(),
+            title=f"[bold]Task {task_id} Review[/bold]",
+            border_style="cyan",
+            padding=(1, 2)
+        )
+        self.console.print(panel)
+        return ""
+
+    def _review_generated_files(self, project_state) -> str:
+        """Review all generated files.
+        
+        Args:
+            project_state: Current project state
+            
+        Returns:
+            Files review
+        """
+        from pathlib import Path
+        from ..models.enums import TaskStatus
+        
+        # Collect all generated files from completed tasks
+        all_files = []
+        for task in project_state.tasks.tasks:
+            if task.status == TaskStatus.COMPLETED and hasattr(task, 'generated_files'):
+                for file_info in task.generated_files:
+                    all_files.append({
+                        'task_id': task.id,
+                        'task_title': task.title,
+                        'file_path': file_info.get('path', ''),
+                        'file_type': file_info.get('type', 'unknown')
+                    })
+
+        if not all_files:
+            return "No files have been generated yet."
+
+        # Create files table
+        files_table = Table(
+            title="Generated Files Review",
+            show_header=True,
+            header_style="bold cyan"
+        )
+        files_table.add_column("Task", style="cyan", width=10)
+        files_table.add_column("File Path", style="white", width=40)
+        files_table.add_column("Type", style="yellow", width=12)
+        files_table.add_column("Status", style="green", width=10)
+
+        project_path = Path(project_state.project_path)
+        
+        for file_info in all_files:
+            file_path = project_path / file_info['file_path']
+            exists = file_path.exists()
+            status = "✅ Exists" if exists else "❌ Missing"
+            status_style = "green" if exists else "red"
+            
+            files_table.add_row(
+                file_info['task_id'],
+                file_info['file_path'],
+                file_info['file_type'],
+                f"[{status_style}]{status}[/{status_style}]"
+            )
+
+        self.console.print(files_table)
+        
+        # Show summary
+        existing_files = sum(1 for f in all_files if (project_path / f['file_path']).exists())
+        self.console.print(f"\n[bold]Summary:[/bold] {existing_files}/{len(all_files)} files exist on disk")
+        
+        return ""
+
+    def _review_progress(self, project_state) -> str:
+        """Show detailed progress review.
+        
+        Args:
+            project_state: Current project state
+            
+        Returns:
+            Progress review
+        """
+        if not project_state.tasks:
+            return "No tasks available for progress review."
+
+        # Create progress breakdown by status
+        from ..models.enums import TaskStatus
+        from collections import defaultdict
+        
+        status_groups = defaultdict(list)
+        for task in project_state.tasks.tasks:
+            status_groups[task.status].append(task)
+
+        # Display progress for each status
+        for status in [TaskStatus.COMPLETED, TaskStatus.IN_PROGRESS, TaskStatus.NOT_STARTED, TaskStatus.FAILED, TaskStatus.BLOCKED]:
+            tasks_in_status = status_groups.get(status, [])
+            if not tasks_in_status:
+                continue
+                
+            status_name = status.value.replace('_', ' ').title()
+            status_style = {
+                TaskStatus.COMPLETED: "green",
+                TaskStatus.IN_PROGRESS: "yellow",
+                TaskStatus.NOT_STARTED: "blue",
+                TaskStatus.FAILED: "red",
+                TaskStatus.BLOCKED: "magenta"
+            }.get(status, "white")
+            
+            self.console.print(f"\n[bold {status_style}]{status_name} Tasks ({len(tasks_in_status)})[/bold {status_style}]")
+            
+            for task in tasks_in_status:
+                self.console.print(f"  • {task.id}: {task.title}")
+
+        # Show overall progress bar
+        total_tasks = len(project_state.tasks.tasks)
+        completed_tasks = len(status_groups.get(TaskStatus.COMPLETED, []))
+        
+        if total_tasks > 0:
+            progress_bar = "█" * int(completed_tasks / total_tasks * 20)
+            remaining_bar = "░" * (20 - int(completed_tasks / total_tasks * 20))
+            percentage = completed_tasks / total_tasks * 100
+            
+            self.console.print(f"\n[bold]Overall Progress:[/bold]")
+            self.console.print(f"[green]{progress_bar}[/green][dim]{remaining_bar}[/dim] {percentage:.1f}% ({completed_tasks}/{total_tasks})")
+
+        return ""
+
+    def _handle_complete_command(self, args: list[str]) -> str:
+        """Handle complete command to mark tasks as complete.
+
+        Args:
+            args: Command arguments
+
+        Returns:
+            Response message
+        """
+        if not self.workflow_manager:
+            return "No active project. Use 'init [path]' to start."
+
+        try:
+            current_phase = self.workflow_manager.get_current_phase()
+            if current_phase != PhaseType.IMPLEMENTATION:
+                return f"Complete command is only available in implementation phase. Current phase: {current_phase.value}"
+
+            # Parse task ID if provided
+            task_id = None
+            if args and not args[0].startswith("--"):
+                task_id = args[0]
+
+            if task_id:
+                self.console.print(f"[cyan]Marking task {task_id} as complete...[/cyan]")
+                # TODO: Implement task completion
+                return f"Task completion functionality needs to be implemented for task: {task_id}"
+            else:
+                # TODO: Show completion options
+                return "Task completion functionality needs to be implemented"
+
+        except Exception as e:
+            return f"Error completing task: {e!s}"
 
     def request_approval(self, document: str, document_type: str) -> bool:
         """Request user approval for a generated document.

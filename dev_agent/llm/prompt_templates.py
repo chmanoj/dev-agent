@@ -413,11 +413,44 @@ Generate an implementation plan that breaks down the work into:
 7. Use maximum two levels of hierarchy (parent task + subtasks)
 
 ## Output Format
-Provide a numbered task list with:
-- [ ] 1. Parent task description
-  - Specific details about what to implement
+You MUST follow this EXACT markdown format. Do NOT deviate from this structure:
+
+```
+# Implementation Plan
+
+## Overview
+Brief description of the implementation approach.
+
+## Task Breakdown
+
+- [ ] 1. First task title
+  - Implementation details and what to create
   - File paths to create or modify
   - _Requirements: X.X, Y.Y_
+
+- [ ] 2. Second task title  
+  - Implementation details and what to create
+  - File paths to create or modify
+  - _Requirements: X.X, Y.Y_
+
+- [ ] 3. Third task title
+  - Implementation details and what to create
+  - File paths to create or modify
+  - _Requirements: X.X, Y.Y_
+
+## Task Metadata
+**Total Tasks:** X
+**Estimated Effort:** Y hours
+```
+
+CRITICAL FORMATTING RULES:
+1. Each task MUST start with "- [ ] " followed by a number and period
+2. Each task MUST be on its own line
+3. Sub-bullets MUST start with "  - " (two spaces + dash + space)
+4. Do NOT merge multiple tasks on one line
+5. Do NOT use extra asterisks or formatting in task titles
+6. Keep task titles concise and clear
+7. Always include the header sections exactly as shown
 
 - [ ] 1.1 Subtask description
   - Implementation details

@@ -178,12 +178,44 @@ class TaskGenerator(ITaskGenerator):
 
         # Generate tasks using LLM with enhanced template
         try:
-            task_content = await self.llm_client.generate_completion(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-                temperature=template.base_template.temperature,
-                max_tokens=template.base_template.max_tokens,
-            )
+            try:
+                task_content = await self.llm_client.generate_completion(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    temperature=template.base_template.temperature,
+                    max_tokens=template.base_template.max_tokens,
+                )
+            except RuntimeError as e:
+                if "Event loop is closed" in str(e) or "cannot be called from a running event loop" in str(e):
+                    logger.error(f"Event loop issue during LLM call: {e}")
+                    logger.info("Attempting to recreate LLM client with fresh event loop context...")
+                    
+                    # Import here to avoid circular imports
+                    from ..llm import create_llm_client
+                    
+                    # Recreate the LLM client
+                    try:
+                        self.llm_client = create_llm_client()
+                        logger.info("LLM client recreated successfully")
+                        
+                        # Retry the call with the new client
+                        task_content = await self.llm_client.generate_completion(
+                            prompt=user_prompt,
+                            system_prompt=system_prompt,
+                            temperature=template.base_template.temperature,
+                            max_tokens=template.base_template.max_tokens,
+                        )
+                        logger.info("LLM call succeeded after client recreation")
+                        
+                    except Exception as retry_error:
+                        logger.error(f"Failed to recreate LLM client or retry call: {retry_error}")
+                        raise RuntimeError(f"LLM client recreation failed: {retry_error}") from retry_error
+                else:
+                    raise
+            except Exception as e:
+                # For any other error, re-raise it - don't fall back
+                logger.error(f"LLM task generation with patterns failed: {e}")
+                raise RuntimeError(f"AI task generation with patterns failed: {e}") from e
 
             # Track actual token usage if available
             if self.cost_tracker and self.token_counter:
@@ -355,26 +387,50 @@ class TaskGenerator(ITaskGenerator):
         Returns:
             Parsed TaskList with patterns applied
         """
-        # Extract tasks from AI content (enhanced parsing)
-        task_lines = [
-            line.strip() for line in task_content.split('\n') 
-            if line.strip() and (line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'))
-        ]
+        import re
         
+        logger.info("Parsing LLM response for task generation")
+        logger.debug(f"Raw LLM content length: {len(task_content)} characters")
+        
+        # Clean up the content first - handle malformed markdown
+        cleaned_content = self._clean_llm_task_content(task_content)
+        
+        # Extract tasks from cleaned content
+        lines = cleaned_content.split('\n')
         tasks = []
+        current_task = None
+        task_counter = 1
+        seen_titles = set()  # Track titles to avoid duplicates
         
-        for i, line in enumerate(task_lines[:15]):  # Limit to 15 tasks
-            if line and len(line) > 10:  # Skip very short lines
-                # Extract task title from markdown format
-                title = line.replace('- [ ]', '').replace('- [x]', '').strip()
-                if title.startswith(f'{i+1}.'):
-                    title = title[len(f'{i+1}.'):].strip()
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            
+            # Skip empty lines, headers, and separators
+            if not line or line.startswith('#') or line.startswith('---') or line.startswith('='):
+                continue
+            
+            # More flexible task detection - handle various markdown formats
+            task_match = self._extract_task_from_line(line)
+            if task_match:
+                # Save previous task if exists
+                if current_task:
+                    tasks.append(current_task)
                 
-                # Create task with language/framework context
-                task = Task(
-                    id=f"task_{i+1}",
-                    title=title[:100],  # First 100 chars as title
-                    description=line,
+                title = task_match.strip()
+                
+                # Skip if we've seen this title before (duplicate detection)
+                if title.lower() in seen_titles:
+                    logger.warning(f"Skipping duplicate task: {title}")
+                    current_task = None
+                    continue
+                
+                seen_titles.add(title.lower())
+                
+                # Create new task
+                current_task = Task(
+                    id=f"task_{task_counter}",
+                    title=title[:100] if title else f"Task {task_counter}",
+                    description=title,
                     requirements_refs=[],
                     subtasks=[],
                     status=TaskStatus.NOT_STARTED,
@@ -387,22 +443,52 @@ class TaskGenerator(ITaskGenerator):
                     file_patterns=[],
                     validation_rules=[],
                 )
+                task_counter += 1
+                logger.debug(f"Parsed task {task_counter-1}: {title}")
                 
-                # Apply patterns if available
-                if language_patterns:
-                    task = task.apply_naming_patterns(language_patterns)
+            # Check if this is a sub-bullet with additional details
+            elif line.startswith(('  -', '    -', '\t-')) and current_task:
+                detail = re.sub(r'^[\s\t]*-\s*', '', line).strip()
                 
-                if framework_patterns:
-                    task = task.add_framework_context(framework_patterns)
-                
-                tasks.append(task)
+                # Categorize the detail
+                if detail.startswith('_Requirements:') or detail.startswith('Requirements:'):
+                    # Extract requirements
+                    req_text = re.sub(r'^_?Requirements:\s*', '', detail).replace('_', '').strip()
+                    if req_text:
+                        current_task.requirements_refs = [r.strip() for r in req_text.split(',')]
+                elif detail.startswith('**Context needed:**') or detail.startswith('Context needed:'):
+                    # Extract context requirements
+                    context_text = re.sub(r'^\*\*?Context needed:\*\*?\s*', '', detail).strip()
+                    if context_text:
+                        current_task.context_requirements = [c.strip() for c in context_text.split(',')]
+                elif not detail.startswith(('_', '**', '*')) and len(detail) > 5:
+                    # This is implementation notes or additional description
+                    if current_task.implementation_notes:
+                        current_task.implementation_notes += f"\n{detail}"
+                    else:
+                        current_task.implementation_notes = detail
         
+        # Add the last task if exists
+        if current_task:
+            tasks.append(current_task)
+        
+        logger.info(f"Parsed {len(tasks)} tasks from LLM response")
+        
+        # Apply patterns to all tasks
+        for task in tasks:
+            if language_patterns:
+                task = task.apply_naming_patterns(language_patterns)
+            
+            if framework_patterns:
+                task = task.add_framework_context(framework_patterns)
+        
+        # If no tasks were parsed, create at least one task
         if not tasks:
-            # If no tasks were parsed, create at least one task
+            logger.warning("No tasks parsed from LLM response, creating fallback task")
             task = Task(
                 id="task_1",
                 title="Implement feature based on design",
-                description=task_content[:500],  # Use AI content as description
+                description="Implement the feature according to the design document",
                 requirements_refs=[],
                 subtasks=[],
                 status=TaskStatus.NOT_STARTED,
@@ -431,6 +517,136 @@ class TaskGenerator(ITaskGenerator):
             version="1.0",
             approved=False
         )
+
+    def _clean_llm_task_content(self, content: str) -> str:
+        """Clean up malformed LLM task content.
+        
+        Args:
+            content: Raw LLM response content
+            
+        Returns:
+            Cleaned content with proper markdown formatting
+        """
+        import re
+        
+        logger.debug("Cleaning malformed LLM content")
+        
+        # First, handle the most common issue: merged lines with multiple task markers
+        # Split on task markers but preserve them
+        content = re.sub(r'(?=- \[[x ]\])', '\n', content)
+        
+        # Fix malformed headers that got merged with task lines
+        content = re.sub(r'# Implementation Plan-\s*\[', '# Implementation Plan\n\n- [', content)
+        
+        # Split into lines for processing
+        lines = content.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines for now
+            if not line:
+                continue
+            
+            # Handle lines with multiple dashes (malformed task markers)
+            line = re.sub(r'^-+\s*\[\s*[x ]\s*\]', '- [ ]', line)
+            
+            # Handle lines that start with task markers but have extra formatting
+            if re.match(r'^- \[[x ]\]', line):
+                # Clean up the task line
+                # Remove extra asterisks and formatting
+                line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
+                # Remove trailing dashes that got merged
+                line = re.sub(r'-+$', '', line)
+                # Clean up extra spaces
+                line = re.sub(r'\s+', ' ', line)
+                
+            cleaned_lines.append(line)
+        
+        # Join back with proper line breaks
+        cleaned = '\n'.join(cleaned_lines)
+        
+        # Final cleanup: remove obvious duplicates and malformed content
+        lines = cleaned.split('\n')
+        final_lines = []
+        seen_tasks = set()
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines
+            if not line:
+                continue
+                
+            # For task lines, check for duplicates
+            if re.match(r'^- \[[x ]\]', line):
+                # Extract the task content for duplicate checking
+                task_content = re.sub(r'^- \[[x ]\]\s*(?:\d+\.)?\s*', '', line).lower()
+                task_content = re.sub(r'[^a-z0-9\s]', '', task_content).strip()
+                
+                # Skip if we've seen this task before
+                if task_content in seen_tasks:
+                    logger.debug(f"Skipping duplicate task: {line}")
+                    continue
+                    
+                if len(task_content) > 5:  # Only track meaningful tasks
+                    seen_tasks.add(task_content)
+            
+            # Skip metadata lines that got parsed as tasks
+            if any(keyword in line.lower() for keyword in ['total tasks:', 'version:', 'status:', 'estimated total']):
+                continue
+                
+            final_lines.append(line)
+        
+        result = '\n'.join(final_lines)
+        logger.debug(f"Cleaned content: {len(result)} characters, {len(final_lines)} lines")
+        
+        return result
+
+    def _extract_task_from_line(self, line: str) -> str | None:
+        """Extract task title from a line, handling various markdown formats.
+        
+        Args:
+            line: Line to extract task from
+            
+        Returns:
+            Cleaned task title or None if not a task line
+        """
+        import re
+        
+        # Only process lines that look like task markers
+        if not re.match(r'^-\s*\[\s*[x ]\s*\]', line):
+            return None
+        
+        # Extract everything after the checkbox
+        match = re.match(r'^-\s*\[\s*[x ]\s*\]\s*(.+)$', line)
+        if not match:
+            return None
+            
+        title = match.group(1).strip()
+        
+        # Clean up the title aggressively
+        title = re.sub(r'^\*\*(.+?)\*\*', r'\1', title)  # Remove bold formatting
+        title = re.sub(r'^`(.+?)`', r'\1', title)        # Remove code formatting
+        title = re.sub(r'^\d+\.\s*', '', title)          # Remove leading numbers
+        title = title.replace('**', '').replace('`', '') # Remove any remaining formatting
+        title = re.sub(r'-+$', '', title)                # Remove trailing dashes
+        title = re.sub(r'\s+', ' ', title)               # Normalize whitespace
+        title = title.strip()
+        
+        # Skip if title is too short, empty, or looks like metadata
+        if (len(title) < 5 or 
+            not title or
+            title.lower().startswith(('total', 'version', 'status', 'estimated')) or
+            title.endswith((':', '---', '##'))):
+            return None
+        
+        # Skip lines that are just numbers or punctuation
+        if re.match(r'^[\d\.\-\s]+$', title):
+            return None
+            
+        return title
 
     async def generate_from_design_async(
         self,
@@ -512,20 +728,36 @@ class TaskGenerator(ITaskGenerator):
                     max_tokens=template.base_template.max_tokens,
                 )
             except RuntimeError as e:
-                if "Event loop is closed" in str(e):
-                    logger.error("Event loop closed during LLM call - recreating client")
+                if "Event loop is closed" in str(e) or "cannot be called from a running event loop" in str(e):
+                    logger.error(f"Event loop issue during LLM call: {e}")
+                    logger.info("Attempting to recreate LLM client with fresh event loop context...")
+                    
+                    # Import here to avoid circular imports
                     from ..llm import create_llm_client
-                    logger.info("Attempting to recreate LLM client...")
-                    self.llm_client = create_llm_client()
-                    # Retry the call
-                    task_content = await self.llm_client.generate_completion(
-                        prompt=user_prompt,
-                        system_prompt=system_prompt,
-                        temperature=template.base_template.temperature,
-                        max_tokens=template.base_template.max_tokens,
-                    )
+                    
+                    # Recreate the LLM client
+                    try:
+                        self.llm_client = create_llm_client()
+                        logger.info("LLM client recreated successfully")
+                        
+                        # Retry the call with the new client
+                        task_content = await self.llm_client.generate_completion(
+                            prompt=user_prompt,
+                            system_prompt=system_prompt,
+                            temperature=template.base_template.temperature,
+                            max_tokens=template.base_template.max_tokens,
+                        )
+                        logger.info("LLM call succeeded after client recreation")
+                        
+                    except Exception as retry_error:
+                        logger.error(f"Failed to recreate LLM client or retry call: {retry_error}")
+                        raise RuntimeError(f"LLM client recreation failed: {retry_error}") from retry_error
                 else:
                     raise
+            except Exception as e:
+                # For any other error, re-raise it - don't fall back
+                logger.error(f"LLM task generation failed: {e}")
+                raise RuntimeError(f"AI task generation failed: {e}") from e
 
             # Track actual token usage if available
             if self.cost_tracker and self.token_counter:
@@ -546,60 +778,18 @@ class TaskGenerator(ITaskGenerator):
 
             # Parse the generated task content into TaskList
             # TODO: Implement proper LLM response parsing
-            # For now, create a basic task list with the AI-generated content
-            logger.info("Generated task content, creating TaskList structure")
+            # Parse the generated task content into TaskList using robust parsing
+            logger.info("Generated task content, parsing into TaskList structure")
             
-            # Create a basic task list with AI-generated content as description
-            from ..models.documents import Task
-            
-            # Extract tasks from AI content (simple parsing)
-            task_lines = [line.strip() for line in task_content.split('\n') if line.strip() and not line.startswith('#')]
-            tasks = []
-            
-            for i, line in enumerate(task_lines[:10]):  # Limit to 10 tasks
-                if line and len(line) > 10:  # Skip very short lines
-                    task = Task(
-                        id=f"task_{i+1}",
-                        title=line[:100],  # First 100 chars as title
-                        description=line,
-                        requirements_refs=[],
-                        subtasks=[],
-                        status=TaskStatus.NOT_STARTED,
-                        target_language="python",
-                        context_requirements=[],
-                        implementation_notes=None
-                    )
-                    tasks.append(task)
-            
-            if not tasks:
-                # If no tasks were parsed, create at least one task
-                task = Task(
-                    id="task_1",
-                    title="Implement feature based on design",
-                    description=task_content[:500],  # Use AI content as description
-                    requirements_refs=[],
-                    subtasks=[],
-                    status=TaskStatus.NOT_STARTED,
-                    target_language="python",
-                    context_requirements=[],
-                    implementation_notes=None
-                )
-                tasks.append(task)
-            
-            # Generate dependencies and effort estimates
-            dependencies = {}
-            estimated_effort = {}
-            for task in tasks:
-                dependencies[task.id] = []  # No dependencies for now
-                estimated_effort[task.id] = 2  # Default 2 hours per task
-            
-            return TaskList(
-                tasks=tasks,
-                dependencies=dependencies,
-                estimated_effort=estimated_effort,
-                version="1.0",
-                approved=False
+            task_list = self._parse_llm_response_with_patterns(
+                task_content,
+                language_patterns=None,  # No patterns provided, use defaults
+                framework_patterns=None,
+                target_language="python",
+                target_framework=None,
             )
+
+            return task_list
 
         except Exception as e:
             logger.error(f"Failed to generate tasks with LLM: {e}")
@@ -705,13 +895,24 @@ class TaskGenerator(ITaskGenerator):
         lines.append("# Implementation Plan")
         lines.append("")
 
+        # Overview section
+        lines.append("## Overview")
+        lines.append("")
+        lines.append("This implementation plan breaks down the feature into discrete, manageable coding tasks.")
+        lines.append("Each task builds incrementally on previous tasks and focuses on implementing specific components.")
+        lines.append("")
+
+        # Task breakdown section
+        lines.append("## Task Breakdown")
+        lines.append("")
+
         # Group tasks by category for better organization
         categorized_tasks = self._categorize_tasks(task_list.tasks)
 
         # Generate tasks in logical order
         task_order = [
             "Data Models",
-            "Interfaces",
+            "Interfaces", 
             "Components",
             "Error Handling",
             "Testing",
@@ -719,21 +920,21 @@ class TaskGenerator(ITaskGenerator):
         ]
 
         task_counter = 1
+        
+        # Process categorized tasks first
         for category in task_order:
             if category in categorized_tasks:
                 category_tasks = categorized_tasks[category]
 
                 for task in category_tasks:
-                    # Main task
+                    # Main task with clean formatting
                     status_marker = self._get_status_marker(task.status)
                     lines.append(f"- [{status_marker}] {task_counter}. {task.title}")
 
-                    # Task description as sub-bullet
-                    if task.description:
-                        lines.append(f"  - {task.description}")
-
-                    # Implementation notes if available
-                    if task.implementation_notes:
+                    # Add implementation notes if available and different from title
+                    if (task.implementation_notes and 
+                        task.implementation_notes != task.title and 
+                        task.implementation_notes != task.description):
                         lines.append(f"  - {task.implementation_notes}")
 
                     # Context requirements
@@ -755,13 +956,23 @@ class TaskGenerator(ITaskGenerator):
             for t in task_list.tasks
             if self._determine_task_category(t) not in task_order
         ]
+        
         for task in uncategorized:
             status_marker = self._get_status_marker(task.status)
             lines.append(f"- [{status_marker}] {task_counter}. {task.title}")
 
-            if task.description:
-                lines.append(f"  - {task.description}")
+            # Add implementation notes if available and different from title
+            if (task.implementation_notes and 
+                task.implementation_notes != task.title and 
+                task.implementation_notes != task.description):
+                lines.append(f"  - {task.implementation_notes}")
 
+            # Context requirements
+            if task.context_requirements:
+                context_text = ", ".join(task.context_requirements)
+                lines.append(f"  - **Context needed:** {context_text}")
+
+            # Requirement references
             if task.requirements_refs:
                 req_text = ", ".join(task.requirements_refs)
                 lines.append(f"  - _Requirements: {req_text}_")

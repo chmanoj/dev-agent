@@ -111,24 +111,12 @@ ENHANCED_TASK_GENERATION_TEMPLATE = LanguageAwareTaskTemplate(
         system_prompt="""You are a technical project manager breaking down work into incremental tasks.
 Your task breakdowns should be actionable, testable, and build incrementally.
 
-LANGUAGE CONTEXT:
-- Target Language: {target_language}
-- Class Naming: {class_naming_convention}
-- Method Naming: {method_naming_convention}
-- File Naming: {file_naming_convention}
-- File Extension: {file_extension}
-- Test Files: {test_file_suffix}
-- Service Pattern: {service_suffix}
-- Source Directory: {source_directory}
-- Test Directory: {test_directory}
-
-FRAMEWORK CONTEXT:
-- Framework: {framework_name}
-- Component Suffix: {component_suffix}
-- Common Dependencies: {common_dependencies}
-- Entry Points: {entry_point_files}
-- Config Files: {config_files}
-- Test Patterns: {test_patterns}
+LANGUAGE AND FRAMEWORK CONTEXT:
+You are generating tasks for software development. Follow these conventions:
+- Use appropriate naming conventions for the target language
+- Create files in proper directory structure  
+- Follow framework-specific patterns when applicable
+- Generate clean, maintainable code structure
 
 Key principles:
 1. Break work into small, manageable coding tasks
@@ -138,9 +126,9 @@ Key principles:
 5. Include testing as part of implementation tasks
 6. Reference specific requirements
 7. Focus ONLY on coding activities (no deployment, user testing, etc.)
-8. USE THE SPECIFIED NAMING CONVENTIONS for all code elements
-9. Follow the framework patterns and directory structure
-10. Generate file paths using the correct naming conventions""",
+8. Use proper naming conventions for the target language
+9. Follow framework patterns and directory structure
+10. Generate appropriate file paths and extensions""",
         
         user_prompt_template="""## Specification
 {specification}
@@ -151,28 +139,21 @@ Key principles:
 ## Complexity Analysis
 {complexity_analysis}
 
-## Language and Framework Patterns
-**Language:** {target_language}
-- Classes: Use {class_naming_convention} (e.g., UserService vs user_service)
-- Methods: Use {method_naming_convention} (e.g., getUserData vs get_user_data)
-- Files: Use {file_naming_convention} with {file_extension} extension
-- Tests: Use {test_file_suffix} suffix in {test_directory} directory
-- Services: Use {service_suffix} suffix for service classes
-
-**Framework:** {framework_name}
-- Components: Use {component_suffix} suffix if applicable
-- Dependencies: Consider {common_dependencies}
-- Entry Points: Follow patterns like {entry_point_files}
-- Config: Use {config_files} for configuration
-- Test Files: Follow {test_patterns} patterns
+## Language and Framework Context
+**Target Language:** {target_language}
+Generate tasks appropriate for software development:
+- Use proper naming conventions (PascalCase for classes, snake_case for methods in Python)
+- Create files with appropriate extensions (.py for Python, .js for JavaScript, etc.)
+- Follow language-specific directory structures (src/, tests/, etc.)
+- Include proper imports and dependencies
 
 ## Task Generation Requirements
 Generate tasks that:
-1. Use the CORRECT naming conventions for the target language
-2. Create files in the appropriate directories ({source_directory}, {test_directory})
-3. Follow framework-specific patterns and conventions
+1. Use CORRECT naming conventions for the target language
+2. Create files in appropriate directories (src/, tests/, etc.)
+3. Follow language and framework-specific patterns
 4. Include proper file extensions and naming
-5. Reference framework dependencies where appropriate
+5. Reference appropriate dependencies and imports
 
 ## Task
 Generate an implementation plan that breaks down the work into:
@@ -196,25 +177,47 @@ Generate an implementation plan that breaks down the work into:
 10. ALL file names must follow {file_naming_convention}
 
 ## Output Format
-Provide a numbered task list with CORRECT naming conventions:
+You MUST follow this EXACT markdown format with correct naming conventions:
 
-- [ ] 1. Create {{class_name}} {{service_suffix}} class
-  - Implement {{class_name}} in {source_directory}/{{file_name}}{file_extension}
-  - Use {class_naming_convention} for class names
-  - Use {method_naming_convention} for method names
+```
+# Implementation Plan
+
+## Overview
+Brief description of the implementation approach.
+
+## Task Breakdown
+
+- [ ] 1. Create UserService class
+  - Implement UserService in src/user_service.py
+  - Use proper naming conventions (PascalCase for classes, snake_case for methods)
+  - Include error handling and validation
   - _Requirements: X.X, Y.Y_
 
-- [ ] 1.1 Implement core {{method_name}} methods
-  - Add {{method_name}}() method using {method_naming_convention}
+- [ ] 2. Implement get_user_data method
+  - Add get_user_data() method with proper naming
   - Include proper error handling and validation
   - _Requirements: X.X_
 
-- [ ]* 1.2 Create unit tests for {{class_name}}
-  - Create test file in {test_directory}/{{test_file_name}}{test_file_suffix}
+- [ ] 3. Create unit tests for UserService
+  - Create test file in tests/test_user_service.py
   - Test all public methods
   - _Requirements: X.X_
 
-CRITICAL: Ensure ALL generated names follow the specified conventions!""",
+## Task Metadata
+**Total Tasks:** X
+**Estimated Effort:** Y hours
+```
+
+CRITICAL FORMATTING RULES:
+1. Each task MUST start with "- [ ] " followed by a number and period
+2. Each task MUST be on its own line
+3. Sub-bullets MUST start with "  - " (two spaces + dash + space)
+4. Do NOT merge multiple tasks on one line
+5. Do NOT use extra asterisks or formatting in task titles
+6. Keep task titles concise and clear
+7. Always include the header sections exactly as shown
+8. Use appropriate naming conventions for the target language
+9. Generate proper file paths with correct extensions""",
         
         required_context=[
             "specification",

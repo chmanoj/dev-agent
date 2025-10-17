@@ -238,3 +238,6 @@ Thumbs.db
 
 .cleanup_backups/*
 gemini.export.txt
+sample_*.md
+.gitignore
+WARP.md
